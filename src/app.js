@@ -12,6 +12,9 @@ const whatsappRoutes = require("./routes/whatsapp");
 const checkoutRoutes = require("./routes/checkout");
 const scannerRoutes = require("./routes/scanner");
 const policyRoutes = require("./routes/policy");
+const flowRoutes = require("./routes/flowEndpoint");
+const bookWebRoutes = require("./routes/bookWeb");
+const formsWebRoutes = require("./routes/formsWeb");
 const adminRoutes = require("./routes/admin");
 const { PREFIX } = require("./config/paths");
 const PORT = process.env.PORT;
@@ -67,6 +70,9 @@ app.use(PREFIX, whatsappRoutes);
 app.use("/", checkoutRoutes);
 app.use("/", scannerRoutes);
 app.use("/", policyRoutes);
+app.use(PREFIX, flowRoutes.router);
+app.use("/", bookWebRoutes);
+app.use("/", formsWebRoutes);
 app.use("/admin/api", adminRoutes);
 
 /* The fraud-demonstration pages, served under unguessable filenames so the phone

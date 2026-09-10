@@ -79,20 +79,62 @@ const slotByCode = (placeId, code) =>
  * whether today itself can still be booked, how far ahead the window runs, and
  * what hour it opens.
  */
+/** "18:00:00" -> minutes since midnight. */
+function minutesOfDay(t) {
+  const [h, m] = String(t || '00:00:00').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Can this slot still be sold, for this date, right now?
+ *
+ * Only today is ever in question — a future date's slots are all ahead of us.
+ * For today the rule is the obvious one that was missing: a slot that has
+ * ended cannot be entered, so it cannot be sold. At ten at night the system
+ * was happily selling a six-to-twelve morning slot for the same morning that
+ * finished ten hours earlier.
+ *
+ * The cutoff stops the last few minutes being sold as well. Somebody buying
+ * entry at 17:58 for a slot that closes at 18:00 has bought nothing, and will
+ * be at the barrier arguing about it.
+ */
+function slotSellable(slot, travelDate, cutoffMinutes = 60, now = new Date()) {
+  if (String(travelDate) !== todayStr()) return true;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return nowMin <= minutesOfDay(slot.ends_at) - cutoffMinutes;
+}
+
 async function bookableDates(place) {
   const days = place.booking_days_ahead || 14;
   const sameDay = await settings.bool('same_day_booking', true);
   const releaseHour = await settings.num('booking_release_hour', 18);
+  const cutoff = await settings.num('same_day_cutoff_minutes', 60);
 
   // Before the release hour the furthest date has not opened yet.
   const reach = new Date().getHours() >= releaseHour ? days : days - 1;
 
+  /* Today only counts as bookable if at least one of its slots still has
+     usable time left. Otherwise the date is offered, tapped, and answered with
+     an empty list of slots — which reads as a broken system rather than as a
+     day that is simply over. */
+  let start = sameDay ? 0 : 1;
+  if (start === 0) {
+    const slots = (await query(
+      'SELECT ends_at FROM place_slots WHERE place_id = $1 AND is_active', [place.id])).rows;
+    const anyLeft = slots.some((s) => slotSellable(s, todayStr(), cutoff));
+    if (!anyLeft) start = 1;
+  }
+
   const out = [];
-  const start = sameDay ? 0 : 1;
   for (let i = start; i <= reach; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    out.push(d.toISOString().slice(0, 10));
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
   }
   return out;
 }
@@ -307,6 +349,7 @@ async function forCustomer(customerId, limit = 5) {
 
 module.exports = {
   ticketNo, referenceId, placeByCode, slotByCode, bookableDates, nextRelease,
+  slotSellable,
   existingForDate, hold, markPaid, releaseHold,
   byId, byTicketNo, byReference, forCustomer,
 };

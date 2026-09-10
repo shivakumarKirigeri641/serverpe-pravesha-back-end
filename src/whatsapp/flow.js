@@ -41,7 +41,14 @@ const checkout = require('../gatepass/checkout');
 const deliver = require('../gatepass/deliver');
 const closure = require('../gatepass/closure');
 const { kn } = require('../gatepass/kn');
+const { t } = require('../gatepass/i18n');
+
+/* Which language to answer this customer in. Defaults to Kannada, which is
+   also the column default — a customer row that predates the language question
+   is answered in the language the site is in, not the one we build in. */
+const lang = (customer) => (customer?.language === 'en' ? 'en' : 'kn');
 const policy = require('../gatepass/policy');
+const flowEndpoint = require('../routes/flowEndpoint');
 
 /*
  * The site this number sells for.
@@ -51,6 +58,27 @@ const policy = require('../gatepass/policy');
  * need a code change to exist.
  */
 const PLACE_CODE = process.env.PLACE_CODE || 'MULLAYANAGIRI';
+
+/**
+ * The place this booking is for.
+ *
+ * Taken from what the visitor chose, not from a constant. PLACE_CODE remains
+ * only as the fallback for a conversation that started before a place was
+ * picked — a menu greeting, say — and for a single-site deployment where the
+ * question is not worth asking.
+ */
+async function placeFor(ctx) {
+  const id = ctx?.session?.context?.place_id;
+  if (id) {
+    const p = await db.one('SELECT * FROM places WHERE id = $1 AND is_active', [id]);
+    if (p) return p;
+  }
+  return booking.placeByCode(PLACE_CODE);
+}
+
+/** Every site currently switched on, in menu order. */
+const activePlaces = () =>
+  db.query('SELECT * FROM places WHERE is_active ORDER BY id').then((r) => r.rows);
 
 /* ─────────────────────────────────────────────────────────────── helpers */
 
@@ -113,6 +141,12 @@ async function handle(msg) {
 async function welcome(ctx) {
   const { mobile, customer } = ctx;
 
+  /* Language first, before anything else is said.
+     Asked once and remembered. Every message after this is in one language
+     rather than both, which halves the length of every screen — a bot that
+     carries two languages in every bubble reads as one that could not decide. */
+  if (!customer.language_asked_at) return askLanguage(ctx);
+
   if (!await hasConsented(customer.id)) return askConsent(ctx);
 
   // A closure is the one thing important enough to interrupt the menu with.
@@ -126,25 +160,64 @@ async function menu(ctx, header) {
   const { mobile, customer } = ctx;
   await store.setState(mobile, 'menu', {});
 
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const name = customer.wa_profile_name ? customer.wa_profile_name.split(' ')[0] : null;
-  const body = header || (name
-    ? `${kn('greeting')} ${name} 🙏\n\n${kn('what_would_you_like')}\nWhat would you like to do?`
-    : `${kn('greeting')} 🙏\n\n${kn('what_would_you_like')}\nWhat would you like to do?`);
+  const L = lang(customer);
 
+  const body = header || `${t(L, 'greeting')}${name ? ` ${name}` : ''} 🙏\n\n`
+    + t(L, 'what_would_you_like');
+
+  /* WhatsApp truncates a list row title at 24 characters and a description at
+     72. Two languages in one row never fitted; one does, which is the other
+     reason these are single-language now rather than only a matter of taste. */
   return send.list(mobile, {
     body,
-    button: "ಮೆನು · Menu",
-    sectionTitle: place?.name || 'Entry ticket',
+    button: t(L, 'menu_button'),
+    sectionTitle: place?.name || t(L, 'f_title_details'),
     rows: [
-      { id: 'menu_book',     title: 'ಟಿಕೆಟ್ · Book',      description: 'ವಾಹನ ಪ್ರವೇಶ ಟಿಕೆಟ್ · Vehicle entry ticket' },
-      { id: 'menu_download', title: 'ಪಡೆಯಿರಿ · Download', description: 'QR ಕೋಡ್ ಮತ್ತೆ ಪಡೆಯಿರಿ · Get the QR again' },
-      { id: 'menu_postpone', title: 'ಬದಲಿಸಿ · Postpone',  description: 'ಬೇರೆ ದಿನಕ್ಕೆ ಬದಲಿಸಿ · Move to another day' },
-      { id: 'menu_support',  title: 'ಸಹಾಯ · Support',     description: 'ಬುಕಿಂಗ್ ಬಗ್ಗೆ ಮಾತನಾಡಿ · Talk to us' },
-      { id: 'menu_feedback', title: 'ಅಭಿಪ್ರಾಯ · Feedback', description: 'ಹೇಗಿತ್ತು ಎಂದು ತಿಳಿಸಿ · Tell us how it went' },
+      { id: 'menu_book',     title: t(L, 'menu_book'),     description: t(L, 'menu_book_desc') },
+      { id: 'menu_download', title: t(L, 'menu_download'), description: t(L, 'menu_download_desc') },
+      { id: 'menu_postpone', title: t(L, 'menu_postpone'), description: t(L, 'menu_postpone_desc') },
+      { id: 'menu_support',  title: t(L, 'menu_support'),  description: t(L, 'menu_support_desc') },
+      { id: 'menu_feedback', title: t(L, 'menu_feedback'), description: t(L, 'menu_feedback_desc') },
     ],
     footer: 'ServerPe App Solutions',
   });
+}
+
+/**
+ * The one question asked in both languages, because it is the question that
+ * decides which language the rest is in.
+ *
+ * Kannada is listed first and is the default: the site is in Karnataka and the
+ * department is a Karnataka department.
+ */
+async function askLanguage(ctx) {
+  const { mobile } = ctx;
+  await store.setState(mobile, 'language', {});
+
+  /* English only, because this is asked before we know which language they
+     want. The button labels stay in their own scripts — a Kannada speaker
+     looking for Kannada scans for ಕನ್ನಡ, not for the word "Kannada".
+
+     THE AUTHORITY LINE IS A SETTING, and it is worded to say who sets the
+     fees rather than who is sending the message. Until something is signed,
+     a greeting that reads as though it comes FROM the department is a claim
+     we cannot support — and one Meta treats seriously. Changing it is a
+     settings row, not a deploy. */
+  const cfg = await settings.all();
+  const product = cfg.product_name || 'Pravesha';
+  const tagline = cfg.product_tagline || 'Entry made simple.';
+  const authority = cfg.authority_line
+    || 'Vehicle entry tickets for tourist places in Karnataka.';
+
+  return send.buttons(mobile,
+    `🙏 Welcome to *${product}* — ${tagline}\n\n${authority}\n\nPlease choose your language.`,
+    [
+      { id: 'lang_kn', title: 'ಕನ್ನಡ' },
+      { id: 'lang_en', title: 'English' },
+    ],
+    { footer: `${product} · Powered by ${cfg.merchant_name || 'ServerPe App Solutions'}` });
 }
 
 async function hasConsented(customerId) {
@@ -156,59 +229,152 @@ async function hasConsented(customerId) {
 async function askConsent(ctx) {
   const { mobile, customer } = ctx;
   await store.setState(mobile, 'consent', {});
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const name = customer.wa_profile_name ? `, ${customer.wa_profile_name.split(' ')[0]}` : '';
 
+  /* One language, chosen by the visitor a moment ago. */
+  const L = lang(customer);
+
+  /* The policy link is shown here, before the button, rather than hidden behind
+     a second tap. Somebody who wants to read it can; somebody who does not is
+     not made to tap twice to get past it — and either way we can say the terms
+     were in front of them when they agreed. */
+  const base = process.env.PUBLIC_BASE_URL || '';
+  const link = base ? `\n\n📄 ${t(L, 'terms_link_label')}:\n${base}/policy` : '';
+
   return send.buttons(mobile,
-    `${kn('greeting')}${name} 🙏\n\n` +
-    `${kn('book_here')}\n` +
-    `Book your *${place.name}* vehicle entry ticket here — no queue at the gate.\n\n` +
-    `${kn('qr_cannot_be_copied')}\n` +
-    'Your ticket carries a secure QR code the checkpost scans. It cannot be edited or copied.\n\n' +
-    `${kn('consent_ask')}\n` +
-    'We check your vehicle number against government records to confirm the vehicle type. ' +
-    'We store the vehicle number, type and your mobile number only.',
+    `${t(L, 'greeting')}${name} 🙏\n\n`
+    + `${t(L, 'consent_book_here')}\n\n`
+    + `${t(L, 'consent_qr')}\n\n`
+    + `${t(L, 'consent_ask')}`
+    + link
+    + `\n\n_${t(L, 'read_before_agree')}_`,
     [
-      { id: 'consent_yes', title: 'ಒಪ್ಪಿ · Agree' },
-      { id: 'consent_policy', title: 'ನಿಯಮ · Policy' },
+      { id: 'consent_yes', title: t(L, 'agree_continue') },
     ],
     { footer: 'ServerPe App Solutions' });
 }
 
 /* ──────────────────────────────────────────────────────────── 1 · booking */
 
-async function askPlate(ctx) {
+/**
+ * Open the booking form.
+ *
+ * The whole booking — place, date, vehicle check, slot, review, agree — happens
+ * on one native WhatsApp screen rather than as a dozen chat messages. What the
+ * visitor picks comes back once, at the end, as a completed reply.
+ *
+ * FALLING BACK IS DELIBERATE. If the Flow is not configured, or Meta refuses
+ * the message, the old step-by-step conversation still works and the visitor
+ * gets a ticket. A booking system that cannot sell a ticket because a form
+ * failed to open is worse than one with an old-fashioned form.
+ */
+async function startBooking(ctx) {
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
+  /* The web form, opened by a link button in the chat.
+     The native WhatsApp Flow is built and validated but Meta refuses to
+     publish it, so it is not attempted here. flowEndpoint is still used — for
+     minting the signed token, which both paths share. */
+  const base = process.env.PUBLIC_BASE_URL;
+  if (base) {
+    const token = flowEndpoint.newToken(customer.id, mobile, 'booking', 120);
+    const r = await send.ctaUrl(mobile, {
+      body: t(L, 'flow_body'),
+      label: t(L, 'flow_cta'),
+      url: `${base.replace(/\/+$/, '')}/book/${token}`,
+      footer: 'ServerPe App Solutions',
+    });
+    if (r?.ok) {
+      await store.setState(mobile, 'in_web_form', {});
+      return r;
+    }
+    console.warn('[wa] link button did not send (%s) — falling back to chat steps',
+      r?.error || 'unknown');
+  }
+
+  /* The chat fallback asks the same questions in the same order the form does,
+     starting with which place. It was written when there was one site and
+     assumed it; a platform serving the department's places cannot assume. */
+  return askPlace(ctx);
+}
+
+/**
+ * Which place is being visited.
+ *
+ * Skipped when only one site is switched on — asking somebody to choose from a
+ * list of one is a tap that teaches them nothing.
+ */
+async function askPlace(ctx) {
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
+  const places = await activePlaces();
+
+  if (!places.length) return send.text(mobile, t(L, 'no_places'));
+
+  if (places.length === 1) {
+    await store.setState(mobile, 'awaiting_plate', { place_id: places[0].id });
+    return askPlate({ ...ctx,
+      session: { ...ctx.session, context: { ...(ctx.session?.context || {}), place_id: places[0].id } } });
+  }
+
+  await store.setState(mobile, 'choose_place', {});
+  return send.list(mobile, {
+    body: t(L, 'which_place'),
+    button: t(L, 'choose_place'),
+    sectionTitle: t(L, 'f_place'),
+    rows: places.slice(0, 10).map((p) => ({
+      id: `place_${p.id}`,
+      title: p.name.slice(0, 24),
+      description: (p.district || '').slice(0, 72) || undefined,
+    })),
+    footer: 'ServerPe App Solutions',
+  });
+}
+
+async function onPlaceChosen(ctx, placeId) {
   const { mobile } = ctx;
+  const place = await db.one('SELECT * FROM places WHERE id = $1 AND is_active', [placeId]);
+  if (!place) return askPlace(ctx);
+
+  await store.setState(mobile, 'awaiting_plate', { place_id: place.id });
+  return askPlate({ ...ctx,
+    session: { ...ctx.session, context: { ...(ctx.session?.context || {}), place_id: place.id } } });
+}
+
+async function askPlate(ctx) {
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
   await store.setState(mobile, 'awaiting_plate', {});
   return send.text(mobile,
-    `${kn('type_vehicle_number')}\n` +
-    'Please type your *vehicle number*.\n\n' +
-    `${kn('example')} / Example: KA 31 N 8147\n\n` +
-    `${kn('any_format_ok')}`);
+    `${t(L, 'ask_plate')}\n\n`
+    + `${t(L, 'ask_plate_example')}\n\n`
+    + `${t(L, 'ask_plate_format')}`);
 }
 
 async function onPlate(ctx) {
-  const { mobile, text } = ctx;
+  const { mobile, text, customer } = ctx;
+  const L = lang(customer);
   const p = plate.parse(text);
 
   if (!p.ok) {
     const why = {
-      empty:  'I could not read a vehicle number there.',
-      length: 'That looks too short or too long for a vehicle number.',
-      format: 'That does not look like a vehicle number.',
-      state:  `I do not recognise "${String(p.reg_no).slice(0, 2)}" as a state code.`,
-    }[p.reason] || 'That does not look like a vehicle number.';
+      empty:  t(L, 'plate_err_empty'),
+      length: t(L, 'plate_err_length'),
+      format: t(L, 'plate_err_format'),
+      state:  t(L, 'plate_err_state', { code: String(p.reg_no).slice(0, 2) }),
+    }[p.reason] || t(L, 'plate_err_format');
 
-    return send.text(mobile, `${why}\n\nPlease type it like this: *KA 31 N 8147*`);
+    return send.text(mobile, `${why}\n\n${t(L, 'plate_err_retry')}`);
   }
 
   await store.setState(mobile, 'confirm_plate', { reg_no: p.reg_no });
+  const L2 = lang(customer);
   return send.buttons(mobile,
-    `${kn('vehicle_number')} / Vehicle number:\n\n*${p.pretty}*\n\n` +
-    `${kn('is_this_correct')}\nIs this correct?`,
+    `${t(L, 'vehicle_number')}:\n\n*${p.pretty}*\n\n${t(L, 'is_this_correct')}`,
     [
-      { id: 'plate_yes', title: 'ಹೌದು · Yes' },
-      { id: 'plate_no', title: 'ಮತ್ತೆ · Re-enter' },
+      { id: 'plate_yes', title: t(L, 'yes_correct') },
+      { id: 'plate_no', title: t(L, 'change_number') },
     ]);
 }
 
@@ -223,8 +389,7 @@ async function onPlateConfirmed(ctx) {
   const regNo = session.context?.reg_no;
   if (!regNo) return askPlate(ctx);
 
-  await send.text(mobile, `${kn('checking_vehicle')}
-Checking your vehicle… one moment.`);
+  await send.text(mobile, t(lang(customer), 'checking_vehicle'));
 
   const r = await vehicles.resolve(regNo, { customerId: customer.id });
   const vehicle = r.vehicle;
@@ -248,8 +413,10 @@ Checking your vehicle… one moment.`);
     { reg_no: regNo, vehicle_id: vehicle.id, category_id: category.id });
 
   if (desc) {
+    const L = lang(customer);
     await send.text(mobile,
-      `Found it 👍\n\n*${p2(regNo)}*\n${desc}\nEntry type: *${category.label}*`);
+      `${t(L, 'vehicle_found')}\n\n*${p2(regNo)}*\n${desc}\n`
+      + `${t(L, 'entry_type')}: *${category.label}*`);
   }
   return askDate(ctx);
 }
@@ -261,9 +428,10 @@ Checking your vehicle… one moment.`);
  * cannot have is noise on a small screen.
  */
 async function askDate(ctx) {
-  const { mobile, session } = ctx;
+  const { mobile, session, customer } = ctx;
+  const L = lang(customer);
   const categoryId = session.context?.category_id;
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const all = await booking.bookableDates(place);
 
   const open = [];
@@ -285,9 +453,9 @@ async function askDate(ctx) {
 
   await store.setState(mobile, 'choose_date', {});
   return send.list(mobile, {
-    body: `${kn('which_day')}\nWhich day are you travelling?`,
-    button: kn('choose_date'),
-    sectionTitle: kn('travel_date'),
+    body: t(L, 'which_day'),
+    button: t(L, 'choose_date'),
+    sectionTitle: t(L, 'travel_date'),
     /* Each date carries what is actually left in each slot, for THIS customer's
        vehicle type. Showing every type would be four numbers a car owner has to
        read past to find theirs; showing theirs makes the choice for them. */
@@ -296,7 +464,7 @@ async function askDate(ctx) {
       const am = a['0612']; const pm = a['1206'];
       const part = (label, s) => {
         if (!s) return null;
-        if (!s.is_open) return `${label} ${kn('closed_short')}`;
+        if (!s.is_open) return `${label} ${t(L, 'closed_short')}`;
         if (s.available <= 0) return `${label} ✖ FULL`;
         if (s.available <= 15) return `${label} ${s.available} ⚠`;
         return `${label} ${s.available}`;
@@ -306,13 +474,13 @@ async function askDate(ctx) {
     }),
     // Say when the next date appears rather than letting someone looking a
     // fortnight out conclude the list simply stops there.
-    footer: `${pretty(release.date)} ${release.opens_today ? 'opens' : 'opens'} at `
-          + `${release.hour}:00 · ${kn('today')}/${kn('tomorrow')} first`,
+    footer: t(L, 'release_note', { hour: release.hour }),
   });
 }
 
 async function onDateChosen(ctx, travelDate) {
-  const { mobile, session } = ctx;
+  const { mobile, session, customer } = ctx;
+  const L = lang(customer);
   const c = session.context || {};
   if (!c.vehicle_id || !c.category_id) return askPlate(ctx);
 
@@ -327,7 +495,7 @@ async function onDateChosen(ctx, travelDate) {
       'One vehicle can enter once per day. Type *hi* for the menu.');
   }
 
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const category = await db.one('SELECT * FROM vehicle_categories WHERE id = $1', [c.category_id]);
   await inventory.sweepExpiredHolds();
   const slots = await inventory.availability(place.id, travelDate, c.category_id);
@@ -341,28 +509,28 @@ async function onDateChosen(ctx, travelDate) {
      reads as a system that is counting — and it is the moment the capacity
      limit becomes visible to the public, which is half of why it exists. */
   const line = (s) => {
-    const name = s.code === '0612' ? `${kn('morning')} 6-12 AM` : `${kn('afternoon')} 12-6 PM`;
-    if (!s.is_open) return `${name} — ${kn('closed_short')} / closed`;
-    if (s.available <= 0) return `❌ ${name} — ${kn('slot_full')} / FULL`;
-    if (s.available <= 15) return `⚠️ ${name} — ${s.available} ${kn('left')} / left`;
-    return `✅ ${name} — ${s.available} ${kn('left')} / left`;
+    const name = s.code === '0612'
+      ? `${t(L, 'morning')} 6-12` : `${t(L, 'afternoon')} 12-6`;
+    if (!s.is_open) return `${name} — ${t(L, 'closed_short')}`;
+    if (s.available <= 0) return `❌ ${name} — ${t(L, 'slot_full')}`;
+    if (s.available <= 15) return `⚠️ ${name} — ${s.available} ${t(L, 'left')}`;
+    return `✅ ${name} — ${s.available} ${t(L, 'left')}`;
   };
 
   const board = slots.map(line).join('\n');
 
   if (!open.length) {
     return send.text(mobile,
-      `*${pretty(travelDate)}*\n\n${board}\n\n` +
-      `${kn('sold_out')}\n` +
-      'Both slots are full for your vehicle type on this date.\n\n' +
-      `${kn('type_hi_for_menu')}`);
+      `*${pretty(travelDate)}*\n\n${board}\n\n`
+      + `${t(L, 'sold_out')}\n\n${t(L, 'type_hi_for_menu')}`);
   }
 
   return send.buttons(mobile,
-    `*${pretty(travelDate)}*\n\n${board}\n\n${kn('choose_time')}\nChoose your entry time:`,
+    `*${pretty(travelDate)}*\n\n${board}\n\n${t(L, 'choose_time')}`,
     open.slice(0, 3).map((s) => ({
       id: `slot_${s.code}`,
-      title: s.code === '0612' ? 'Morning 6-12' : 'Afternoon 12-6',
+      title: s.code === '0612'
+        ? `${t(L, 'morning')} 6-12` : `${t(L, 'afternoon')} 12-6`,
     })),
     { footer: `${category?.label || 'Your vehicle type'} · live availability` });
 }
@@ -379,7 +547,7 @@ async function onSlotChosen(ctx, slotCode) {
   const c = session.context || {};
   if (!c.vehicle_id || !c.category_id || !c.travel_date) return askPlate(ctx);
 
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const slot = await booking.slotByCode(place.id, slotCode);
   const vehicle = await db.one('SELECT * FROM vehicles WHERE id = $1', [c.vehicle_id]);
   const category = await db.one('SELECT * FROM vehicle_categories WHERE id = $1', [c.category_id]);
@@ -397,26 +565,27 @@ async function onSlotChosen(ctx, slotCode) {
     return send.text(mobile, `${line}\n\nType *hi* to try another day or time.`);
   }
 
-  const t = held.ticket;
+  const tk = held.ticket;
   const b = held.breakdown;
-  const link = await checkout.linkFor(t);
+  const link = await checkout.linkFor(tk);
   const minutes = await inventory.holdMinutes();
 
-  await store.setState(mobile, 'awaiting_payment', { ticket_id: t.id });
+  await store.setState(mobile, 'awaiting_payment', { ticket_id: tk.id });
   await customers.logEvent(customer.id, 'booking_held',
-    { ticket_no: t.ticket_no, reg_no: t.reg_no, travel_date: t.travel_date, slot: slot.code });
+    { ticket_no: tk.ticket_no, reg_no: tk.reg_no, travel_date: tk.travel_date, slot: slot.code });
 
+  const L = lang(customer);
   return send.text(mobile,
-    `*${kn('booking_summary')} · Booking summary*\n\n` +
-    `${kn('vehicle_number')}: *${p2(t.reg_no)}*  (${category.label})\n` +
-    `${kn('place')}: ${place.name}\n` +
-    `${kn('travel_date')}: ${pretty(t.travel_date)}\n` +
-    `${kn('entry_time')}: ${slot.label}\n\n` +
-    `${kn('entry_fee')} / Entry fee: ₹${pricing.rs(b.entry_paise)}\n` +
-    `${kn('booking_fee')} / Service fee: ₹${pricing.rs(b.platform_paise)} (${kn('gst_included')})\n` +
-    `*${kn('total_paid')} / Total: ₹${pricing.rs(b.total_paise)}*\n\n` +
-    `${kn('pay_here')} 👇\n${link}\n\n` +
-    `_${kn('held_for_minutes', { n: minutes })}_`);
+    `*${t(L, 'booking_summary')}*\n\n`
+    + `${t(L, 'vehicle_number')}: *${p2(tk.reg_no)}*  (${category.label})\n`
+    + `${t(L, 'place')}: ${place.name}\n`
+    + `${t(L, 'travel_date')}: ${pretty(tk.travel_date)}\n`
+    + `${t(L, 'entry_time')}: ${slot.label}\n\n`
+    + `${t(L, 'entry_fee')}: ₹${pricing.rs(b.entry_paise)}\n`
+    + `${t(L, 'service_fee')}: ₹${pricing.rs(b.platform_paise)}\n`
+    + `*${t(L, 'total_pay')}: ₹${pricing.rs(b.total_paise)}*\n\n`
+    + `${t(L, 'pay_button')} 👇\n${link}\n\n`
+    + `_${t(L, 'held_for_minutes', { n: minutes })}_`);
 }
 
 async function onCategoryChosen(ctx, code) {
@@ -519,7 +688,7 @@ async function startPostpone(ctx, ticket) {
       'which is the limit.\n\nPlease contact support if you need to change it again.');
   }
 
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   const all = await booking.bookableDates(place);
 
   // Not the day it is already on, and not a closed day.
@@ -567,7 +736,7 @@ async function onPostponeDate(ctx, travelDate) {
       'One vehicle can enter once per day, so please choose another date.');
   }
 
-  const place = await booking.placeByCode(PLACE_CODE);
+  const place = await placeFor(ctx);
   await inventory.sweepExpiredHolds();
   const slots = await inventory.availability(place.id, travelDate, t.category_id);
   const open = slots.filter((s) => s.is_open && s.available > 0);
@@ -672,15 +841,50 @@ async function doRefund(ctx, ticketId) {
 
 /* ─────────────────────────────────────────────────── 4 · support, 5 · feedback */
 
+/**
+ * Support and feedback both open a page rather than asking for a paragraph.
+ *
+ * Typed free text arrived as an undifferentiated blob: no query type to route
+ * on, no rating to count. A page gives both, and still takes the same one
+ * message from the visitor.
+ *
+ * The chat fallback remains for the case where the link cannot be sent, so
+ * somebody with a problem is never met with silence.
+ */
+async function webForm(ctx, path, bodyKey, ctaKey, fallback) {
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
+  const base = process.env.PUBLIC_BASE_URL;
+
+  if (base) {
+    /* Not single use — somebody may have two things to report — but it still expires. */
+    const token = flowEndpoint.newToken(customer.id, mobile, path, 24 * 60);
+    const r = await send.ctaUrl(mobile, {
+      body: t(L, bodyKey),
+      label: t(L, ctaKey),
+      url: `${base.replace(/\/+$/, '')}/${path}/${token}`,
+      footer: 'ServerPe App Solutions',
+    });
+    if (r?.ok) {
+      await store.setState(mobile, 'menu', {});
+      return r;
+    }
+    console.warn('[wa] %s link did not send (%s) — asking in chat instead',
+      path, r?.error || 'unknown');
+  }
+  return fallback();
+}
+
 async function askSupport(ctx) {
-  const { mobile } = ctx;
-  const cfg = await settings.all();
-  await store.setState(mobile, 'support_message', {});
-  return send.text(mobile,
-    '*Support*\n\n' +
-    'Please type your question in one message — include your ticket number or vehicle ' +
-    'number if it is about a booking.\n\n' +
-    (cfg.support_mobile ? `You can also call us on ${cfg.support_mobile}.` : ''));
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
+  return webForm(ctx, 'support', 'support_sub', 'menu_support', async () => {
+    const cfg = await settings.all();
+    await store.setState(mobile, 'support_message', {});
+    return send.text(mobile,
+      `*${t(L, 'menu_support')}*\n\n${t(L, 'support_placeholder')}\n\n`
+      + (cfg.support_mobile ? `${cfg.support_mobile}` : ''));
+  });
 }
 
 async function onSupportMessage(ctx) {
@@ -694,21 +898,22 @@ async function onSupportMessage(ctx) {
 }
 
 async function askFeedback(ctx) {
-  const { mobile } = ctx;
-  await store.setState(mobile, 'feedback_message', {});
-  return send.text(mobile,
-    '*Feedback*\n\n' +
-    'How was your visit? Anything we should fix at the gate or in this booking flow?\n\n' +
-    'Please type it in one message.');
+  const { mobile, customer } = ctx;
+  const L = lang(customer);
+  return webForm(ctx, 'feedback', 'feedback_sub', 'menu_feedback', async () => {
+    await store.setState(mobile, 'feedback_message', {});
+    return send.text(mobile, `*${t(L, 'menu_feedback')}*\n\n${t(L, 'feedback_ask')}`);
+  });
 }
 
 async function onFeedbackMessage(ctx) {
   const { mobile, customer, text } = ctx;
   await customers.logEvent(customer.id, 'feedback',
     { message: String(text).slice(0, 2000), mobile });
+  const L = lang(customer);
   await store.setState(mobile, 'menu', {});
   return send.text(mobile,
-    'Thank you 🙏 That goes straight to the team.\n\nType *hi* for the menu.');
+    `${t(L, 'feedback_thanks')}\n\n${t(L, 'type_hi_for_menu')}`);
 }
 
 /* ───────────────────────────────────────────────────────────────── taps */
@@ -716,24 +921,36 @@ async function onFeedbackMessage(ctx) {
 async function onChoice(ctx) {
   const { mobile, customer, choice } = ctx;
 
+  /* language */
+  if (choice === 'lang_kn' || choice === 'lang_en') {
+    const lang = choice === 'lang_en' ? 'en' : 'kn';
+    const updated = await customers.setLanguage(customer.id, lang);
+    await customers.logEvent(customer.id, 'language_chosen', { language: lang });
+    // Carry the updated row forward so the very next message is already in the
+    // language just chosen, rather than one message behind.
+    return welcome({ ...ctx, customer: updated || { ...customer, language: lang,
+      language_asked_at: new Date() } });
+  }
+
   /* consent */
   if (choice === 'consent_yes') {
     await customers.logEvent(customer.id, 'consent_given',
       { channel: 'whatsapp', at: new Date().toISOString() });
-    return menu(ctx, 'Thank you. What would you like to do?');
+    return menu(ctx, t(lang(customer), 'consent_thanks'));
   }
   if (choice === 'consent_policy') {
     const base = process.env.PUBLIC_BASE_URL || '';
+    const L = lang(customer);
     await send.text(mobile,
-      '*ಗೌಪ್ಯತೆ — ಸಂಕ್ಷಿಪ್ತವಾಗಿ · Privacy in short*\n\n' +
-      `${policy.SHORT_KN}\n\n${policy.SHORT_EN}` +
-      (base ? `\n\nಪೂರ್ಣ ನಿಯಮಗಳು · Full terms: ${base}/policy` : ''));
-    return send.buttons(mobile, 'Shall we continue?',
-      [{ id: 'consent_yes', title: 'Agree & continue' }]);
+      `*${t(L, 'policy_heading')}*\n\n`
+      + (L === 'en' ? policy.SHORT_EN : policy.SHORT_KN)
+      + (base ? `\n\n${t(L, 'policy_full')}: ${base}/policy` : ''));
+    return send.buttons(mobile, t(L, 'policy_continue'),
+      [{ id: 'consent_yes', title: t(L, 'consent_agree') }]);
   }
 
   /* menu */
-  if (choice === 'menu_book')     return askPlate(ctx);
+  if (choice === 'menu_book')     return startBooking(ctx);
   if (choice === 'menu_download') return askWhichTicket(ctx, 'download');
   if (choice === 'menu_postpone') return askWhichTicket(ctx, 'postpone');
   if (choice === 'menu_support')  return askSupport(ctx);
@@ -742,6 +959,7 @@ async function onChoice(ctx) {
   /* booking */
   if (choice === 'plate_yes') return onPlateConfirmed(ctx);
   if (choice === 'plate_no')  return askPlate(ctx);
+  if (choice.startsWith('place_')) return onPlaceChosen(ctx, choice.slice(6));
   if (choice.startsWith('cat_'))  return onCategoryChosen(ctx, choice.slice(4));
   if (choice.startsWith('date_')) return onDateChosen(ctx, choice.slice(5));
   if (choice.startsWith('slot_')) return onSlotChosen(ctx, choice.slice(5));

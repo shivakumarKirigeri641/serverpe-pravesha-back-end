@@ -1,0 +1,206 @@
+{
+  "version": "7.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "DETAILS": ["VEHICLE"],
+    "VEHICLE": ["SLOT"],
+    "SLOT": ["REVIEW"],
+    "REVIEW": []
+  },
+  "screens": [
+    {
+      "id": "DETAILS",
+      "title": "Pravesha",
+      "data": {
+        "t_your_details": { "type": "string", "__example__": "Your details" },
+        "t_name": { "type": "string", "__example__": "Name" },
+        "name": { "type": "string", "__example__": "Shivakumar" },
+        "t_number": { "type": "string", "__example__": "WhatsApp number" },
+        "mobile": { "type": "string", "__example__": "+91 98••• ••415" },
+        "t_where_when": { "type": "string", "__example__": "Where and when" },
+        "t_place": { "type": "string", "__example__": "Visiting place" },
+        "t_date": { "type": "string", "__example__": "Date of visit" },
+        "t_continue": { "type": "string", "__example__": "Continue" },
+        "places": {
+          "type": "array",
+          "items": { "type": "object", "properties": {
+            "id": { "type": "string" }, "title": { "type": "string" } } },
+          "__example__": [{ "id": "1", "title": "Mullayanagiri" }]
+        },
+        "dates": {
+          "type": "array",
+          "items": { "type": "object", "properties": {
+            "id": { "type": "string" }, "title": { "type": "string" } } },
+          "__example__": [{ "id": "2026-09-24", "title": "Wed, 24 Sep" }]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "details_form",
+            "children": [
+              { "type": "TextSubheading", "text": "${data.t_your_details}" },
+              { "type": "TextCaption", "text": "${data.t_name}" },
+              { "type": "TextBody", "text": "${data.name}" },
+              { "type": "TextCaption", "text": "${data.t_number}" },
+              { "type": "TextBody", "text": "${data.mobile}" },
+              { "type": "TextSubheading", "text": "${data.t_where_when}" },
+              { "type": "Dropdown", "name": "place", "label": "${data.t_place}",
+                "required": true, "data-source": "${data.places}" },
+              { "type": "Dropdown", "name": "travel_date", "label": "${data.t_date}",
+                "required": true, "data-source": "${data.dates}" },
+              {
+                "type": "Footer",
+                "label": "${data.t_continue}",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "screen": "DETAILS",
+                    "place": "${form.place}",
+                    "travel_date": "${form.travel_date}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "VEHICLE",
+      "title": "Pravesha",
+      "data": {
+        "header_line": { "type": "string", "__example__": "Mullayanagiri  ·  Wed, 24 Sep" },
+        "t_vehicle_number": { "type": "string", "__example__": "Vehicle number" },
+        "t_vehicle_note": { "type": "string", "__example__": "The ticket is valid only for this vehicle." },
+        "t_reg_label": { "type": "string", "__example__": "Registration number" },
+        "t_reg_helper": { "type": "string", "__example__": "e.g. KA01AB1234" },
+        "t_check": { "type": "string", "__example__": "Check vehicle" },
+        "error": { "type": "string", "__example__": "" },
+        "has_error": { "type": "boolean", "__example__": false }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "vehicle_form",
+            "children": [
+              { "type": "TextCaption", "text": "${data.header_line}" },
+              { "type": "TextSubheading", "text": "${data.t_vehicle_number}" },
+              { "type": "TextBody", "text": "${data.t_vehicle_note}" },
+              { "type": "TextInput", "name": "reg_no", "label": "${data.t_reg_label}",
+                "required": true, "input-type": "text",
+                "helper-text": "${data.t_reg_helper}" },
+              { "type": "TextBody", "text": "${data.error}", "visible": "${data.has_error}" },
+              {
+                "type": "Footer",
+                "label": "${data.t_check}",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "screen": "VEHICLE", "reg_no": "${form.reg_no}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "SLOT",
+      "title": "Pravesha",
+      "data": {
+        "vehicle_line": { "type": "string", "__example__": "Maruti Swift VXi" },
+        "vehicle_meta": { "type": "string", "__example__": "Car  ·  Entry Rs. 100" },
+        "t_choose_slot": { "type": "string", "__example__": "Choose a slot" },
+        "date_label": { "type": "string", "__example__": "Wed, 24 Sep" },
+        "t_slots_label": { "type": "string", "__example__": "Available slots" },
+        "t_review": { "type": "string", "__example__": "Review booking" },
+        "slots": {
+          "type": "array",
+          "items": { "type": "object", "properties": {
+            "id": { "type": "string" }, "title": { "type": "string" },
+            "description": { "type": "string" }, "enabled": { "type": "boolean" } } },
+          "__example__": [{ "id": "0612", "title": "6 AM - 12 noon",
+            "description": "142 of 400 left", "enabled": true }]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "slot_form",
+            "children": [
+              { "type": "TextSubheading", "text": "${data.vehicle_line}" },
+              { "type": "TextCaption", "text": "${data.vehicle_meta}" },
+              { "type": "TextSubheading", "text": "${data.t_choose_slot}" },
+              { "type": "TextCaption", "text": "${data.date_label}" },
+              { "type": "RadioButtonsGroup", "name": "slot",
+                "label": "${data.t_slots_label}",
+                "required": true, "data-source": "${data.slots}" },
+              {
+                "type": "Footer",
+                "label": "${data.t_review}",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "screen": "SLOT", "slot": "${form.slot}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "REVIEW",
+      "title": "Pravesha",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "t_your_booking": { "type": "string", "__example__": "Your booking" },
+        "summary": { "type": "string", "__example__": "Mullayanagiri" },
+        "t_vehicle": { "type": "string", "__example__": "Vehicle" },
+        "vehicle_block": { "type": "string", "__example__": "KA 01 AB 1234" },
+        "amount_line": { "type": "string", "__example__": "Total Rs. 113" },
+        "fee_note": { "type": "string", "__example__": "Entry Rs. 100 + service fee Rs. 13" },
+        "t_agree": { "type": "string", "__example__": "I agree to the terms" },
+        "t_terms_note": { "type": "string", "__example__": "No cancellation once booked." },
+        "t_pay_now": { "type": "string", "__example__": "Pay now" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "review_form",
+            "children": [
+              { "type": "TextSubheading", "text": "${data.t_your_booking}" },
+              { "type": "TextBody", "text": "${data.summary}" },
+              { "type": "TextSubheading", "text": "${data.t_vehicle}" },
+              { "type": "TextBody", "text": "${data.vehicle_block}" },
+              { "type": "TextSubheading", "text": "${data.amount_line}" },
+              { "type": "TextCaption", "text": "${data.fee_note}" },
+              { "type": "OptIn", "name": "agree", "label": "${data.t_agree}",
+                "required": true },
+              { "type": "TextCaption", "text": "${data.t_terms_note}" },
+              {
+                "type": "Footer",
+                "label": "${data.t_pay_now}",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": { "screen": "REVIEW", "agree": "${form.agree}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -32,7 +32,10 @@ const connectDB = () => {
       keepAlive: true,
     });
 
-    testConnection(pool, "serverpeappsolutions DB");
+    /* The database it actually connected to, not a name written here once.
+       This line said "serverpeappsolutions" no matter which database was in
+       use, which is how a connection to the wrong one stays invisible. */
+    testConnection(pool, `${process.env.PGDATABASEMAIN} @ ${process.env.PGHOST}`);
   }
   return pool;
 };

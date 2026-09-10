@@ -144,6 +144,66 @@ async function saveSnapshot(vehicleId, rc, source) {
 }
 
 /** One line a customer can check at a glance: "Maruti Swift · Petrol · 2019". */
+/**
+ * The RC record shouts. People do not.
+ *
+ * What arrives is "KIA INDIA PRIVATE LIMITED" and "SELTOS D1.5 6AT HTX PLUS" —
+ * accurate, and unreadable on a phone. This turns it into the four things a
+ * visitor recognises as their own vehicle: make, model, variant, type.
+ *
+ * Tokens carrying digits are left in capitals. "D1.5", "6AT" and "XUV700" are
+ * codes, not words, and title-casing them produces "6at" and "Xuv700".
+ */
+const CORPORATE = /\b(INDIA|PRIVATE|PVT|LIMITED|LTD|LLP|COMPANY|CORP|INC)\b/g;
+
+function titleCase(s) {
+  return String(s || '').trim().split(/\s+/).map((w) => {
+    if (!w) return w;
+    // A token with a digit in it is a code: VXI stays VXi-ish, 6AT stays 6AT.
+    if (/\d/.test(w)) return w.toUpperCase();
+    return w[0].toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ').trim();
+}
+
+/**
+ * @returns { make, model, variant, type, fuel, seats, colour } — any of which
+ *          may be null when the RC record did not carry it.
+ */
+function details(v) {
+  if (!v) return {};
+
+  /* "KIA INDIA PRIVATE LIMITED" -> "Kia". Corporate words are stripped rather
+     than the string being truncated, so "TATA MOTORS LTD" keeps "Tata Motors"
+     while losing only "LTD". */
+  const make = titleCase(String(v.maker || '').replace(CORPORATE, ' ').replace(/\s+/g, ' '))
+    || null;
+
+  /* The model field usually holds the model and the variant run together:
+     "SELTOS D1.5 6AT HTX PLUS". The first word is the model everyone uses; the
+     rest is the trim, which matters to an owner and to nobody else. */
+  const words = String(v.model || '').trim().split(/\s+/).filter(Boolean);
+  const model = words.length ? titleCase(words[0]) : null;
+
+  /* Trim codes are acronyms, not words: HTX, VXI, ZXI, LXI, AT, MT. A short
+     all-capitals token of three characters or fewer stays as it is — "Htx Plus" is wrong in
+     a way an owner notices immediately. */
+  const variant = words.length > 1
+    ? words.slice(1).map((w) => (/^[A-Z0-9.]{1,3}$/.test(w) ? w : titleCase(w))).join(' ')
+    : null;
+
+  /* vehicle_class is the readable one ("Motor Car"); body_type is the shape
+     ("STATION WAGON"). Prefer the class and fall back to the body. */
+  const type = titleCase(v.vehicle_class || v.body_type || v.vehicle_category) || null;
+
+  return {
+    make, model, variant, type,
+    fuel: v.fuel ? titleCase(v.fuel) : null,
+    seats: v.seats || null,
+    colour: v.colour ? titleCase(v.colour) : null,
+  };
+}
+
+/** One line: "Kia Seltos · Diesel · 2023". Kept for the chat and the caption. */
 function describe(v) {
   const bits = [
     [v.maker, v.model].filter(Boolean).join(' '),
@@ -153,4 +213,4 @@ function describe(v) {
   return bits.join(' · ') || null;
 }
 
-module.exports = { resolve, describe, upsertBare };
+module.exports = { resolve, describe, details, upsertBare };

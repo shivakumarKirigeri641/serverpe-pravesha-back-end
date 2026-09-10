@@ -51,6 +51,26 @@ async function post(payload, meta) {
     return { ok: false, error: 'not_configured' };
   }
 
+  /**
+   * Dry run: record and log, but do not call Meta.
+   *
+   * The test suites post real webhooks, so the bot replies for real — and a few
+   * runs is enough to hit Meta's per-pair rate limit (131056), after which
+   * every send is rejected and the tests fail for a reason that has nothing to
+   * do with the code. Worse, the failed sends count against the WhatsApp
+   * Business Account's quality rating, which is shared with QuizPe.
+   *
+   * With WHATSAPP_DRY_RUN=true the message still goes through every check and
+   * is still written to wa_messages, so the tests read back exactly what they
+   * would have read. Only the network call is skipped.
+   */
+  if (String(process.env.WHATSAPP_DRY_RUN).toLowerCase() === 'true') {
+    const fakeId = `dry.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+    await record({ mobile, type, body, templateName, waMessageId: fakeId, payload });
+    console.log('[wa] DRY RUN %s %s %s', mobile, type, JSON.stringify(body || '').slice(0, 70));
+    return { ok: true, id: fakeId, dryRun: true };
+  }
+
   let res, json;
   try {
     res = await fetch(url(), {
@@ -158,6 +178,93 @@ async function buttons(mobile, body, list, { header, footer } = {}) {
  * a rejected message: 24 characters of title, 72 of description, 10 rows, and
  * 20 characters on the button that opens the list.
  */
+/**
+ * Open a WhatsApp Flow — the native form, rendered inside WhatsApp.
+ *
+ * The flow_token is ours and comes back on every data-exchange call and on the
+ * completed reply, which is how an encrypted form session is tied to a person.
+ *
+ * MODE. A Flow that has not been published can still be sent, but only as
+ * "draft", and only to the people who can see it in the developer account.
+ * That is how this gets tested before it goes to visitors — and why the mode
+ * follows the Flow's published state rather than being hardcoded: sending a
+ * published Flow in draft mode fails, and so does the reverse.
+ *
+ * @param cta  the words on the button that opens the form
+ */
+async function flow(mobile, {
+  body, cta, flowId, flowToken, screen = 'DETAILS',
+  header, footer, mode = 'published',
+}) {
+  if (!flowId) return { ok: false, error: 'no_flow_id' };
+  if (!await windowOpen(mobile)) {
+    console.warn('[wa] window closed for %s — not sending the flow', mobile);
+    return { ok: false, error: 'window_closed' };
+  }
+
+  const interactive = {
+    type: 'flow',
+    body: { text: body },
+    action: {
+      name: 'flow',
+      parameters: {
+        flow_message_version: '3',
+        flow_token: flowToken,
+        flow_id: String(flowId),
+        flow_cta: cta,
+        mode,
+        /* navigate, not data_exchange: the first screen is decided here by
+           naming it, and its contents are fetched by the endpoint's INIT. */
+        flow_action: 'navigate',
+        flow_action_payload: { screen },
+      },
+    },
+  };
+  if (header) interactive.header = { type: 'text', text: header };
+  if (footer) interactive.footer = { text: footer };
+
+  return post({
+    messaging_product: 'whatsapp',
+    to: toWaId(mobile),
+    type: 'interactive',
+    interactive,
+  }, { mobile, type: 'interactive', body });
+}
+
+/**
+ * A button that opens a web page — WhatsApp's Call-To-Action URL.
+ *
+ * The same mechanism QuizPe uses for its quiz links. Tapping it opens the page
+ * in WhatsApp's own browser, so the visitor never leaves the app and comes back
+ * to the thread when they close it.
+ *
+ * This is how the booking form is delivered while Flows is blocked. It is not
+ * merely a stand-in: a web page can be changed without Meta's involvement,
+ * works on every WhatsApp version, and has no publishing gate.
+ */
+async function ctaUrl(mobile, { body, label, url, header, footer }) {
+  if (!await windowOpen(mobile)) {
+    console.warn('[wa] window closed for %s — not sending the link button', mobile);
+    return { ok: false, error: 'window_closed' };
+  }
+  if (label && label.length > 20) label = label.slice(0, 20);
+
+  const interactive = {
+    type: 'cta_url',
+    body: { text: body },
+    action: { name: 'cta_url', parameters: { display_text: label, url } },
+  };
+  if (header) interactive.header = { type: 'text', text: header };
+  if (footer) interactive.footer = { text: footer };
+
+  return post({
+    messaging_product: 'whatsapp',
+    to: toWaId(mobile),
+    type: 'interactive',
+    interactive,
+  }, { mobile, type: 'interactive', body });
+}
+
 async function list(mobile, { body, button, rows, header, footer, sectionTitle }) {
   if (!rows.length) throw new Error('a list needs at least one row');
   if (rows.length > 10) throw new Error(`WhatsApp allows at most 10 list rows, got ${rows.length}`);
@@ -316,4 +423,4 @@ async function image(mobile, buffer, { filename = 'ticket.png', caption } = {}) 
   }, { mobile, type: 'image', body: caption || filename });
 }
 
-module.exports = { text, buttons, list, document, image, template, windowOpen, toWaId };
+module.exports = { text, buttons, list, flow, ctaUrl, document, image, template, windowOpen, toWaId };

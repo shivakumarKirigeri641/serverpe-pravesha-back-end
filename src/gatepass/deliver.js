@@ -24,6 +24,8 @@ const pricing = require('./pricing');
 const settings = require('./settings');
 const send = require('../whatsapp/send');
 const ticketCard = require('./ticketCard');
+const store = require('../whatsapp/store');
+const { t: tr } = require('./i18n');
 
 const INK = '#111827';
 const MUTED = '#6b7280';
@@ -112,7 +114,7 @@ async function ticketPdf(t) {
     y += bold ? 44 : 40;
   };
 
-  row('Vehicle number', spaced(t.reg_no), true);
+  row('Vehicle number', t.reg_no, true);
   row('Vehicle type', t.category_label);
   row('Travel date', longDate(t.travel_date), true);
   row('Entry time', t.slot_label);
@@ -183,11 +185,13 @@ async function ticketPdf(t) {
  */
 async function sendTicket(ticketId, { force = false } = {}) {
   const t = await one(
-    `SELECT t.*, p.name AS place_name, s.label AS slot_label, c.label AS category_label
+    `SELECT t.*, p.name AS place_name, s.label AS slot_label, c.label AS category_label,
+            cu.language
        FROM tickets t
        JOIN places p ON p.id = t.place_id
        JOIN place_slots s ON s.id = t.slot_id
        JOIN vehicle_categories c ON c.id = t.category_id
+       LEFT JOIN customers cu ON cu.id = t.customer_id
       WHERE t.id = $1`, [ticketId]);
 
   if (!t) return { ok: false, reason: 'not_found' };
@@ -201,11 +205,17 @@ async function sendTicket(ticketId, { force = false } = {}) {
     if (sent) return { ok: true, already: true };
   }
 
+  /* The caption is in the visitor's language; the PDF and the ticket card are
+     not touched. Those two are shown to a uniformed officer at the barrier and
+     are deliberately bilingual — the officer and the visitor may not share a
+     language, and the ticket has to be readable by both. */
+  const L = t.language === 'en' ? 'en' : 'kn';
+
   const caption =
-    `🎟️ *Ticket ${t.ticket_no}*\n\n` +
-    `${spaced(t.reg_no)}  ·  ${t.category_label}\n` +
-    `${longDate(t.travel_date)}\n${t.slot_label}\n${t.place_name}\n\n` +
-    'Show this QR at the checkpost.';
+    `🎟️ *${tr(L, 'ticket_word')} ${t.ticket_no}*\n\n`
+    + `${t.reg_no}  ·  ${t.category_label}\n`
+    + `${longDate(t.travel_date)}\n${t.slot_label}\n${t.place_name}\n\n`
+    + tr(L, 'show_qr_at_gate');
 
   // The composed card, not a bare QR: the visitor shows this to a uniformed
   // officer, and it has to look like a government ticket before anyone scans it.
@@ -217,7 +227,7 @@ async function sendTicket(ticketId, { force = false } = {}) {
     const file = await ticketPdf(t);
     pdf = await send.document(t.mobile, file, {
       filename: `${slug(t.place_name)}-${t.ticket_no}.pdf`,
-      caption: 'Your ticket and receipt.',
+      caption: tr(L, 'ticket_and_receipt'),
     });
   } catch (e) {
     // A PDF that failed to render must not cost the customer their QR — the
@@ -231,8 +241,27 @@ async function sendTicket(ticketId, { force = false } = {}) {
       ticket_no: t.ticket_no, reg_no: t.reg_no, travel_date: t.travel_date,
       image_ok: !!img?.ok, pdf_ok: !!pdf?.ok })]);
 
-  await send.buttons(t.mobile, 'Anything else?',
-    [{ id: 'book_again', title: 'Book another' }]).catch(() => {});
+  /* No "Book another".
+     One vehicle may hold one ticket per day, so offering another booking
+     immediately after issuing one offers something the rules will refuse. What
+     is worth asking at this moment is whether it was easy — the visitor has
+     just been all the way through, and this is the only point where they can
+     answer from memory rather than from recollection. */
+  await send.text(t.mobile, `${tr(L, 'safe_journey')}\n\n${tr(L, 'feedback_ask')}`)
+    .catch(() => {});
+
+  /* The state is only moved if the visitor is still where the payment left
+     them. This runs from the payment webhook, minutes after the fact and
+     entirely outside the conversation — by now they may have gone back to the
+     menu and asked for support, and dropping "feedback_message" on top of that
+     would send their support question into the feedback log instead.
+     Compare first, then set. */
+  try {
+    const s = await store.get(t.mobile);
+    if (!s || s.state === 'awaiting_payment' || s.state === 'menu' || s.state === 'idle') {
+      await store.setState(t.mobile, 'feedback_message', {});
+    }
+  } catch { /* the prompt still went out; the state is a convenience */ }
 
   return { ok: true, image: img, pdf };
 }

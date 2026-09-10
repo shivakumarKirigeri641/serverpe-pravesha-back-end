@@ -236,7 +236,7 @@ async function render(t, cfg = {}) {
 
   /* One line of human detail. The visitor is standing at a barrier and needs to
      know this is the right day without opening the PDF. */
-  centre(ctx, `${spaced(t.reg_no)}   ·   ${shortDate(t.travel_date)}   ·   ${slotShort(t.slot_label)}`,
+  centre(ctx, `${t.reg_no}   ·   ${shortDate(t.travel_date)}   ·   ${slotShort(t.slot_label)}`,
     y + 130, { font: '600 16px Segoe UI, Arial, sans-serif', color: C.ink });
 
   /* ── Footer ─────────────────────────────────────────────────────────── */
