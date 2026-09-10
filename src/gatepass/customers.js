@@ -37,6 +37,25 @@ async function upsert(mobile, { name, waId } = {}) {
 
 const byMobile = (mobile) => one('SELECT * FROM customers WHERE mobile = $1', [mobile]);
 
+/**
+ * Record which language to answer this person in.
+ *
+ * language_asked_at is set at the same time and is the thing actually tested
+ * before asking. Without it, somebody who deliberately chose Kannada looks
+ * identical to somebody still holding the default, and they would be asked
+ * again on every visit.
+ */
+async function setLanguage(customerId, lang) {
+  const clean = lang === 'en' ? 'en' : 'kn';
+  const r = await query(
+    `UPDATE customers
+        SET language = $2, language_asked_at = now(), modified_at = now()
+      WHERE id = $1
+      RETURNING *`,
+    [customerId, clean]);
+  return r.rows[0];
+}
+
 /** Anything worth being able to answer later: consents, bookings, scans. */
 async function logEvent(customerId, kind, detail = {}) {
   await query(
@@ -44,4 +63,4 @@ async function logEvent(customerId, kind, detail = {}) {
     [customerId || null, kind, JSON.stringify(detail)]);
 }
 
-module.exports = { upsert, byMobile, logEvent };
+module.exports = { upsert, byMobile, setLanguage, logEvent };

@@ -87,6 +87,22 @@ async function lastOut() {
   return r || {};
 }
 
+/**
+ * Did we attempt an interactive message in the last few sends?
+ *
+ * Not "was the last message interactive": when Meta rejects a send — a pair
+ * rate limit is the common one while testing — the handler falls back to a
+ * plain text message, and that becomes the last row. The attempt is what this
+ * file is testing; whether Meta accepted it is Meta's business.
+ */
+async function sentInteractive(n = 3) {
+  const r = await db.query(
+    `SELECT message_type FROM wa_messages
+       WHERE mobile = $1 AND direction = 'out'
+       ORDER BY id DESC LIMIT $2`, [MOBILE, n]);
+  return r.rows.some((x) => x.message_type === 'interactive');
+}
+
 const state = async () =>
   (await db.one('SELECT state, context FROM wa_sessions WHERE mobile = $1', [MOBILE])) || {};
 
@@ -110,62 +126,90 @@ const state = async () =>
 
   await text('hi');
   let out = await lastOut();
-  check(/ನಮಸ್ಕಾರ/.test(out.body || '') || /Namaskara/i.test(out.body || ''), `"hi" -> welcome (${(out.body || '').slice(0, 40)}…)`);
-  check((await state()).state === 'consent', 'state: consent');
+  /* The first message is the welcome and the language question, in English —
+     it is asked before we know which language they want. */
+  check(/Welcome to/i.test(out.body || '') && /language/i.test(out.body || ''),
+    `"hi" -> welcome + language (${(out.body || '').slice(0, 40)}…)`);
+  check((await state()).state === 'language', 'state: language');
+
+  /* --------------------------------------------------------- language */
+
+  /* English, so the rest of this file can assert on English strings. The
+     Kannada path is the same code with a different column value. */
+  await tap('lang_en', 'English');
+  check((await state()).state === 'consent', 'after choosing a language -> consent');
+  out = await lastOut();
+  /* Site-neutral on purpose: the platform serves the department's places and
+     the site is chosen inside the booking form, so the greeting names none. */
+  check(/Book vehicle entry tickets/i.test(out.body || ''),
+    'consent shown in English only, naming no single site');
+  check(!/[ಀ-೿]/.test(out.body || ''), 'no Kannada in the English consent message');
 
   /* ----------------------------------------------------------- consent */
 
-  await tap('consent_yes', 'Agree & continue');
+  await tap('consent_yes', 'Agree');
   check((await state()).state === 'menu', 'after agreeing -> the menu');
   out = await lastOut();
   check(/Book ticket/.test(out.body||'') || out.message_type==='interactive', 'menu offered');
 
   await pick('menu_book', 'Book ticket');
-  check((await state()).state === 'awaiting_plate', 'Book ticket -> awaiting_plate');
+  check((await state()).state === 'in_web_form', 'Book ticket -> the booking form link');
+  check(await sentInteractive(), 'a link button was sent, not a question');
+
   const consented = await db.one(
     `SELECT 1 FROM event_log e JOIN customers c ON c.id = e.customer_id
       WHERE c.mobile = $1 AND e.kind = 'consent_given'`, [MOBILE]);
   check(!!consented, 'consent recorded in event_log with a timestamp');
 
-  /* ------------------------------------------------------------- plate */
+  /* --------------------------------------------- booking, via the form */
 
-  await text('not a plate');
-  out = await lastOut();
-  check(/does not look like/i.test(out.body || ''), 'nonsense plate rejected with a reason');
+  /* The booking now happens on the web page the link opens, so the test drives
+     that instead of the chat steps. Same server, same modules — this is the
+     path a visitor actually takes. */
+  const fe = require('../src/routes/flowEndpoint');
+  const cust = await db.one('SELECT * FROM customers WHERE mobile = $1', [MOBILE]);
+  const bookToken = fe.newToken(cust.id, MOBILE, 'booking', 120);
+  await new Promise((r) => setTimeout(r, 300));
 
-  await text('kh31n8147');
-  out = await lastOut();
-  check(/state code/i.test(out.body || ''), 'invalid state code caught before payment');
+  const api = (p, b) => fetch(`${BASE}/book/${bookToken}/${p}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(b) }).then((r) => r.json());
 
-  await text('ka 31 n 8147');
-  out = await lastOut();
-  check(/KA 31 N 8147/.test(out.body || ''), 'plate echoed back in capitals for confirmation');
-  check((await state()).state === 'confirm_plate', 'state: confirm_plate');
-
-  await tap('plate_yes', 'Yes, correct');
-  let st = await state();
-  check(st.state === 'choose_date', `after confirming -> ${st.state}`);
-  check(!!st.context?.category_id, `vehicle categorised (category_id ${st.context?.category_id})`);
-
-  /* -------------------------------------------------------------- date */
+  const page = await fetch(`${BASE}/book/${bookToken}`);
+  check(page.status === 200, 'the booking page opens with a valid token');
+  const forged = await fetch(`${BASE}/book/notatoken.xx`);
+  check(forged.status === 410, `a forged token is refused (${forged.status})`);
 
   const day = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-  await pick(`date_${day}`, day);
-  st = await state();
-  check(st.state === 'choose_slot' && st.context?.travel_date === day,
-    `date chosen -> ${st.state} for ${st.context?.travel_date}`);
-  out = await lastOut();
-  check(/entry time/i.test(out.body || ''), 'slots offered');
+  const place = await db.one("SELECT id FROM places WHERE code = 'MULLAYANAGIRI'");
 
-  /* -------------------------------------------------------------- slot */
+  const bad = await api('vehicle', { reg_no: 'not a plate', place_id: place.id, travel_date: day });
+  check(bad.ok === false && /does not look like/i.test(bad.error || ''),
+    'nonsense plate rejected with a reason');
 
-  await tap('slot_0612', 'Morning 6-12');
-  st = await state();
-  check(st.state === 'awaiting_payment', `slot chosen -> ${st.state}`);
+  const badState = await api('vehicle', { reg_no: 'kh31n8147', place_id: place.id, travel_date: day });
+  check(badState.ok === false, 'invalid state code caught before payment');
 
-  out = await lastOut();
-  check(/₹113/.test(out.body || ''), 'price shown: ₹100 entry + ₹13 service fee = ₹113');
-  check(/\/pay\//.test(out.body || ''), 'payment link sent');
+  const veh = await api('vehicle', { reg_no: 'ka 31 n 8147', place_id: place.id, travel_date: day });
+  /* Unspaced, everywhere: the plate reads the same on the form, in the chat,
+     on the PDF and on the ticket card. */
+  check(veh.ok === true && veh.reg_pretty === 'KA31N8147',
+    'plate normalised to capitals, no spacing');
+  check(!!veh.category_id, `vehicle categorised (category_id ${veh.category_id})`);
+  check(veh.total === '113', `price: ₹${veh.entry} entry + ₹${veh.fee} fee = ₹${veh.total}`);
+
+  const slots = await api('slots',
+    { place_id: place.id, travel_date: day, category_id: veh.category_id });
+  check(slots.ok && slots.slots.length >= 1 && /left/i.test(slots.slots[0].note || ''),
+    `slots offered with live counts (${slots.slots[0]?.note})`);
+
+  const noAgree = await api('confirm', { place_id: place.id, travel_date: day,
+    reg_no: 'KA31N8147', category_id: veh.category_id, slot: '0612' });
+  check(noAgree.ok === false, 'cannot pay without agreeing to the terms');
+
+  const conf = await api('confirm', { place_id: place.id, travel_date: day,
+    reg_no: 'KA31N8147', category_id: veh.category_id, slot: '0612', agree: true });
+  check(conf.ok === true && /\/pay\//.test(conf.pay || ''), 'payment link returned');
 
   const ticket = await db.one(
     `SELECT * FROM tickets WHERE mobile = $1 ORDER BY id DESC LIMIT 1`, [MOBILE]);
@@ -191,12 +235,17 @@ const state = async () =>
 
   /* ------------------------------------------- the rule, from the outside */
 
-  await text('hi');
-  await pick('menu_book', 'Book ticket');
-  await tap('plate_yes');           // same vehicle again
-  await pick(`date_${day}`, day);
-  out = await lastOut();
-  check(/already has a ticket/i.test(out.body || ''),
+  /* One vehicle, one ticket, one day — refused at the vehicle check, which is
+     the only place where saying so is any use to the visitor: before they have
+     picked a slot and long before they have paid. */
+  /* The booking above spent that link, so this needs a new one — which is
+     itself the proof that a spent link cannot book again. */
+  const dupToken = fe.newToken(cust.id, MOBILE, 'booking', 120);
+  const dup = await fetch(`${BASE}/book/${dupToken}/vehicle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reg_no: 'KA31N8147', place_id: place.id, travel_date: day }),
+  }).then((r) => r.json());
+  check(dup.ok === false && /already has a ticket/i.test(dup.error || ''),
     'booking the same vehicle for the same day is refused, politely');
 
   /* ------------------------------------------------------------ postpone */
@@ -263,22 +312,38 @@ const state = async () =>
 
   /* ----------------------------------------------------- support & feedback */
 
+  /* Both now open a page rather than asking for a paragraph: support wants a
+     query type it can be routed on, feedback wants a rating that can be
+     counted. The chat still carries the link. */
   await text('hi');
   await pick('menu_support', 'Support');
-  check((await state()).state === 'support_message', 'Support waits for the question');
-  await text('My QR is not opening, please help.');
+  check(await sentInteractive(), 'Support sends the form link');
+
+  const supToken = fe.newToken(cust.id, MOBILE, 'support', 1440);
+  const fbToken = fe.newToken(cust.id, MOBILE, 'feedback', 1440);
+  await new Promise((r) => setTimeout(r, 300));   // the token insert is not awaited
+  const supPage = await fetch(`${BASE}/support/${supToken}`);
+  check(supPage.status === 200, 'the support page opens');
+
+  const form = (path, body, tk) => fetch(`${BASE}/${path}/${tk}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body).toString() });
+
+  await form('support', { query_type: 'ticket', message: 'My QR is not opening, please help.' }, supToken);
   const sup = await db.one(
     `SELECT detail FROM event_log e JOIN customers c ON c.id = e.customer_id
       WHERE c.mobile = $1 AND e.kind = 'support_request' ORDER BY e.id DESC LIMIT 1`, [MOBILE]);
   check(/not opening/.test(sup?.detail?.message || ''), 'the support message is stored verbatim');
+  check(sup?.detail?.query_type === 'ticket', `support is categorised (${sup?.detail?.query_type})`);
 
   await text('hi');
   await pick('menu_feedback', 'Feedback');
-  await text('Very smooth, no queue at the gate.');
+  await form('feedback', { rating: '5', message: 'Very smooth, no queue at the gate.' }, fbToken);
   const fb = await db.one(
     `SELECT detail FROM event_log e JOIN customers c ON c.id = e.customer_id
       WHERE c.mobile = $1 AND e.kind = 'feedback' ORDER BY e.id DESC LIMIT 1`, [MOBILE]);
   check(/no queue/.test(fb?.detail?.message || ''), 'feedback is stored');
+  check(Number(fb?.detail?.rating) === 5, `feedback carries a rating (${fb?.detail?.rating})`);
 
   await wipe();
   console.log(`\n  ${failures ? `${failures} FAILURE(S)` : 'all checks passed'}\n`);

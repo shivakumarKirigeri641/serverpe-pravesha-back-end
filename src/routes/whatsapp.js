@@ -86,8 +86,20 @@ async function dispatch(body) {
       const toNumberId = value.metadata?.phone_number_id;
       if (toNumberId && process.env.WHATSAPP_PHONE_NUMBER_ID
           && String(toNumberId) !== String(process.env.WHATSAPP_PHONE_NUMBER_ID)) {
-        console.log('[wa] ignoring message for another number (%s → %s)',
-          toNumberId, value.metadata?.display_phone_number || '');
+        /* Loud, not quiet, and deliberately so.
+         *
+         * We share a WhatsApp Business Account with QuizPe, which is live. If
+         * this line appears while the webhook is pointed at a laptop, it is not
+         * a harmless filter hit — it means QuizPe's real traffic is being
+         * delivered here instead of to its own server, and those customers are
+         * getting silence. The correct response is to put the callback back
+         * immediately, not to read past it. */
+        console.warn(
+          '\n  ⚠  MESSAGE FOR ANOTHER PRODUCT ARRIVED HERE — not answering.\n'
+          + `     to number id : ${toNumberId} (${value.metadata?.display_phone_number || '?'})\n`
+          + `     ours         : ${process.env.WHATSAPP_PHONE_NUMBER_ID}\n`
+          + '     If that number belongs to a LIVE product, this webhook is\n'
+          + '     stealing its traffic. Restore its callback URL now.\n');
         continue;
       }
 

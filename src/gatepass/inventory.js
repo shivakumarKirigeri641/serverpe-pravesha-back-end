@@ -182,6 +182,6 @@ async function sweepExpiredHolds() {
 const holdMinutes = () => settings.num('hold_minutes', 10);
 
 module.exports = {
-  ensureDate, availability, hold, confirm, release, unbook,
+  ensureDate, availability, availabilityForDates, hold, confirm, release, unbook,
   sweepExpiredHolds, holdMinutes,
 };

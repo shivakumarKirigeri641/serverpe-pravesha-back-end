@@ -5,7 +5,23 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon src/app.js"
+    "start": "nodemon src/app.js",
+    "dev": "nodemon src/app.js",
+    "db:create": "node scripts/create-db.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:check": "node scripts/migrate.js --check",
+    "db:setup": "node scripts/create-db.js && node scripts/migrate.js",
+    "reset": "node scripts/reset-data.js",
+    "reset:yes": "node scripts/reset-data.js --yes",
+    "flow:push": "node scripts/make-flow.js",
+    "flow:list": "node scripts/make-flow.js --list",
+    "flow:keys": "node scripts/make-flow-keys.js --check",
+    "admin:create": "node scripts/create-admin.js",
+    "staff:seed": "node scripts/seed-demo-staff.js",
+    "test:flow": "node scripts/test-flow.js",
+    "test:booking": "node scripts/test-booking.js",
+    "test:scanner": "node scripts/test-scanner.js",
+    "start:dry": "node -e \"process.env.WHATSAPP_DRY_RUN=String(true);require(\\\"./src/app.js\\\")\""
   },
   "repository": {
     "type": "git",

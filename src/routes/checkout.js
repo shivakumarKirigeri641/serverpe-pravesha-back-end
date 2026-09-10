@@ -196,15 +196,13 @@ button:disabled{opacity:.6}
   <div class="head"><h1>${esc(ticket.place_name)} · Entry ticket</h1>
     <p>Ticket ${esc(ticket.ticket_no)}</p></div>
   <div class="body">
-    <div class="row"><span>Vehicle</span><b>${esc(ticket.reg_no)}</b></div>
-    <div class="row"><span>Type</span><b>${esc(ticket.category_label)}</b></div>
-    <div class="row"><span>Date</span><b>${esc(ticket.travel_date)}</b></div>
-    <div class="row"><span>Time</span><b>${esc(ticket.slot_label)}</b></div>
-    <div class="rule"></div>
-    <div class="row"><span>Entry fee</span><b>Rs. ${rs(ticket.entry_paise)}</b></div>
-    <div class="row"><span>Service fee (incl. GST)</span><b>Rs. ${rs(ticket.platform_paise)}</b></div>
-    <div class="rule"></div>
-    <div class="total"><span>Total</span><span>Rs. ${rs(ticket.total_paise)}</span></div>
+    <!-- NOT a summary of any kind. The visitor reviewed and agreed to all of
+         this on the previous page and tapped Pay; this page exists only to
+         open Razorpay, and it does so on load. Anything shown here is a second
+         summary standing between them and paying. The button below is a
+         fallback for the case where a browser refuses to open the sheet
+         without a tap. -->
+    <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">Opening payment…</p>
     <button id="pay">Pay Rs. ${rs(ticket.total_paise)}</button>
     <p class="note">The entry fee is collected on behalf of the Karnataka Tourism Department.
     Your QR ticket arrives on WhatsApp as soon as payment succeeds.</p>
@@ -214,6 +212,50 @@ button:disabled{opacity:.6}
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 var btn = document.getElementById('pay');
+
+/**
+ * Get the visitor back into the WhatsApp conversation after paying.
+ *
+ * This page is usually open inside WhatsApp's OWN in-app browser, and setting
+ * location to an https://wa.me/ link there frequently does nothing at all —
+ * the browser is already "in" WhatsApp, so it has nowhere to navigate. That is
+ * why payment looked like it succeeded and then simply sat there.
+ *
+ * The whatsapp:// scheme is what actually hands control back to the app, so it
+ * is tried first. The https link follows as a fallback for an ordinary browser,
+ * and a visible button is shown regardless — an automatic redirect that fails
+ * silently leaves somebody staring at a dead screen holding a paid ticket.
+ */
+function backToWhatsApp(httpsUrl) {
+  var num = String(${JSON.stringify(String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\\D/g, ''))});
+  document.querySelector('.body').innerHTML =
+    '<p style="text-align:center;font-size:15px;margin:8px 0 4px">'
+    + '<b>Payment received.</b><br>Your ticket and invoice are on WhatsApp.</p>'
+    + '<button id="back">Open WhatsApp</button>';
+  var back = document.getElementById('back');
+
+  var go = function () {
+    /* Closing the tab outright is the nicest ending, but a page may only close
+       a window that a script opened — a tab the user navigated to is not
+       closeable, and in WhatsApp's in-app browser there is nothing to close
+       anyway. So it is attempted, and everything else follows regardless. */
+    try { window.close(); } catch (e) { /* not permitted here */ }
+
+    /* Then hand control back to the app. Inside WhatsApp's own browser an
+       https://wa.me link often does nothing, because there is nowhere to
+       navigate to; the app scheme is what actually switches. */
+    if (num) { window.location.href = 'whatsapp://send?phone=' + num; }
+
+    setTimeout(function () {
+      try { window.close(); } catch (e) { /* still not permitted */ }
+      window.location.href = httpsUrl;
+    }, 1200);
+  };
+
+  back.onclick = go;
+  go();
+}
+
 var opts = {
   key: ${JSON.stringify(keyId)},
   order_id: ${JSON.stringify(orderId)},
@@ -231,16 +273,14 @@ var opts = {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r)
     }).then(function (x) { return x.json(); }).then(function (j) {
-      // Straight back to the chat: the ticket is delivered there, and that is
-      // where the customer needs to be looking.
-      window.location.href = j.whatsapp || ${JSON.stringify(WA_LINK())};
+      backToWhatsApp(j.whatsapp || ${JSON.stringify(WA_LINK())});
     }).catch(function () {
       btn.disabled = false; btn.textContent = 'Confirming failed - tap to retry';
     });
   },
   modal: { ondismiss: function () { btn.disabled = false; btn.textContent = 'Pay Rs. ${rs(ticket.total_paise)}'; } }
 };
-btn.onclick = function () {
+function openPayment() {
   btn.disabled = true;
   var rz = new Razorpay(opts);
   rz.on('payment.failed', function (e) {
@@ -249,9 +289,22 @@ btn.onclick = function () {
       body: JSON.stringify({ reason: (e.error && e.error.description) || 'failed' })
     });
     btn.disabled = false; btn.textContent = 'Payment failed - try again';
+    document.getElementById('msg').textContent = 'That payment did not go through.';
   });
   rz.open();
-};
+}
+btn.onclick = openPayment;
+
+/* Open as soon as the page loads. The visitor already agreed and tapped Pay on
+   the review page — asking them to tap Pay a second time is the extra screen
+   this page was accused of being. If a browser refuses to open the sheet
+   without a gesture, the button is right there. */
+window.addEventListener('load', function () {
+  try { openPayment(); } catch (e) {
+    document.getElementById('msg').textContent = 'Tap below to pay.';
+    btn.disabled = false;
+  }
+});
 </script></body></html>`;
 }
 
