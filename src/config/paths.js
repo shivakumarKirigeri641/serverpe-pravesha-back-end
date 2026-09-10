@@ -12,6 +12,9 @@
  * signal — /pay/<token> earns its shortness.
  */
 
-const PREFIX = '/serverpe/platform/serverpe/v1/public/users';
+/* The middle segment is the product, matching its siblings:
+     .../platform/quizpe/...   .../platform/gaadipe/...   .../platform/pravesha/...
+   The first segment is the company and stays as it is. */
+const PREFIX = '/serverpe/platform/pravesha/v1/public/users';
 
 module.exports = { PREFIX };
