@@ -200,6 +200,20 @@ const SHELL = (title, body) => `<!doctype html>
   @media(prefers-reduced-motion:reduce){.pill,.pill.low{animation:none}.sg-body,.sg-cell{transition:none}}
   .sg-legend{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
   .sg-legend .pill{animation:none;min-width:30px;font-size:12px;padding:2px 7px}
+  /* The pointer back up to the slot grid. The slot sits under the date, above
+     the vehicle, so after a vehicle is checked the next step is behind the
+     visitor; without this the form looked finished with nothing to tap. */
+  .nudge{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border-radius:10px;
+         background:#e8f1ff;border:1px solid #b9d3ff;border-left:5px solid #2f6fe4;color:#12325f}
+  .nudge.hide{display:none}
+  .nudge b{display:block;font-size:14.5px}
+  .nudge span{display:block;font-size:13px;opacity:.9}
+  .nudge div{flex:1}
+  button.mini{width:auto;flex:none;padding:10px 14px;font-size:14px;margin:0;background:#2f6fe4}
+  @media(prefers-color-scheme:dark){.nudge{background:#10284d;border-color:#274b82;border-left-color:#6aa1ff;color:#dbe8ff}}
+  .sgrid.attn{animation:attn 1.1s ease-in-out 2}
+  @keyframes attn{0%,100%{box-shadow:0 0 0 0 rgba(47,111,228,0)}50%{box-shadow:0 0 0 5px rgba(47,111,228,.45)}}
+  @media(prefers-reduced-motion:reduce){.sgrid.attn{animation:none;box-shadow:0 0 0 3px rgba(47,111,228,.45)}}
   .checkpost{margin-top:14px;border-radius:10px;padding:11px 13px;background:var(--okbg);
              border:1px solid rgba(29,168,81,.35);border-left:3px solid var(--ok)}
   .checkpost-h{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ok);margin-bottom:4px}
@@ -372,6 +386,10 @@ const BODY = (v) => `
       <div class="vhead"><span class="vcheck">&#10003;</span>Vehicle verified<span class="vreg" id="vreg"></span></div>
       <dl class="vgrid" id="vgrid"></dl>
       <div class="vfee" id="vfee"></div>
+    </div>
+    <div class="nudge hide" id="slotNudge">
+      <div><b>Next: choose a time slot</b><span>Pick a slot in the grid above to see your review and pay.</span></div>
+      <button type="button" class="mini" id="toSlots">Choose slot &#8593;</button>
     </div>
   </div>
 

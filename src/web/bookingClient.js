@@ -77,6 +77,7 @@
   function clearVehicle() {
     highlightFee(null);
     state.vehicle = null;
+    vis($('slotNudge'), false);
     show($('vok'), false); show($('verr'), false);
     vis($('revCard'), false);
   }
@@ -163,7 +164,11 @@
       $('vfee').innerHTML = 'Fee for this vehicle: <b>₹' + esc(r.price.total) + '</b>';
       show($('vok'), true);
       highlightFee(r.category.id);
+      var hadSlot = !!state.slot;
       loadSlots();
+      /* No slot picked yet: the next thing to do is back up the page. Go there
+         once the grid has redrawn with this vehicle's column highlighted. */
+      if (!hadSlot) setTimeout(function () { if (state.vehicle && !state.slot) goToSlots(); }, 700);
     }).catch(function (err) {
       b.disabled = false; b.textContent = 'Check vehicle';
       if (err && err.network) {
@@ -304,8 +309,19 @@
     });
   }
 
+  /* Take the visitor back up to the slot grid and make it noticeable. */
+  function goToSlots() {
+    var grid = $('slots');
+    grid.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
+    var sg = grid.querySelector('.sgrid');
+    if (sg) { sg.classList.remove('attn'); void sg.offsetWidth; sg.classList.add('attn'); }
+  }
+  $('toSlots').addEventListener('click', goToSlots);
+
   function review() {
     var v = state.vehicle, s = state.slot;
+    /* Vehicle checked but no slot yet: the next step is above, so say so here. */
+    vis($('slotNudge'), !!(v && !s));
     if (!v || !s) { vis($('revCard'), false); return; }
     var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
     var dateName = $('date').selectedOptions[0].textContent;

@@ -88,7 +88,28 @@ async function handle(msg, contact) {
      booking means it -- they are lost, or starting again -- and dropping them
      back into a half-finished flow is the wrong reading of a plain word. */
   if (action === 'RESTART' || GREETING.test(body)) {
-    await session.reset(mobile, 'greeting');
+    /* ONE WELCOME PER BURST. On a hill road with a bar of signal people tap
+       "hi" again and again; WhatsApp holds every one and delivers them together
+       when the phone reconnects — four greetings in the same second got four
+       welcomes. A greeting within 30 seconds of the last welcome is not
+       answered again.
+
+       The claim is one conditional UPDATE, not a read and a write: the burst
+       arrives as separate webhook calls handled at the same moment, and only
+       the database can let exactly one of them through. It also resets the
+       session, as a greeting always has. */
+    const claimed = await query(
+      `UPDATE wa_sessions
+          SET state = $2, state_reason = 'greeting',
+              context = jsonb_build_object('welcomedAt', now()), modified_at = now()
+        WHERE mobile = $1
+          AND (context->>'welcomedAt' IS NULL
+               OR (context->>'welcomedAt')::timestamptz < now() - interval '30 seconds')
+        RETURNING id`, [mobile, session.START]);
+    if (!claimed.rowCount) {
+      console.log('[wa] greeting burst from %s — already welcomed, not repeating', mobile);
+      return;
+    }
     await welcome.send(to, customer);
     return;
   }
