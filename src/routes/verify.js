@@ -31,9 +31,26 @@ const STATE = {
   held: { label: 'NOT VALID', color: '#b91c1c', bg: '#fdeaea', note: 'Payment for this booking has not been completed.' },
 };
 
-router.get('/v/:ref', async (req, res) => {
+/*
+ * Addressed by PASS NUMBER, not booking reference.
+ *
+ * The reference was the first choice and was wrong for a public link: it spells
+ * out the last four digits of the visitor's phone number, the plate and the
+ * date, in a URL that is printed as a QR and sent in a WhatsApp button. The
+ * pass number carries nothing personal, is shorter (a less dense QR, which scans
+ * more reliably off a phone screen in sunlight) and is not guessable at 31^8.
+ *
+ * Case and stray slashes are forgiven: a code read aloud and typed, or mangled
+ * by a messaging app, still finds its pass. Old reference links keep working.
+ */
+router.get(['/v/:code', '/v/:code/'], async (req, res) => {
+  const code = decodeURIComponent(String(req.params.code || '')).trim().toUpperCase();
   let t = null;
-  try { t = await booking.byReference(String(req.params.ref)); } catch { t = null; }
+  try {
+    t = /^PRV-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(code)
+      ? await booking.byTicketNo(code)
+      : await booking.byReference(code);
+  } catch { t = null; }
 
   const shell = (inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Pass details · Pravesha</title>
