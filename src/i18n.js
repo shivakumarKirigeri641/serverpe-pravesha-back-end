@@ -58,6 +58,14 @@ const S = {
     kn: '*ಪ್ರವೇಶ ಸಹಾಯ*\n\nಮತ್ತೆ ಪ್ರಾರಂಭಿಸಲು ಯಾವಾಗ ಬೇಕಾದರೂ *hi* ಎಂದು ಕಳುಹಿಸಿ.\n\nದ್ವಿಚಕ್ರ ವಾಹನ, ಕಾರು, ಟೂಫಾನ್ ಮತ್ತು ಟೆಂಪೋ ಟ್ರಾವೆಲರ್‌ಗಳಿಗೆ ಪ್ರವೇಶ ಪಾಸ್ ನೀಡಲಾಗುತ್ತದೆ.\n\nಆಟೋ, ಬಸ್, ಟ್ರಕ್, ಟ್ರ್ಯಾಕ್ಟರ್ ಮತ್ತು ಟ್ರೇಲರ್‌ಗಳಿಗೆ ಈ ಮಾರ್ಗಗಳಲ್ಲಿ ಅನುಮತಿ ಇಲ್ಲ.',
   },
 
+  bookHeader: { en: 'Book your entry pass', kn: 'ಪ್ರವೇಶ ಪಾಸ್ ಕಾಯ್ದಿರಿಸಿ' },
+  bookBody: {
+    en: 'Tap below to choose your destination, date, time slot and vehicle.\n\nThe link works once and is valid for 2 hours.',
+    kn: 'ನಿಮ್ಮ ಸ್ಥಳ, ದಿನಾಂಕ, ಸಮಯ ಮತ್ತು ವಾಹನವನ್ನು ಆಯ್ಕೆ ಮಾಡಲು ಕೆಳಗೆ ಒತ್ತಿರಿ.\n\nಈ ಲಿಂಕ್ 2 ಗಂಟೆಗಳವರೆಗೆ ಮಾತ್ರ ಮಾನ್ಯ.',
+  },
+  bookFooter: { en: 'Pravesha · Karnataka Tourism', kn: 'ಪ್ರವೇಶ · ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ' },
+  bookCta: { en: 'Open booking form', kn: 'ಫಾರಮ್ ತೆರೆಯಿರಿ' },
+
   bookingSoon: {
     en: 'Booking opens next — place, slot, date and vehicle.',
     kn: 'ಕಾಯ್ದಿರಿಸುವಿಕೆ ಶೀಘ್ರದಲ್ಲೇ — ಸ್ಥಳ, ಸಮಯ, ದಿನಾಂಕ ಮತ್ತು ವಾಹನ.',

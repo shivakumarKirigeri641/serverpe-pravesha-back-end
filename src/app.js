@@ -25,6 +25,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/', require('./routes/policy'));
+app.use('/', require('./routes/bookWeb'));
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };

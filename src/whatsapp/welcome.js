@@ -1,11 +1,11 @@
 /**
  * welcome.js — the first thing anyone sees, and the consent gate.
  *
- * BILINGUAL FROM THE FIRST MESSAGE, not after asking. This is a Karnataka
- * Tourism service and a good share of visitors read Kannada first. Asking
- * "English or Kannada?" before saying anything useful spends the opening
- * message on a question; leading with both means nobody has to ask for their
- * own language.
+ * THE WELCOME IS IN ENGLISH. Language is chosen on the next screen, and that
+ * question is the one line carried in both -- everything after it is written in
+ * whichever was picked. Pairing a translation with every message afterwards
+ * doubles the length of each one on a phone and reads as though the choice was
+ * not taken seriously.
  *
  * THE TERMS ARE SHOWN HERE AND NOWHERE ELSE. Putting them at the end, next to
  * the payment button, is how consent becomes a thing people tap past to get
@@ -36,10 +36,9 @@ function firstTime(customer) {
     hello,
     '',
     '*Pravesha* — entry passes for Karnataka’s hill destinations.',
-    'ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ',
+    'Karnataka Tourism Department',
     '',
     'Book your vehicle’s entry pass right here — pick a place, a time slot and a date, and pay online. It takes about a minute.',
-    'ಗಿರಿಧಾಮಗಳಿಗೆ ಪ್ರವೇಶ ಪಾಸ್ ಅನ್ನು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿಯೇ ಕಾಯ್ದಿರಿಸಿ.',
     '',
     '_Two-wheelers, cars, Toofans and Tempo Travellers only. Autos, buses, trucks, tractors and trailers are not permitted._',
     '',

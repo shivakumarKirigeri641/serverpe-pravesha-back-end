@@ -12,6 +12,7 @@ const welcome = require('./welcome');
 const phone = require('./phone');
 const send = require('./send');
 const { t, langOf } = require('../i18n');
+const webToken = require('../gatepass/webToken');
 
 /* Anything a person might open with. Matched loosely because they will not type
    it the way we expect: "Hi", "hii", "hello sir", "ನಮಸ್ಕಾರ". */
@@ -122,8 +123,18 @@ async function handle(msg, contact) {
     return;
   }
 
+  /* A fresh single-use link per tap. Reusing one would mean the link in an old
+     message still worked, and the visitor booking twice by scrolling up. */
   if (action === 'BOOK') {
-    await send.text(to, t('bookingSoon', langOf(customer)));
+    const lang = langOf(customer);
+    const tok = await webToken.issue(customer.id, 'booking');
+    await send.ctaUrl(to, {
+      header: t('bookHeader', lang),
+      body: t('bookBody', lang),
+      footer: t('bookFooter', lang),
+      displayText: t('bookCta', lang),
+      url: webToken.linkFor(tok),
+    });
     return;
   }
 

@@ -99,4 +99,24 @@ function list(to, { body, header, footer, button, sections }) {
   });
 }
 
-module.exports = { text, buttons, list, post, record };
+/**
+ * A button that opens a URL, rather than a link in the message body.
+ *
+ * WhatsApp renders a plain link as text the visitor has to notice and tap
+ * accurately; cta_url gives a full-width button and opens the page in the
+ * in-app browser, so the booking form appears without leaving the chat.
+ */
+function ctaUrl(to, { body, header, footer, displayText, url }) {
+  return post(to, {
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      ...(header ? { header: { type: 'text', text: header } } : {}),
+      body: { text: body },
+      ...(footer ? { footer: { text: footer } } : {}),
+      action: { name: 'cta_url', parameters: { display_text: displayText, url } },
+    },
+  });
+}
+
+module.exports = { text, buttons, list, ctaUrl, post, record };
