@@ -363,7 +363,9 @@ async function seedBookings(vehicles, categories) {
       `INSERT INTO scans (reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, duration_ms, is_test)
        VALUES ($1,$2,$3,'unknown_ticket', $4, $5, $6, true)`,
       [v.reg_no, checkpost?.id || null, pickStaff()?.id || null,
-        `${today0}T${String(crypto.randomInt(7, 17)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`,
+        /* Spread over the days seeded, not stamped on today: a report for any one
+           day would otherwise carry every refusal of the month. */
+        `${shiftDay(today0, -crypto.randomInt(0, Math.max(1, DAYS)))}T${String(crypto.randomInt(7, 17)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`,
         JSON.stringify({ seeded: true }), checkDuration()]);
   }
 

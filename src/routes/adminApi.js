@@ -19,6 +19,10 @@ const stats = require('../gatepass/adminStats');
 const liveStats = require('../gatepass/adminLive');
 const analytics = require('../gatepass/adminAnalytics');
 const conversations = require('../gatepass/adminConversations');
+const reports = require('../gatepass/reports');
+const reportWorkbook = require('../gatepass/reportWorkbook');
+const reportPdf = require('../pdf/reportPdf');
+const settingsStore = require('../gatepass/settings');
 const slotTime = require('../gatepass/slotTime');
 
 const router = express.Router();
@@ -237,6 +241,80 @@ router.get(`${P}/conversations/:id`, auth, safe(async (req, res) => {
       subject: `customer:${req.params.id}`, ip: (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim() });
   }
   res.set('Cache-Control', 'no-store').json({ ok: true, ...found });
+}));
+
+/* ────────────────────────────────────────────────────────────── reports ── */
+
+const REPORT_KINDS = ['daily', 'weekly', 'monthly', 'custom'];
+
+function reportPeriod(q) {
+  const kind = REPORT_KINDS.includes(String(q.kind)) ? String(q.kind) : 'daily';
+  return reports.periodFor(kind, { date: q.date, from: q.from, to: q.to });
+}
+
+/* The figures, for the screen. Not registered: looking is not issuing. */
+router.get(`${P}/reports`, auth, safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await reports.build(reportPeriod(req.query))) });
+}));
+
+/*
+ * A downloadable report: PDF, Excel workbook or CSV.
+ *
+ * Each one is registered before it is sent, and the Report ID printed on it is
+ * the row's number — so a report quoted weeks later can be traced to its
+ * period, its author, its moment and a fingerprint of its figures. The
+ * download itself is written to the audit trail.
+ */
+router.get(`${P}/reports/download`, auth, safe(async (req, res) => {
+  const format = ['pdf', 'xlsx', 'csv'].includes(String(req.query.format)) ? String(req.query.format) : 'pdf';
+  const report = await reports.build(reportPeriod(req.query));
+  const { reportNo, generatedAt } = await reports.register({
+    report, format, adminId: req.admin.admin_id,
+  });
+  const by = req.admin.name;
+  const base = `Pravesha-${report.period.kind}-report-${report.period.from}${report.period.to !== report.period.from ? `-to-${report.period.to}` : ''}-${reportNo}`;
+
+  let body;
+  let type;
+  if (format === 'pdf') {
+    const s = Object.fromEntries(await settingsStore.all());
+    body = await reportPdf.render(report, { reportNo, generatedAt, generatedBy: by, settings: s });
+    type = 'application/pdf';
+  } else if (format === 'xlsx') {
+    body = Buffer.from(await reportWorkbook.workbook(report, { reportNo, generatedAt, generatedBy: by }));
+    type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  } else {
+    body = Buffer.from(reports.csv(report, { reportNo, generatedAt }), 'utf8');
+    type = 'text/csv; charset=utf-8';
+  }
+
+  await reports.finishRegistration(reportNo, body.length);
+  await admin.audit({ adminId: req.admin.admin_id, action: 'report_downloaded', subject: reportNo,
+    detail: { kind: report.period.kind, from: report.period.from, to: report.period.to, format } });
+
+  res.set({
+    'Content-Type': type,
+    'Content-Disposition': `${req.query.inline === '1' ? 'inline' : 'attachment'}; filename="${base}.${format}"`,
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'X-Report-No': reportNo,
+    'Access-Control-Expose-Headers': 'X-Report-No, Content-Disposition',
+  });
+  res.send(body);
+}));
+
+/* The register of reports issued, newest first. */
+router.get(`${P}/reports/history`, auth, safe(async (req, res) => {
+  const { rows } = await require('../gatepass/db').query(
+    `SELECT r.report_no, r.kind, r.period_from, r.period_to, r.format, r.generated_at, r.bytes, a.name AS generated_by
+       FROM admin_reports r LEFT JOIN admin_users a ON a.id = r.generated_by
+      ORDER BY r.generated_at DESC LIMIT 20`);
+  res.json({ ok: true, reports: rows.map((r) => ({
+    reportNo: r.report_no, kind: r.kind,
+    from: r.period_from instanceof Date ? r.period_from.toISOString().slice(0, 10) : r.period_from,
+    to: r.period_to instanceof Date ? r.period_to.toISOString().slice(0, 10) : r.period_to,
+    format: r.format, generatedAt: r.generated_at, bytes: r.bytes, generatedBy: r.generated_by,
+  })) });
 }));
 
 module.exports = { router, auth, needs, me };
