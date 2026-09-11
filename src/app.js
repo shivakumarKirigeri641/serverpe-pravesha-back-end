@@ -42,6 +42,7 @@ app.use('/', require('./routes/adminFinanceApi'));
 app.use('/', require('./routes/adminPaymentsApi'));
 app.use('/', require('./routes/adminBookingsApi'));
 app.use('/', require('./routes/adminAlertsApi'));
+app.use('/', require('./routes/adminPlacesApi'));
 app.use('/', require('./routes/notices'));
 
 app.get('/health', async (req, res) => {

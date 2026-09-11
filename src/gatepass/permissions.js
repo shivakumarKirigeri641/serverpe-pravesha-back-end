@@ -37,6 +37,8 @@ const CAPABILITIES = {
   'tickets.resend': 'Send a pass to the visitor again',
   'tickets.free': 'Issue free passes',
   'tickets.onspot': 'Sell on-spot passes',
+  'destinations.view': 'See destinations and checkposts',
+  'destinations.manage': 'Add and change destinations and checkposts',
   'settings.pricing': 'Change prices and the service fee',
   'settings.slots': 'Create, change and remove slots and capacity',
   'settings.staff': 'Manage checkpost staff',
@@ -62,18 +64,18 @@ const ROLES = {
     label: 'Checkpost Manager',
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
-      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act'],
+      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view'],
   },
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
     can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit',
-      'tickets.view', 'alerts.view', 'audit.view'],
+      'tickets.view', 'alerts.view', 'destinations.view', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',
     description: 'Reads the dashboard, live monitoring, analytics and reports.',
-    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view'],
+    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view', 'destinations.view'],
   },
 };
 

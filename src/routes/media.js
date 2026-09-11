@@ -112,3 +112,7 @@ router.get('/public/images', (req, res) => {
 });
 
 module.exports = router;
+
+/** The same list, for code inside the server (the destinations screen). */
+module.exports.available = () => [...originals.keys()].sort()
+  .map((name) => ({ name, webp: `/public/img/${name}.webp` }));
