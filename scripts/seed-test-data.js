@@ -109,6 +109,12 @@ const isWeekend = (date) => [0, 6].includes(new Date(`${date}T00:00:00Z`).getUTC
 async function removeAll() {
   /* Children first; tickets reference vehicles and customers. */
   const counts = {};
+  /* Decisions recorded about test data go with it. */
+  await query(`DELETE FROM negative_reviews
+                WHERE (subject_type = 'customer' AND subject_id IN (SELECT id::text FROM customers WHERE is_test))
+                   OR (subject_type = 'vehicle' AND subject_id IN (SELECT reg_no FROM vehicles WHERE is_test))
+                   OR (subject_type = 'scan' AND subject_id IN (SELECT id::text FROM scans WHERE is_test))
+                   OR (subject_type = 'payment' AND subject_id IN (SELECT id::text FROM payments WHERE is_test))`).catch(() => {});
   for (const table of ['scans', 'invoices', 'tickets', 'payments', 'vehicles', 'customers']) {
     const { rowCount } = await query(`DELETE FROM ${table} WHERE is_test`).catch(async (e) => {
       /* invoices has no flag: remove the ones pointing at test tickets. */

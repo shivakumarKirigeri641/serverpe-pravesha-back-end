@@ -20,6 +20,7 @@ const liveStats = require('../gatepass/adminLive');
 const analytics = require('../gatepass/adminAnalytics');
 const conversations = require('../gatepass/adminConversations');
 const reports = require('../gatepass/reports');
+const negative = require('../gatepass/adminNegative');
 const reportWorkbook = require('../gatepass/reportWorkbook');
 const reportPdf = require('../pdf/reportPdf');
 const settingsStore = require('../gatepass/settings');
@@ -315,6 +316,75 @@ router.get(`${P}/reports/history`, auth, safe(async (req, res) => {
     to: r.period_to instanceof Date ? r.period_to.toISOString().slice(0, 10) : r.period_to,
     format: r.format, generatedAt: r.generated_at, bytes: r.bytes, generatedBy: r.generated_by,
   })) });
+}));
+
+/* ──────────────────────────────────────────────────── negative tracking ── */
+
+const ipOf = (req) => (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
+
+/* Today against yesterday at this hour, the suspects, and abuse patterns. */
+router.get(`${P}/negative`, auth, safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await negative.overview()) });
+}));
+
+/* The event feed: filterable by category, dates and a search, paged by cursor. */
+router.get(`${P}/negative/events`, auth, safe(async (req, res) => {
+  const date = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  const category = Object.keys(negative.CATEGORY).includes(String(req.query.category)) ? String(req.query.category) : null;
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    ...(await negative.events({
+      category, q: req.query.q || null, from: date(req.query.from), to: date(req.query.to),
+      before: req.query.before || null, limit: req.query.limit,
+    })),
+  });
+}));
+
+router.get(`${P}/negative/vehicle/:regNo`, auth, safe(async (req, res) => {
+  const found = await negative.vehicleProfile(req.params.regNo);
+  if (!found) return res.status(404).json({ error: 'not_found', message: 'No activity recorded for that vehicle.' });
+  res.json({ ok: true, ...found });
+}));
+
+router.get(`${P}/negative/visitor/:id`, auth, safe(async (req, res) => {
+  const found = await negative.visitorProfile(req.params.id);
+  if (!found) return res.status(404).json({ error: 'not_found', message: 'No such visitor.' });
+  res.json({ ok: true, ...found });
+}));
+
+/* A decision about something: reviewed, dismissed, escalated, or a note. */
+router.post(`${P}/negative/review`, json, auth, needs('operate'), safe(async (req, res) => {
+  const { subjectType, subjectId, action, note } = req.body || {};
+  if (!['scan', 'payment', 'ticket', 'vehicle', 'customer'].includes(subjectType) || !subjectId) {
+    return res.status(400).json({ error: 'bad_subject', message: 'Choose what is being reviewed.' });
+  }
+  if (!['reviewed', 'dismissed', 'escalated', 'note'].includes(action)) {
+    return res.status(400).json({ error: 'bad_action', message: 'Choose reviewed, dismissed, escalated or note.' });
+  }
+  if (action === 'note' && !String(note || '').trim()) {
+    return res.status(400).json({ error: 'note_required', message: 'Write the note first.' });
+  }
+  const row = await negative.review({ subjectType, subjectId, action, note, adminId: req.admin.admin_id });
+  await admin.audit({ adminId: req.admin.admin_id, action: `negative_${action}`, subject: `${subjectType}:${subjectId}`,
+    detail: { note: note || null }, ip: ipOf(req) });
+  res.json({ ok: true, id: String(row.id), at: row.created_at });
+}));
+
+/*
+ * Block or unblock a visitor. A reason is required to block: a number stopped
+ * from booking with no reason on record is indistinguishable from a mistake.
+ */
+router.post(`${P}/negative/visitor/:id/block`, json, auth, needs('operate'), safe(async (req, res) => {
+  const blocked = req.body?.blocked !== false;
+  const reason = String(req.body?.reason || '').trim();
+  if (blocked && reason.length < 5) {
+    return res.status(400).json({ error: 'reason_required', message: 'Give a reason for blocking this number.' });
+  }
+  const c = await negative.setBlocked({ customerId: req.params.id, blocked, reason, adminId: req.admin.admin_id });
+  if (!c) return res.status(404).json({ error: 'not_found', message: 'No such visitor.' });
+  await admin.audit({ adminId: req.admin.admin_id, action: blocked ? 'visitor_blocked' : 'visitor_unblocked',
+    subject: `customer:${req.params.id}`, detail: { reason: reason || null }, ip: ipOf(req) });
+  res.json({ ok: true, blocked: c.is_blocked, reason: c.blocked_reason });
 }));
 
 module.exports = { router, auth, needs, me };
