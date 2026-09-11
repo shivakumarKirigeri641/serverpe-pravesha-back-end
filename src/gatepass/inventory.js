@@ -72,7 +72,7 @@ async function available(placeId, slotId, categoryId, travelDate) {
  */
 async function forDate(placeId, categoryId, travelDate) {
   const slots = await query(
-    `SELECT id, code, label, starts_at, ends_at FROM place_slots
+    `SELECT id, code, regexp_replace(label, '[[:space:]]+', ' ', 'g') AS label, starts_at, ends_at FROM place_slots
       WHERE place_id=$1 AND is_active ORDER BY sort_order`, [placeId]);
 
   const out = [];
@@ -92,4 +92,71 @@ async function forDate(placeId, categoryId, travelDate) {
   return out;
 }
 
-module.exports = { ensure, available, forDate };
+/* ─────────────────────────────────────────────── claiming and releasing ── */
+
+/**
+ * Claim one place, inside the caller's transaction.
+ *
+ * The capacity test is in the WHERE clause, not in JavaScript beforehand. Two
+ * bookings for the last place would both read "one left" and both proceed; an
+ * UPDATE that only matches while booked + held < capacity lets exactly one of
+ * them through, and the table's own CHECK stands behind it.
+ */
+async function hold(client, { placeId, slotId, categoryId, travelDate }) {
+  await ensure(placeId, slotId, categoryId, travelDate);
+  const r = await client.query(
+    `UPDATE slot_inventory
+        SET held = held + 1, modified_at = now()
+      WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
+        AND is_open AND booked + held < capacity
+      RETURNING *`,
+    [placeId, slotId, categoryId, travelDate]);
+  return r.rows[0] || null;
+}
+
+/** A held place becomes a booked one: paid for. */
+async function confirm(client, { placeId, slotId, categoryId, travelDate }) {
+  const r = await client.query(
+    `UPDATE slot_inventory
+        SET held = GREATEST(held - 1, 0), booked = booked + 1, modified_at = now()
+      WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
+      RETURNING *`,
+    [placeId, slotId, categoryId, travelDate]);
+  return r.rows[0] || null;
+}
+
+/** Give a held place back. */
+async function release(client, { placeId, slotId, categoryId, travelDate }) {
+  const r = await (client || { query }).query(
+    `UPDATE slot_inventory
+        SET held = GREATEST(held - 1, 0), modified_at = now()
+      WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
+      RETURNING *`,
+    [placeId, slotId, categoryId, travelDate]);
+  return r.rows[0] || null;
+}
+
+/**
+ * Holds whose time ran out, returned to the pool.
+ *
+ * Someone who opened the payment sheet and walked away must not keep a place
+ * on a Sunday morning. Run before every new hold and by the reconciler, so no
+ * scheduled job has to be trusted to exist.
+ */
+async function sweepExpiredHolds() {
+  const rows = (await query(
+    `UPDATE tickets SET status = 'expired', modified_at = now()
+      WHERE status = 'held' AND held_until IS NOT NULL AND held_until < now()
+      RETURNING place_id, slot_id, category_id, travel_date`)).rows;
+  for (const t of rows) {
+    await release(null, { placeId: t.place_id, slotId: t.slot_id,
+      categoryId: t.category_id, travelDate: t.travel_date });
+  }
+  return rows.length;
+}
+
+async function holdMinutes() {
+  return require('./settings').num('hold_minutes', 10);
+}
+
+module.exports = { ensure, available, forDate, hold, confirm, release, sweepExpiredHolds, holdMinutes };

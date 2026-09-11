@@ -21,7 +21,7 @@ const { query } = require('../gatepass/db');
 const checkout = require('../gatepass/checkout');
 const booking = require('../gatepass/booking');
 const inventory = require('../gatepass/inventory');
-const flow = require('../whatsapp/flow');
+const deliver = require('../whatsapp/deliver');
 
 const EVERY_MS = 45000;
 const LOOK_BACK_MINUTES = 90;
@@ -84,8 +84,12 @@ async function claimPaid() {
       continue;
     }
 
-    await flow.deliverTicket(ticketId);
-    console.log('[reconcile] issued ticket for payment %s', good.id);
+    /* Delivered only when this pass pulled it from held to paid; if the callback
+       or webhook got there first, the visitor already has it. */
+    if (!issued.already) {
+      await deliver.deliverTicket(ticketId);
+      console.log('[reconcile] issued pass for payment %s', good.id);
+    }
   }
 }
 

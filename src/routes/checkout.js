@@ -14,7 +14,7 @@
 const express = require('express');
 const checkout = require('../gatepass/checkout');
 const booking = require('../gatepass/booking');
-const flow = require('../whatsapp/flow');
+const deliver = require('../whatsapp/deliver');
 const pricing = require('../gatepass/pricing');
 const { query } = require('../gatepass/db');
 const { PREFIX } = require('../config/paths');
@@ -38,7 +38,7 @@ router.get('/pay/:token', async (req, res) => {
 
   if (payment.status === 'paid') {
     return res.send(page('Already paid',
-      `Ticket <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your ticket.`,
+      `Pass <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your pass.`,
       WA_LINK()));
   }
   if (ticket.status === 'expired' || ticket.status === 'cancelled') {
@@ -142,13 +142,26 @@ async function byOrder(orderId) {
  * three paths gets here first does the work; the others find it already done.
  */
 async function settle(payment, ticket, rzpPaymentId, raw) {
-  await checkout.markPaid(payment.id, rzpPaymentId, raw);
+  /* The callback carries only ids; the gateway's own record says how it was
+     paid, which the pass prints. Fetched before recording so it is stored once. */
+  const entity = (raw && raw.method) ? raw : (await checkout.fetchPayment(rzpPaymentId)) || raw;
+  await checkout.markPaid(payment.id, rzpPaymentId, entity);
+
   const issued = await booking.markPaid(ticket.id, payment.id);
   if (!issued.ok) {
-    console.error('[checkout] could not issue ticket %s: %s', ticket.ticket_no, issued.reason);
+    console.error('[checkout] PAID BUT NOT ISSUED %s: %s', ticket.ticket_no, issued.reason);
+    await query('INSERT INTO event_log (customer_id, kind, detail) VALUES ($1, $2, $3)',
+      [ticket.customer_id, 'payment_unissued',
+       JSON.stringify({ ticket_id: ticket.id, reason: issued.reason, razorpay_payment_id: rzpPaymentId })]);
     return issued;
   }
-  await flow.deliverTicket(ticket.id);
+
+  /* Only the call that turned the hold into a pass sends it. The other two
+     confirmation paths find it already issued and stop here, so the visitor
+     gets one pass, not three. */
+  if (!issued.already) {
+    deliver.deliverTicket(ticket.id).catch((e) => console.error('[checkout] delivery failed', e.message));
+  }
   return issued;
 }
 
@@ -159,11 +172,11 @@ function page(title, message, link) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><style>
 body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-background:#f8fafc;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+background:#efeae2;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
 .card{background:#fff;border-radius:16px;padding:32px 28px;max-width:380px;width:100%;
 box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
 h1{font-size:20px;margin:0 0 12px}p{color:#4b5563;margin:0 0 20px}
-a.btn{display:block;background:#0f766e;color:#fff;text-decoration:none;padding:14px;border-radius:10px;font-weight:600}
+a.btn{display:block;background:#008069;color:#fff;text-decoration:none;padding:14px;border-radius:10px;font-weight:600}
 </style></head><body><div class="card"><h1>${esc(title)}</h1><p>${message}</p>
 ${link ? `<a class="btn" href="${esc(link)}">Back to WhatsApp</a>` : ''}</div></body></html>`;
 }
@@ -172,13 +185,13 @@ function payPage({ ticket, payment, orderId, keyId, token }) {
   const rs = (p) => pricing.rs(p);
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pay for ticket ${esc(ticket.ticket_no)}</title><style>
+<title>Pay for pass ${esc(ticket.ticket_no)}</title><style>
 :root{color-scheme:light}
 body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-background:#f1f5f9;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+background:#efeae2;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
 .card{background:#fff;border-radius:18px;max-width:400px;width:100%;overflow:hidden;
 box-shadow:0 4px 24px rgba(15,23,42,.10)}
-.head{background:#0f766e;color:#fff;padding:22px 24px}
+.head{background:#008069;color:#fff;padding:22px 24px}
 .head h1{margin:0;font-size:17px;letter-spacing:.5px}
 .head p{margin:4px 0 0;font-size:12px;opacity:.85}
 .body{padding:22px 24px}
@@ -187,14 +200,14 @@ box-shadow:0 4px 24px rgba(15,23,42,.10)}
 .rule{height:1px;background:#e5e7eb;margin:14px 0}
 .total{display:flex;justify-content:space-between;font-size:19px;font-weight:700;margin:6px 0 2px}
 .note{font-size:11px;color:#6b7280;margin-top:10px;line-height:1.45}
-button{width:100%;margin-top:20px;background:#0f766e;color:#fff;border:0;border-radius:12px;
+button{width:100%;margin-top:20px;background:#008069;color:#fff;border:0;border-radius:12px;
 padding:16px;font-size:16px;font-weight:600;cursor:pointer}
 button:disabled{opacity:.6}
 .foot{text-align:center;font-size:11px;color:#9ca3af;padding:0 24px 20px}
 </style></head><body>
 <div class="card">
-  <div class="head"><h1>${esc(ticket.place_name)} · Entry ticket</h1>
-    <p>Ticket ${esc(ticket.ticket_no)}</p></div>
+  <div class="head"><h1>Pravesha · ${esc(ticket.place_name)} entry pass</h1>
+    <p>Pass ${esc(ticket.ticket_no)} &middot; ${esc(ticket.reg_no)}</p></div>
   <div class="body">
     <!-- NOT a summary of any kind. The visitor reviewed and agreed to all of
          this on the previous page and tapped Pay; this page exists only to
@@ -204,8 +217,8 @@ button:disabled{opacity:.6}
          without a tap. -->
     <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">Opening payment…</p>
     <button id="pay">Pay Rs. ${rs(ticket.total_paise)}</button>
-    <p class="note">The entry fee is collected on behalf of the Karnataka Tourism Department.
-    Your ticket arrives on WhatsApp as soon as payment succeeds.</p>
+    <p class="note">Your entry pass arrives on WhatsApp as soon as payment succeeds.
+    At the checkpost, just drive up &mdash; staff will record your vehicle number digitally.</p>
   </div>
   <div class="foot">Powered by ServerPe App Solutions</div>
 </div>
@@ -230,7 +243,7 @@ function backToWhatsApp(httpsUrl) {
   var num = String(${JSON.stringify(String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\\D/g, ''))});
   document.querySelector('.body').innerHTML =
     '<p style="text-align:center;font-size:15px;margin:8px 0 4px">'
-    + '<b>Payment received.</b><br>Your ticket and invoice are on WhatsApp.</p>'
+    + '<b>Payment successful.</b><br>Your entry pass has been sent to you on WhatsApp.</p>'
     + '<button id="back">Open WhatsApp</button>';
   var back = document.getElementById('back');
 
@@ -264,9 +277,9 @@ var opts = {
   // What Razorpay shows on the payment sheet and, later, on the card statement.
   // The site's own name is what a visitor will recognise there.
   name: ${JSON.stringify(`${ticket.place_name} entry`)},
-  description: 'Ticket ' + ${JSON.stringify(ticket.ticket_no)},
+  description: 'Entry pass ' + ${JSON.stringify(ticket.ticket_no)},
   prefill: { contact: ${JSON.stringify(ticket.mobile)} },
-  theme: { color: '#0f766e' },
+  theme: { color: '#008069' },
   handler: function (r) {
     btn.disabled = true; btn.textContent = 'Confirming...';
     fetch('/pay/' + ${JSON.stringify(token)} + '/confirm', {

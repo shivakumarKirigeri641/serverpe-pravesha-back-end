@@ -11,6 +11,7 @@
  */
 
 const { one, query } = require('./db');
+const settings = require('./settings');
 
 async function forPlaceCategory(placeId, categoryId) {
   const r = await one(
@@ -63,4 +64,31 @@ async function platformPercent() {
 
 const rupees = (paise) => (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
 
-module.exports = { forPlaceCategory, tariff, platformPercent, rupees };
+/**
+ * The split a ticket and a receipt have to show.
+ *
+ * The platform fee is GST-inclusive: the visitor pays Rs.13 and Rs.13 is the
+ * number on every screen. The GST inside it is worked backwards from the rate
+ * rather than added on top, and stored on the ticket so the receipt states what
+ * was charged on the day, not what today's rate would make it.
+ *
+ * The entry fee carries no GST. It is collected for the department and passed
+ * on whole.
+ */
+async function breakdown(price) {
+  const gstPct = await settings.num('gst_percent_on_platform', 18);
+  const base = Math.round(price.platformPaise * 100 / (100 + gstPct));
+  return {
+    entry_paise: price.entryPaise,
+    platform_paise: price.platformPaise,
+    platform_base_paise: base,
+    gst_paise: price.platformPaise - base,
+    gst_percent: gstPct,
+    total_paise: price.entryPaise + price.platformPaise,
+  };
+}
+
+/** "113" or "113.50" — for places that print their own currency symbol. */
+const rs = (paise) => rupees(paise);
+
+module.exports = { forPlaceCategory, tariff, platformPercent, breakdown, rupees, rs };

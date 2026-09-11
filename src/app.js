@@ -21,11 +21,15 @@ app.use(cors());
 /* Mounted first, and with no body parser above it. See the note in the route. */
 app.use('/', require('./routes/whatsapp'));
 
-app.use(express.json({ limit: '1mb' }));
+/* rawBody is kept because the Razorpay webhook signs the exact bytes it sent,
+   and verifying against a re-serialised object never matches. */
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/', require('./routes/policy'));
 app.use('/', require('./routes/bookWeb'));
+app.use('/', require('./routes/checkout'));
+app.use('/', require('./routes/verify'));
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };
@@ -54,6 +58,7 @@ process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e)
 
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
+  require('./jobs/reconcile').start();
   console.log(`\nPravesha listening on :${PORT}`);
   console.log(`  public   ${process.env.PUBLIC_BASE_URL || '(PUBLIC_BASE_URL not set)'}`);
   console.log(`  webhook  ${process.env.PUBLIC_BASE_URL || ''}${require('./config/paths').PREFIX}/whatsapp/webhook`);

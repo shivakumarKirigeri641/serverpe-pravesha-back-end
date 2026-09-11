@@ -66,6 +66,35 @@ const S = {
   bookFooter: { en: 'Pravesha · Karnataka Tourism', kn: 'ಪ್ರವೇಶ · ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ' },
   bookCta: { en: 'Open booking form', kn: 'ಫಾರಮ್ ತೆರೆಯಿರಿ' },
 
+  /* ── the pass, as it arrives in the chat after payment ── */
+  passConfirmed: {
+    en: '✅ *Payment successful — your entry pass is confirmed*',
+    kn: '✅ *ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಿದೆ — ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ದೃಢಪಟ್ಟಿದೆ*',
+  },
+  passTitle: { en: '🎟️ *PRAVESHA ENTRY PASS*', kn: '🎟️ *ಪ್ರವೇಶ ಪಾಸ್*' },
+  passNo: { en: 'Pass No', kn: 'ಪಾಸ್ ಸಂಖ್ಯೆ' },
+  passStatus: { en: 'Status', kn: 'ಸ್ಥಿತಿ' },
+  passValid: { en: 'PAID · VALID', kn: 'ಪಾವತಿಸಲಾಗಿದೆ · ಮಾನ್ಯ' },
+  secVehicle: { en: '🚗 *Vehicle*', kn: '🚗 *ವಾಹನ*' },
+  vehType: { en: 'Type', kn: 'ಪ್ರಕಾರ' },
+  secVisit: { en: '📍 *Visit*', kn: '📍 *ಭೇಟಿ*' },
+  lastEntry: { en: 'Last entry', kn: 'ಕೊನೆಯ ಪ್ರವೇಶ' },
+  secPayment: { en: '💳 *Payment*', kn: '💳 *ಪಾವತಿ*' },
+  entryFee: { en: 'Entry fee', kn: 'ಪ್ರವೇಶ ಶುಲ್ಕ' },
+  platformFee: { en: 'Platform fee', kn: 'ಪ್ಲಾಟ್‌ಫಾರ್ಮ್ ಶುಲ್ಕ' },
+  totalPaid: { en: 'Total paid', kn: 'ಒಟ್ಟು ಪಾವತಿ' },
+  paymentId: { en: 'Payment ID', kn: 'ಪಾವತಿ ಐಡಿ' },
+  secCheckpost: { en: '🛂 *At the checkpost*', kn: '🛂 *ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ*' },
+  checkpostNote: {
+    en: 'No printout needed. Just drive up to the checkpost — staff will read your vehicle number and record your entry digitally.',
+    kn: 'ಮುದ್ರಿತ ಪ್ರತಿ ಬೇಕಿಲ್ಲ. ನೇರವಾಗಿ ಚೆಕ್‌ಪೋಸ್ಟ್‌ಗೆ ಬನ್ನಿ — ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ನೋಡಿ ಪ್ರವೇಶವನ್ನು ಡಿಜಿಟಲ್ ಆಗಿ ದಾಖಲಿಸುತ್ತಾರೆ.',
+  },
+  pdfAttached: { en: '📄 Your pass PDF is attached below.', kn: '📄 ನಿಮ್ಮ ಪಾಸ್ PDF ಕೆಳಗೆ ಲಗತ್ತಿಸಲಾಗಿದೆ.' },
+  pdfCaption: {
+    en: 'Pravesha entry pass {ticket} · {plate} · {date}',
+    kn: 'ಪ್ರವೇಶ ಪಾಸ್ {ticket} · {plate} · {date}',
+  },
+
   bookingSoon: {
     en: 'Booking opens next — place, slot, date and vehicle.',
     kn: 'ಕಾಯ್ದಿರಿಸುವಿಕೆ ಶೀಘ್ರದಲ್ಲೇ — ಸ್ಥಳ, ಸಮಯ, ದಿನಾಂಕ ಮತ್ತು ವಾಹನ.',

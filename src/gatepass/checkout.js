@@ -88,7 +88,7 @@ async function byToken(token) {
   if (!p) return null;
   const ticketId = p.raw?.ticket_id;
   const t = ticketId ? await one(
-    `SELECT t.*, pl.name AS place_name, s.label AS slot_label, c.label AS category_label
+    `SELECT t.*, pl.name AS place_name, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, c.label AS category_label
        FROM tickets t
        JOIN places pl ON pl.id = t.place_id
        JOIN place_slots s ON s.id = t.slot_id
@@ -184,7 +184,24 @@ async function fetchOrderPayments(orderId) {
   }
 }
 
+/**
+ * The payment as Razorpay recorded it: method, UPI id or card network, bank.
+ *
+ * The browser callback carries only ids, and "Paid by UPI · name@okaxis" on a
+ * pass is worth one extra call. A failure here costs the pass that detail and
+ * nothing else, so it returns null rather than throwing.
+ */
+async function fetchPayment(rzpPaymentId) {
+  if (!rzpPaymentId) return null;
+  try {
+    return await rzp().payments.fetch(rzpPaymentId);
+  } catch (e) {
+    console.error('[checkout] could not fetch payment %s: %s', rzpPaymentId, e.message);
+    return null;
+  }
+}
+
 module.exports = {
   keys, linkFor, byToken, ensureOrder, verifyCallback, verifyWebhook,
-  markPaid, markFailed, fetchOrderPayments, baseUrl,
+  markPaid, markFailed, fetchOrderPayments, fetchPayment, baseUrl,
 };

@@ -118,6 +118,10 @@ const SHELL = (title, body) => `<!doctype html>
   .fees .plus{display:block;font-size:11.5px;color:var(--muted)}
   .fees tr.mine td{background:rgba(0,168,132,.10)}
   .fees tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  .checkpost{margin-top:14px;border-radius:10px;padding:11px 13px;background:var(--okbg);
+             border:1px solid rgba(29,168,81,.35);border-left:3px solid var(--ok)}
+  .checkpost-h{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ok);margin-bottom:4px}
+  .checkpost p{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink)}
   .rules{margin-top:14px;border:1px solid var(--line);border-left:3px solid var(--warn);
          border-radius:10px;padding:11px 13px;background:var(--warnbg)}
   .rules-h{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
@@ -278,7 +282,14 @@ const BODY = (v) => `
   <div class="card hide" id="revCard">
     <div class="step"><span class="num">5</span>Review</div>
     <div id="review"></div>
+    <div class="checkpost">
+      <div class="checkpost-h">&#128706; At the checkpost</div>
+      <p>No printout needed. Just drive up to the checkpost &mdash; staff will read your vehicle
+      number and record your entry digitally. That&rsquo;s it.</p>
+    </div>
+    <div class="msg bad" id="payerr"></div>
     <div style="margin-top:14px"><button type="button" id="pay">Continue to payment</button></div>
+    <div class="hint" style="text-align:center">Secure payment by Razorpay &middot; your pass arrives on WhatsApp</div>
   </div>
 </form>
 <script src="/book/app.js?v=${v.scriptVersion}"></script>`;

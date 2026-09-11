@@ -223,7 +223,6 @@
     var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
     var dateName = $('date').selectedOptions[0].textContent;
     var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
-    var mk = [v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ');
     var tr = function (k, val, cls) {
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><th scope="row">' + k + '</th><td>' + val + '</td></tr>';
     };
@@ -241,8 +240,12 @@
       + tr('Destination', esc(placeName))
       + tr('Date of visit', esc(dateName))
       + tr('Time slot', esc(s.label))
+      + '</tbody></table></td></tr>'
+      + '<tr><td><table class="inner"><caption>Vehicle details</caption><tbody>'
       + tr('Vehicle number', '<span class="mono">' + esc(v.regNo) + '</span>')
-      + tr('Vehicle', esc(mk || '—'))
+      + tr('Manufacturer', esc(v.vehicle.make || '—'))
+      + tr('Model', esc(v.vehicle.model || '—'))
+      + tr('Variant', esc(v.vehicle.variant || '—'))
       + tr('Vehicle type', esc(TYPE[v.category.code] || v.category.label))
       + '</tbody></table></td></tr>'
       + '<tr><td><table class="inner pay"><caption>Payment details</caption><tbody>'
@@ -255,8 +258,39 @@
     $('revCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  /* Continue to payment. The server re-checks everything the form showed —
+     slot still open, place still free, vehicle still allowed, no pass already
+     held — then holds the place and returns the payment page. Anything it
+     refuses comes back as a sentence, shown above the button. */
   $('pay').addEventListener('click', function () {
-    alert('Payment is the next step — Razorpay checkout is already built and will be connected here.');
+    var v = state.vehicle, s = state.slot;
+    if (!v || !s) return;
+    var b = $('pay'), err = $('payerr');
+    b.disabled = true;
+    b.innerHTML = '<span class="spin"></span>Holding your place…';
+    show(err, false);
+
+    api('confirm', {
+      placeId: $('place').value, travelDate: $('date').value,
+      slotId: s.id, regNo: v.regNo
+    }).then(function (r) {
+      if (!r.ok) {
+        b.disabled = false; b.textContent = 'Continue to payment';
+        err.textContent = r.message || 'We could not continue. Please try again.';
+        show(err, true);
+        if (r.error === 'sold_out' || r.error === 'slot_closed') loadSlots();
+        return;
+      }
+      b.innerHTML = '<span class="spin"></span>Opening secure payment…';
+      window.location.href = r.payUrl;
+    }).catch(function (e) {
+      b.disabled = false; b.textContent = 'Continue to payment';
+      if (!(e && e.network)) report('confirm', e);
+      err.textContent = e && e.network
+        ? 'Could not reach the server. Please check your connection and try again.'
+        : 'This page needs refreshing. Please reload it and try again.';
+      show(err, true);
+    });
   });
 
   onPlace();

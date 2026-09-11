@@ -119,4 +119,69 @@ function ctaUrl(to, { body, header, footer, displayText, url }) {
   });
 }
 
-module.exports = { text, buttons, list, ctaUrl, post, record };
+/**
+ * A PDF, uploaded to WhatsApp first and then sent by media id.
+ *
+ * NOT BY LINK. A document message can point at a URL instead, but WhatsApp's
+ * servers then have to fetch it — through ngrok today, which serves an
+ * interstitial warning page to anything it does not recognise, and through
+ * whatever is in front of production later. Uploading the bytes removes every
+ * one of those from the path between a paid visitor and their pass.
+ *
+ * Takes a Buffer: the PDF is rendered in memory, so there is no file on disk to
+ * collide with another pass issued in the same second.
+ */
+async function document(to, buffer, { filename, caption } = {}) {
+  if (dry() || !enabled()) {
+    await record({ mobile: to, direction: 'out', type: 'document',
+      payload: { document: { filename, caption, bytes: buffer.length } },
+      body: caption, error: dry() ? 'dry_run' : 'replies_disabled' });
+    return { ok: true, dryRun: true };
+  }
+
+  let mediaId;
+  try {
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', 'application/pdf');
+    form.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
+    const up = await fetch(`${GRAPH}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+      body: form,
+      signal: AbortSignal.timeout(30000),
+    });
+    const j = await up.json().catch(() => ({}));
+    if (!j.id) {
+      const err = j.error?.message || `upload_http_${up.status}`;
+      console.error('[wa] media upload failed:', err);
+      await record({ mobile: to, direction: 'out', type: 'document', body: caption,
+        payload: { document: { filename } }, error: err });
+      return { ok: false, error: err };
+    }
+    mediaId = j.id;
+  } catch (e) {
+    console.error('[wa] media upload threw:', e.message);
+    return { ok: false, error: e.message };
+  }
+
+  return post(to, { type: 'document', document: { id: mediaId, filename, caption } });
+}
+
+/**
+ * Can we still send a free-form message to this number?
+ *
+ * WhatsApp allows it for 24 hours after the visitor's last message; after that
+ * only an approved template gets through, and anything else fails silently from
+ * the visitor's side. A payment normally lands minutes after they tapped Book,
+ * so this is almost always open — the check exists for the payment that the
+ * reconciler finds hours later.
+ */
+async function windowOpen(to) {
+  const r = await query(
+    `SELECT last_inbound_at > now() - interval '24 hours' AS open
+       FROM wa_sessions WHERE mobile = $1`, [phone.toLocal(to)]);
+  return !!(r.rows[0] && r.rows[0].open);
+}
+
+module.exports = { text, buttons, list, ctaUrl, document, windowOpen, post, record };

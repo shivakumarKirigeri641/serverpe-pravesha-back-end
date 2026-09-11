@@ -202,4 +202,88 @@ router.post('/book/:token/slots', express.json(), gate, safe(async (req, res) =>
   res.json({ ok: true, slots });
 }));
 
+/**
+ * Continue to payment: hold the place and hand over to Razorpay.
+ *
+ * EVERYTHING THE FORM ALREADY CHECKED IS CHECKED AGAIN HERE. The form is a
+ * convenience running on the visitor's phone; nothing it decided can be taken on
+ * trust. A slot can close between showing it and tapping Continue, a place can
+ * sell out, and a request can be crafted by hand. So the destination, the date,
+ * the slot's last entry, the vehicle's eligibility and the one-pass rule are all
+ * re-established from the database before a single place is held.
+ */
+router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) => {
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError,
+    message: 'This booking link has expired. Send hi on WhatsApp to start again.' });
+
+  const booking = require('../gatepass/booking');
+  const checkout = require('../gatepass/checkout');
+  const slotTime = require('../gatepass/slotTime');
+  const { query: q } = require('../gatepass/db');
+  const fail = (error, message, extra = {}) => res.json({ ok: false, error, message, ...extra });
+
+  const regNo = String(req.body.regNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const { placeId, slotId, travelDate } = req.body;
+
+  const place = await places.byId(placeId);
+  if (!place || !place.is_active) return fail('place_unavailable', 'Bookings for this destination are not open yet.');
+
+  const slot = await one('SELECT * FROM place_slots WHERE id = $1 AND place_id = $2 AND is_active', [slotId, place.id]);
+  if (!slot) return fail('slot_invalid', 'Please choose a time slot again.');
+
+  const allowedDates = places.bookableDates(place, (await places.list()).find((p) => String(p.id) === String(place.id)).slots)
+    .map((d) => d.value);
+  if (!allowedDates.includes(String(travelDate))) return fail('date_invalid', 'That date can no longer be booked. Please choose another date.');
+
+  const timing = slotTime.check(slot, travelDate);
+  if (!timing.bookable) return fail('slot_closed', 'That time slot has closed for today. Please choose another slot or date.');
+
+  const resolved = await vehicles.resolve(regNo, { customerId: req.customer.id });
+  if (!resolved.ok || !vehicles.isClassified(resolved.vehicle)) {
+    return fail('not_found', 'We could not verify that vehicle number. Please check it and try again.');
+  }
+  const verdict = await eligibility.decide(resolved.vehicle);
+  if (!verdict.allowed) return fail('not_permitted', verdict.reason);
+  if (verdict.unclassified) return fail('unclassified', 'We could not determine the vehicle type for that number.');
+
+  const existing = await booking.existingForDate(resolved.vehicle.id, travelDate);
+  if (existing && existing.status !== 'held') {
+    return fail('already_booked',
+      `${regNo} already has an entry pass for this date (${existing.slot_label}). Only one pass is allowed per vehicle per day.`);
+  }
+
+  /* The same visitor tapping Continue twice, or going back and changing the
+     slot, must not hold two places. Whatever this link held before is released
+     first; a held place belonging to somebody else's link is left alone. */
+  const prior = await one(
+    `SELECT t.id FROM web_tokens w JOIN tickets t ON t.id = w.ticket_id
+      WHERE w.token_hash = $1 AND t.status = 'held'`,
+    [require('crypto').createHash('sha256').update(req.params.token).digest('hex')]);
+  if (prior) await booking.releaseHold(prior.id);
+  if (existing && existing.status === 'held' && (!prior || String(prior.id) !== String(existing.id))) {
+    return fail('already_booked',
+      `A booking for ${regNo} on this date is already in progress. Please complete it or try again in a few minutes.`);
+  }
+
+  const held = await booking.hold({
+    customer: req.customer, vehicle: resolved.vehicle, place, slot,
+    categoryId: verdict.categoryId, travelDate,
+  });
+  if (!held.ok) {
+    const msg = {
+      sold_out: 'That slot has just sold out for your vehicle type. Please choose another slot or date.',
+      already_booked: `${regNo} already has an entry pass for this date. Only one pass is allowed per vehicle per day.`,
+      no_price: 'No fare is configured for this vehicle at this destination.',
+    }[held.reason] || 'We could not hold your place. Please try again.';
+    return fail(held.reason, msg);
+  }
+
+  await q('UPDATE web_tokens SET ticket_id = $2 WHERE token_hash = $1',
+    [require('crypto').createHash('sha256').update(req.params.token).digest('hex'), held.ticket.id]);
+
+  const payUrl = await checkout.linkFor(held.ticket);
+  res.json({ ok: true, ticketNo: held.ticket.ticket_no, payUrl,
+    holdMinutes: await inventory.holdMinutes() });
+}));
+
 module.exports = router;
