@@ -74,6 +74,10 @@ const CLASS = {
 const MIX = [['BIKE', 0.32], ['CAR', 0.52], ['TOOFAN', 0.1], ['TT', 0.06]];
 
 const pick = (arr) => arr[crypto.randomInt(arr.length)];
+
+const FIRST_NAMES = ['Anita', 'Suresh', 'Nagaraj', 'Divya', 'Imran', 'Lakshmi', 'Girish', 'Pooja', 'Ravi', 'Kavya',
+  'Manjunath', 'Shruti', 'Arjun', 'Meera', 'Prakash', 'Sneha', 'Harish', 'Asha', 'Vinay', 'Rekha', 'Sameer',
+  'Nandini', 'Kiran', 'Deepa', 'Mahesh', 'Farhan', 'Bhavya', 'Rohit', 'Chaitra', 'Santosh'];
 const chance = (p) => Math.random() < p;
 
 function weighted(mix) {
@@ -199,7 +203,47 @@ async function seedBookings(vehicles, categories) {
   const place = await one(`SELECT * FROM places WHERE code = 'MULLAYANAGIRI'`);
   const slots = (await query(`SELECT * FROM place_slots WHERE place_id = $1 AND is_active ORDER BY starts_at`, [place.id])).rows;
   const checkpost = await one(`SELECT * FROM checkposts WHERE place_id = $1 LIMIT 1`, [place.id]);
-  const staff = await one(`SELECT * FROM staff ORDER BY id LIMIT 1`);
+  /* Every active staff member takes a share of the checks — one person doing
+     sixteen thousand of them makes staff analytics untestable. */
+  const staffList = (await query(`SELECT * FROM staff WHERE is_active ORDER BY id`)).rows;
+  const pickStaff = () => (staffList.length ? pick(staffList) : null);
+
+  /*
+   * VISITORS COME BACK. Each vehicle belongs to an owner — some owners have two
+   * — and vehicles are drawn by a long-tailed popularity, so a few are regulars,
+   * many come a handful of times and most come once. A new visitor for every
+   * booking would make every analytics band read "first-time".
+   */
+  const owners = [];
+  for (let i = 0; i < vehicles.length; i += 1) {
+    const shareWithPrevious = i > 0 && i % 5 === 4;
+    if (shareWithPrevious) { vehicles[i].owner = vehicles[i - 1].owner; continue; }
+    const mobile = `9${String(crypto.randomInt(100000000, 999999999)).padStart(9, '0')}`;
+    const owner = await one(
+      `INSERT INTO customers (mobile, name, language, is_test)
+       VALUES ($1,$2,$3,true)
+       ON CONFLICT (mobile) DO UPDATE SET is_test = true
+       RETURNING id, mobile`,
+      [mobile,
+        `${pick(FIRST_NAMES)} ${pick(['R', 'K', 'B', 'S', 'P', 'V', 'M', 'N', 'G', 'H'])}`,
+        chance(0.35) ? 'kn' : 'en']);
+    vehicles[i].owner = owner;
+    owners.push(owner);
+  }
+
+  /* Popularity: weight 1 / rank^1.1, shuffled across the fleet. */
+  const order = vehicles.map((_, i) => i).sort(() => Math.random() - 0.5);
+  const weights = new Array(vehicles.length);
+  order.forEach((vehicleIndex, rank) => { weights[vehicleIndex] = 1 / Math.pow(rank + 1, 1.1); });
+  const cumulative = [];
+  weights.reduce((acc, w, i) => { cumulative[i] = acc + w; return cumulative[i]; }, 0);
+  const totalWeight = cumulative[cumulative.length - 1];
+  const pickVehicle = () => {
+    const r = Math.random() * totalWeight;
+    let lo = 0; let hi = cumulative.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cumulative[mid] < r) lo = mid + 1; else hi = mid; }
+    return vehicles[lo];
+  };
 
   const prices = {};
   for (const [code, cat] of Object.entries(categories)) {
@@ -236,19 +280,14 @@ async function seedBookings(vehicles, categories) {
       : Math.max(1, Math.round(vehicles.length * (isWeekend(travelDate) ? 0.5 : 0.28) * (0.75 + Math.random() * 0.5) / DAYS));
 
     for (let i = 0; i < wanted; i += 1) {
-      const vehicle = pick(vehicles);
+      const vehicle = pickVehicle();
       if (taken.has(`${vehicle.id}:${travelDate}`)) { clashes += 1; continue; }
       taken.add(`${vehicle.id}:${travelDate}`);
-      const slot = pick(slots);
-      const mobile = `9${String(crypto.randomInt(100000000, 999999999)).padStart(9, '0')}`;
-
-      const customer = await one(
-        `INSERT INTO customers (mobile, name, language, is_test)
-         VALUES ($1,$2,$3,true)
-         ON CONFLICT (mobile) DO UPDATE SET name = EXCLUDED.name
-         RETURNING id, mobile`,
-        [mobile, pick(['Anita R', 'Suresh K', 'Nagaraj B', 'Divya S', 'Imran P', 'Lakshmi V', 'Girish M', 'Pooja N']),
-          chance(0.35) ? 'kn' : 'en']);
+      /* People have a usual slot; most bookings keep to it. */
+      const slot = vehicle.usualSlot && chance(0.75) ? vehicle.usualSlot : pick(slots);
+      if (!vehicle.usualSlot) vehicle.usualSlot = slot;
+      /* The owner books, almost always; now and then a friend books their car. */
+      const customer = chance(0.92) || !owners.length ? vehicle.owner : pick(owners);
 
       /* Most people book a few days ahead; some on the morning itself. A pass
          for a future date cannot have been bought after today, so the purchase
@@ -280,7 +319,7 @@ async function seedBookings(vehicles, categories) {
       if (!out) continue;
       made += 1;
       if (future) upcoming += 1;
-      if (willEnter) { entered += 1; scans.push({ ticket: out.ticket, vehicle, at: enterAt, verdict: chance(0.05) ? 'valid_override' : 'valid' }); }
+      if (willEnter) { entered += 1; scans.push({ ticket: out.ticket, vehicle, at: enterAt, staffId: pickStaff()?.id || null, verdict: chance(0.05) ? 'valid_override' : 'valid' }); }
       else if (past) skipped += 1;
     }
   }
@@ -292,7 +331,7 @@ async function seedBookings(vehicles, categories) {
       `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at,
                           raw_payload, duration_ms, is_test)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
-      [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, staff?.id || null,
+      [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, s.staffId,
         s.verdict, s.at, JSON.stringify({ seeded: true }), checkDuration()]);
 
     /* Roughly one in twelve is presented a second time — the duplicate case. */
@@ -301,7 +340,7 @@ async function seedBookings(vehicles, categories) {
         `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at,
                             raw_payload, duration_ms, is_test)
          VALUES ($1,$2,$3,$4,$5,'already_used',$6,$7,$8,true)`,
-        [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, staff?.id || null,
+        [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, s.staffId,
           s.at, JSON.stringify({ seeded: true }), checkDuration()]);
     }
   }
@@ -313,7 +352,7 @@ async function seedBookings(vehicles, categories) {
     await query(
       `INSERT INTO scans (reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, duration_ms, is_test)
        VALUES ($1,$2,$3,'unknown_ticket', $4, $5, $6, true)`,
-      [v.reg_no, checkpost?.id || null, staff?.id || null,
+      [v.reg_no, checkpost?.id || null, pickStaff()?.id || null,
         `${today0}T${String(crypto.randomInt(7, 17)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`,
         JSON.stringify({ seeded: true }), checkDuration()]);
   }

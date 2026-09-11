@@ -17,6 +17,7 @@ const express = require('express');
 const admin = require('../gatepass/admin');
 const stats = require('../gatepass/adminStats');
 const liveStats = require('../gatepass/adminLive');
+const analytics = require('../gatepass/adminAnalytics');
 const slotTime = require('../gatepass/slotTime');
 
 const router = express.Router();
@@ -136,6 +137,79 @@ router.get(`${P}/live/activity`, auth, safe(async (req, res) => {
     rows: out.rows.map(liveStats.shapeActivity),
     hasMore: out.hasMore,
     nextCursor: out.nextCursor,
+  });
+}));
+
+/* ─────────────────────────────────────────────────────── analytics ── */
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A range from the query, clamped to today and to a sane span. */
+function range(req, defaultDays = 29) {
+  const today = slotTime.nowIST().date;
+  let to = DATE.test(String(req.query.to || '')) ? String(req.query.to) : today;
+  if (to > today) to = today;
+  let from = DATE.test(String(req.query.from || '')) ? String(req.query.from) : analytics.shiftDay(to, -defaultDays);
+  if (from > to) from = to;
+  /* Two years is far more than anybody will ask for and stops a hand-typed URL
+     from asking the database to scan everything. */
+  const earliest = analytics.shiftDay(to, -730);
+  if (from < earliest) from = earliest;
+  return { from, to, today };
+}
+
+/* Totals, peaks, the day table, visitor bands and staff, for one range. */
+router.get(`${P}/analytics`, auth, safe(async (req, res) => {
+  const { from, to } = range(req);
+  res.json({ ok: true, ...(await analytics.overview({ from, to })) });
+}));
+
+/* The visitor list: searchable by number, name or vehicle. */
+router.get(`${P}/analytics/visitors`, auth, safe(async (req, res) => {
+  const rows = await analytics.visitors({
+    q: req.query.q || null,
+    band: req.query.band || null,
+    limit: req.query.limit,
+    offset: req.query.offset,
+  });
+  res.json({ ok: true, visitors: rows, bands: await analytics.visitorBands() });
+}));
+
+/* One visitor's passes. */
+router.get(`${P}/analytics/visitor/:id`, auth, safe(async (req, res) => {
+  const found = await analytics.visitorVisits(req.params.id);
+  if (!found) return res.status(404).json({ error: 'not_found', message: 'No such visitor.' });
+  res.json({ ok: true, ...found });
+}));
+
+/* One vehicle, in full. */
+router.get(`${P}/analytics/vehicle/:regNo`, auth, safe(async (req, res) => {
+  const found = await analytics.vehicle(req.params.regNo);
+  if (!found) {
+    return res.status(404).json({ error: 'not_found',
+      message: 'No vehicle with that number has been looked up or booked here.' });
+  }
+  res.json({ ok: true, ...found });
+}));
+
+/*
+ * Two ranges side by side. A preset names the common pairs so nobody has to
+ * choose four dates to answer "how is this week against last".
+ */
+router.get(`${P}/analytics/compare`, auth, safe(async (req, res) => {
+  const today = slotTime.nowIST().date;
+  const sets = analytics.presets(today);
+  const preset = sets[String(req.query.preset || '')];
+
+  const pick = (key, fallback) => (DATE.test(String(req.query[key] || '')) ? String(req.query[key]) : fallback);
+  const [aFrom, aTo] = preset ? preset.a : [pick('from', today), pick('to', today)];
+  const [bFrom, bTo] = preset ? preset.b : [pick('againstFrom', analytics.shiftDay(today, -1)), pick('againstTo', analytics.shiftDay(today, -1))];
+
+  res.json({
+    ok: true,
+    preset: preset ? String(req.query.preset) : 'custom',
+    presets: Object.entries(sets).map(([key, v]) => ({ key, label: v.label })),
+    ...(await analytics.compare(aFrom, aTo, bFrom, bTo)),
   });
 }));
 
