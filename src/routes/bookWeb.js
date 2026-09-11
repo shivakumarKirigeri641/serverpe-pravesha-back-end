@@ -290,7 +290,11 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
   const place = await places.byId(placeId);
   if (!place || !place.is_active) return fail('place_unavailable', 'Bookings for this destination are not open yet.');
 
-  const slot = await one('SELECT * FROM place_slots WHERE id = $1 AND place_id = $2 AND is_active', [slotId, place.id]);
+  /* Refused if the slot is closed for that date, whatever the form was showing. */
+  const slot = await one(
+    `SELECT * FROM place_slots WHERE id = $1 AND place_id = $2 AND is_active
+        AND (valid_from IS NULL OR valid_from <= $3::date) AND (valid_to IS NULL OR valid_to >= $3::date)`,
+    [slotId, place.id, travelDate]);
   if (!slot) return fail('slot_invalid', 'Please choose a time slot again.');
 
   const allowedDates = (await places.bookableDates(place, (await places.list()).find((p) => String(p.id) === String(place.id)).slots))

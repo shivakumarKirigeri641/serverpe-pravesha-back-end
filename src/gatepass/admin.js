@@ -12,11 +12,9 @@
  * the account for a quarter of an hour, counted on the row, so trying another
  * browser does not help.
  *
- * ROLES, kept to the three the department will actually ask for:
- *   admin       everything, including settings, prices and staff
- *   department  sees everything, and may operate (closures, cancellations)
- *   viewer      reads only — the account you hand to somebody for a demo
- * The route layer enforces them; this module only reports the role.
+ * ROLES — super admin, admin, checkpost manager, finance, viewer — and what
+ * each may do are defined once in permissions.js. The route layer enforces them;
+ * this module only reports the role.
  */
 
 const crypto = require('crypto');
@@ -27,16 +25,10 @@ const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 const MAX_ATTEMPTS = 5;
 const MIN_PASSWORD = 8;
 
-const ROLES = ['admin', 'department', 'viewer'];
-
-/* What each role may do. Read is implied by having a session at all. */
-const CAN = {
-  admin: new Set(['operate', 'configure', 'manage_staff', 'read_personal']),
-  department: new Set(['operate', 'read_personal']),
-  viewer: new Set([]),
-};
-
-const can = (role, what) => (CAN[role] || CAN.viewer).has(what);
+/* Roles and what they may do live in permissions.js, shared with the panel. */
+const permissions = require('./permissions');
+const ROLES = Object.keys(permissions.ROLES);
+const can = permissions.can;
 
 const scrypt = (password, salt) =>
   new Promise((resolve, reject) =>
@@ -137,11 +129,16 @@ const signOut = (token) =>
  * action it describes — the alternative is a price change rolled back because
  * the log was busy. A failure is logged loudly instead.
  */
-async function audit({ adminId, action, subject = null, detail = {}, ip = null }) {
+async function audit({ adminId, action, subject = null, detail = {}, ip = null,
+  before = undefined, after = undefined, reason = null, sessionId = null }) {
   try {
     await query(
-      `INSERT INTO admin_audit (admin_id, action, subject, detail, ip) VALUES ($1,$2,$3,$4,$5)`,
-      [adminId || null, action, subject, JSON.stringify(detail || {}), ip]);
+      `INSERT INTO admin_audit (admin_id, action, subject, detail, ip, before_value, after_value, reason, session_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [adminId || null, action, subject, JSON.stringify(detail || {}), ip,
+        before === undefined ? null : JSON.stringify(before),
+        after === undefined ? null : JSON.stringify(after),
+        reason || null, sessionId || null]);
   } catch (e) {
     console.error('[admin] audit %s failed: %s', action, e.message);
   }

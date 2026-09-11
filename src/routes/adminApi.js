@@ -58,6 +58,36 @@ const needs = (capability) => (req, res, next) => {
   next();
 };
 
+/*
+ * Money totals are for roles that may see finances. Everyone else gets the same
+ * screen without them — revenue, collections, GST and the split — rather than a
+ * refusal, and `financeHidden` tells the panel to say so instead of showing ₹0.
+ * The price of an individual pass is not a total and stays visible.
+ */
+const seesMoney = (req) => admin.can(req.admin.role, 'finance.view');
+const MONEY_KEYS = ['collected', 'department', 'serviceFee', 'gst', 'gateway', 'refunds', 'passValue', 'revenue'];
+const dropKeys = (rows, keys = MONEY_KEYS) => (rows || []).map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))));
+
+function withoutMoney(kind, body) {
+  const out = { ...body, financeHidden: true };
+  if (kind === 'dashboard') {
+    delete out.revenue;
+    out.trend = dropKeys(out.trend);
+  } else if (kind === 'analytics') {
+    if (out.traffic) out.traffic = { ...out.traffic, value: undefined };
+    out.daily = dropKeys(out.daily);
+  } else if (kind === 'compare') {
+    delete out.revenue;
+  } else if (kind === 'report') {
+    delete out.finance;
+    out.vehicles = dropKeys(out.vehicles);
+    out.daily = dropKeys(out.daily);
+    out.weekly = dropKeys(out.weekly);
+  }
+  return out;
+}
+const money = (req, kind, body) => (seesMoney(req) ? body : withoutMoney(kind, body));
+
 const me = (s) => ({
   id: String(s.admin_id),
   name: s.name,
@@ -65,11 +95,13 @@ const me = (s) => ({
   role: s.role,
   /* The panel hides what it cannot use, and the routes refuse it regardless. */
   can: {
-    operate: admin.can(s.role, 'operate'),
-    configure: admin.can(s.role, 'configure'),
-    manageStaff: admin.can(s.role, 'manage_staff'),
-    readPersonal: admin.can(s.role, 'read_personal'),
+    operate: admin.can(s.role, 'negative.act'),
+    configure: admin.can(s.role, 'conversations.technical'),
+    manageStaff: admin.can(s.role, 'settings.staff'),
+    readPersonal: admin.can(s.role, 'conversations.view'),
   },
+  roleLabel: (require('../gatepass/permissions').ROLES[s.role] || {}).label || s.role,
+  capabilities: require('../gatepass/permissions').capabilitiesOf(s.role),
   signedInAt: s.started_at,
 });
 
@@ -104,7 +136,7 @@ router.delete(`${P}/session`, auth, safe(async (req, res) => {
  * has not happened. The panel hides the way there; this refuses it outright, so
  * a typed URL or a stale tab cannot get there either.
  */
-router.get(`${P}/dashboard`, auth, safe(async (req, res) => {
+router.get(`${P}/dashboard`, auth, needs('dashboard.view'), safe(async (req, res) => {
   const asked = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
   const today = slotTime.nowIST().date;
 
@@ -112,7 +144,7 @@ router.get(`${P}/dashboard`, auth, safe(async (req, res) => {
     return res.status(400).json({ error: 'future_date', today,
       message: 'The dashboard reports on today and earlier days only.' });
   }
-  res.json({ ok: true, ...(await stats.dashboard({ date: asked })) });
+  res.json({ ok: true, ...money(req, 'dashboard', await stats.dashboard({ date: asked })) });
 }));
 
 /*
@@ -120,7 +152,7 @@ router.get(`${P}/dashboard`, auth, safe(async (req, res) => {
  * it is one call rather than nine, it never caches, and it always reports now —
  * there is no date parameter, because "live" for a past day is a contradiction.
  */
-router.get(`${P}/live`, auth, safe(async (req, res) => {
+router.get(`${P}/live`, auth, needs('live.view'), safe(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ ok: true, ...(await liveStats.live()) });
 }));
@@ -132,7 +164,7 @@ router.get(`${P}/live`, auth, safe(async (req, res) => {
  * and an offset of 25 means something different each time one arrives — page two
  * would repeat rows page one already showed.
  */
-router.get(`${P}/live/activity`, auth, safe(async (req, res) => {
+router.get(`${P}/live/activity`, auth, needs('live.view'), safe(async (req, res) => {
   const out = await liveStats.activity({
     limit: req.query.limit,
     /* '<iso time>|<id>', as handed back by the previous page. */
@@ -165,13 +197,13 @@ function range(req, defaultDays = 29) {
 }
 
 /* Totals, peaks, the day table, visitor bands and staff, for one range. */
-router.get(`${P}/analytics`, auth, safe(async (req, res) => {
+router.get(`${P}/analytics`, auth, needs('analytics.view'), safe(async (req, res) => {
   const { from, to } = range(req);
-  res.json({ ok: true, ...(await analytics.overview({ from, to })) });
+  res.json({ ok: true, ...money(req, 'analytics', await analytics.overview({ from, to })) });
 }));
 
 /* The visitor list: searchable by number, name or vehicle. */
-router.get(`${P}/analytics/visitors`, auth, safe(async (req, res) => {
+router.get(`${P}/analytics/visitors`, auth, needs('analytics.view'), safe(async (req, res) => {
   const rows = await analytics.visitors({
     q: req.query.q || null,
     band: req.query.band || null,
@@ -182,14 +214,14 @@ router.get(`${P}/analytics/visitors`, auth, safe(async (req, res) => {
 }));
 
 /* One visitor's passes. */
-router.get(`${P}/analytics/visitor/:id`, auth, safe(async (req, res) => {
+router.get(`${P}/analytics/visitor/:id`, auth, needs('analytics.view'), safe(async (req, res) => {
   const found = await analytics.visitorVisits(req.params.id);
   if (!found) return res.status(404).json({ error: 'not_found', message: 'No such visitor.' });
   res.json({ ok: true, ...found });
 }));
 
 /* One vehicle, in full. */
-router.get(`${P}/analytics/vehicle/:regNo`, auth, safe(async (req, res) => {
+router.get(`${P}/analytics/vehicle/:regNo`, auth, needs('analytics.view'), safe(async (req, res) => {
   const found = await analytics.vehicle(req.params.regNo);
   if (!found) {
     return res.status(404).json({ error: 'not_found',
@@ -202,7 +234,7 @@ router.get(`${P}/analytics/vehicle/:regNo`, auth, safe(async (req, res) => {
  * Two ranges side by side. A preset names the common pairs so nobody has to
  * choose four dates to answer "how is this week against last".
  */
-router.get(`${P}/analytics/compare`, auth, safe(async (req, res) => {
+router.get(`${P}/analytics/compare`, auth, needs('analytics.view'), safe(async (req, res) => {
   const today = slotTime.nowIST().date;
   const sets = analytics.presets(today);
   const preset = sets[String(req.query.preset || '')];
@@ -215,13 +247,13 @@ router.get(`${P}/analytics/compare`, auth, safe(async (req, res) => {
     ok: true,
     preset: preset ? String(req.query.preset) : 'custom',
     presets: Object.entries(sets).map(([key, v]) => ({ key, label: v.label })),
-    ...(await analytics.compare(aFrom, aTo, bFrom, bTo)),
+    ...money(req, 'compare', await analytics.compare(aFrom, aTo, bFrom, bTo)),
   });
 }));
 
 /* ──────────────────────────────────────────────────── conversations ── */
 
-router.get(`${P}/conversations`, auth, safe(async (req, res) => {
+router.get(`${P}/conversations`, auth, needs('conversations.view'), safe(async (req, res) => {
   res.set('Cache-Control', 'no-store').json({
     ok: true,
     conversations: await conversations.list({ q: req.query.q || null, limit: req.query.limit, offset: req.query.offset }),
@@ -233,8 +265,8 @@ router.get(`${P}/conversations`, auth, safe(async (req, res) => {
  * session identifiers — is included only for a role that may configure the
  * system, and every time it is, the viewing is written to the audit trail.
  */
-router.get(`${P}/conversations/:id`, auth, safe(async (req, res) => {
-  const technical = admin.can(req.admin.role, 'configure');
+router.get(`${P}/conversations/:id`, auth, needs('conversations.view'), safe(async (req, res) => {
+  const technical = admin.can(req.admin.role, 'conversations.technical');
   const found = await conversations.thread(req.params.id, { technical });
   if (!found) return res.status(404).json({ error: 'not_found', message: 'No such conversation.' });
   if (technical) {
@@ -254,8 +286,8 @@ function reportPeriod(q) {
 }
 
 /* The figures, for the screen. Not registered: looking is not issuing. */
-router.get(`${P}/reports`, auth, safe(async (req, res) => {
-  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await reports.build(reportPeriod(req.query))) });
+router.get(`${P}/reports`, auth, needs('reports.view'), safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...money(req, 'report', await reports.build(reportPeriod(req.query))) });
 }));
 
 /*
@@ -266,7 +298,13 @@ router.get(`${P}/reports`, auth, safe(async (req, res) => {
  * period, its author, its moment and a fingerprint of its figures. The
  * download itself is written to the audit trail.
  */
-router.get(`${P}/reports/download`, auth, safe(async (req, res) => {
+router.get(`${P}/reports/download`, auth, needs('reports.view'), safe(async (req, res) => {
+  /* An issued report is a financial document too: its collections, GST and
+     split cannot be cut out of a registered, fingerprinted file. */
+  if (!seesMoney(req)) {
+    return res.status(403).json({ error: 'not_allowed',
+      message: 'Issued reports include revenue and GST, so downloading them needs finance access. The figures on screen are yours to use.' });
+  }
   const format = ['pdf', 'xlsx', 'csv'].includes(String(req.query.format)) ? String(req.query.format) : 'pdf';
   const report = await reports.build(reportPeriod(req.query));
   const { reportNo, generatedAt } = await reports.register({
@@ -305,7 +343,7 @@ router.get(`${P}/reports/download`, auth, safe(async (req, res) => {
 }));
 
 /* The register of reports issued, newest first. */
-router.get(`${P}/reports/history`, auth, safe(async (req, res) => {
+router.get(`${P}/reports/history`, auth, needs('reports.view'), safe(async (req, res) => {
   const { rows } = await require('../gatepass/db').query(
     `SELECT r.report_no, r.kind, r.period_from, r.period_to, r.format, r.generated_at, r.bytes, a.name AS generated_by
        FROM admin_reports r LEFT JOIN admin_users a ON a.id = r.generated_by
@@ -323,12 +361,12 @@ router.get(`${P}/reports/history`, auth, safe(async (req, res) => {
 const ipOf = (req) => (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
 
 /* Today against yesterday at this hour, the suspects, and abuse patterns. */
-router.get(`${P}/negative`, auth, safe(async (req, res) => {
+router.get(`${P}/negative`, auth, needs('negative.view'), safe(async (req, res) => {
   res.set('Cache-Control', 'no-store').json({ ok: true, ...(await negative.overview()) });
 }));
 
 /* The event feed: filterable by category, dates and a search, paged by cursor. */
-router.get(`${P}/negative/events`, auth, safe(async (req, res) => {
+router.get(`${P}/negative/events`, auth, needs('negative.view'), safe(async (req, res) => {
   const date = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
   const category = Object.keys(negative.CATEGORY).includes(String(req.query.category)) ? String(req.query.category) : null;
   res.set('Cache-Control', 'no-store').json({
@@ -340,20 +378,20 @@ router.get(`${P}/negative/events`, auth, safe(async (req, res) => {
   });
 }));
 
-router.get(`${P}/negative/vehicle/:regNo`, auth, safe(async (req, res) => {
+router.get(`${P}/negative/vehicle/:regNo`, auth, needs('negative.view'), safe(async (req, res) => {
   const found = await negative.vehicleProfile(req.params.regNo);
   if (!found) return res.status(404).json({ error: 'not_found', message: 'No activity recorded for that vehicle.' });
   res.json({ ok: true, ...found });
 }));
 
-router.get(`${P}/negative/visitor/:id`, auth, safe(async (req, res) => {
+router.get(`${P}/negative/visitor/:id`, auth, needs('negative.view'), safe(async (req, res) => {
   const found = await negative.visitorProfile(req.params.id);
   if (!found) return res.status(404).json({ error: 'not_found', message: 'No such visitor.' });
   res.json({ ok: true, ...found });
 }));
 
 /* A decision about something: reviewed, dismissed, escalated, or a note. */
-router.post(`${P}/negative/review`, json, auth, needs('operate'), safe(async (req, res) => {
+router.post(`${P}/negative/review`, json, auth, needs('negative.act'), safe(async (req, res) => {
   const { subjectType, subjectId, action, note } = req.body || {};
   if (!['scan', 'payment', 'ticket', 'vehicle', 'customer'].includes(subjectType) || !subjectId) {
     return res.status(400).json({ error: 'bad_subject', message: 'Choose what is being reviewed.' });
@@ -374,7 +412,7 @@ router.post(`${P}/negative/review`, json, auth, needs('operate'), safe(async (re
  * Block or unblock a visitor. A reason is required to block: a number stopped
  * from booking with no reason on record is indistinguishable from a mistake.
  */
-router.post(`${P}/negative/visitor/:id/block`, json, auth, needs('operate'), safe(async (req, res) => {
+router.post(`${P}/negative/visitor/:id/block`, json, auth, needs('visitors.block'), safe(async (req, res) => {
   const blocked = req.body?.blocked !== false;
   const reason = String(req.body?.reason || '').trim();
   if (blocked && reason.length < 5) {

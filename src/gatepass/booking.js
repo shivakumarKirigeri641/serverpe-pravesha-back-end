@@ -250,6 +250,6 @@ const byTicketNo = (no) => full('t.ticket_no = ANY($1::text[])', [passNumberCand
 const byReference = (ref) => full('t.reference_id = $1', [ref]);
 
 module.exports = {
-  passNumberCandidates, referenceId, existingForDate, hold, markPaid, releaseHold,
+  nextSeq, passNumberCandidates, referenceId, existingForDate, hold, markPaid, releaseHold,
   byId, byTicketNo, byReference, forCustomer,
 };

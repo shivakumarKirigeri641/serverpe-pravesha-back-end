@@ -72,8 +72,12 @@ async function available(placeId, slotId, categoryId, travelDate) {
  */
 async function forDate(placeId, categoryId, travelDate) {
   const slots = await query(
+    /* A slot with opening or closing dates is only offered between them. */
     `SELECT id, code, regexp_replace(label, '[[:space:]]+', ' ', 'g') AS label, starts_at, ends_at FROM place_slots
-      WHERE place_id=$1 AND is_active ORDER BY sort_order`, [placeId]);
+      WHERE place_id=$1 AND is_active
+        AND (valid_from IS NULL OR valid_from <= $2::date)
+        AND (valid_to IS NULL OR valid_to >= $2::date)
+      ORDER BY sort_order`, [placeId, travelDate]);
 
   const out = [];
   for (const s of slots.rows) {

@@ -29,4 +29,8 @@ async function num(key, fallback = null) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-module.exports = { str, num, all };
+/** Forget the cached values — called straight after the panel changes one, so
+    the next booking uses the new number rather than waiting out the minute. */
+function clear() { cache = { at: 0, map: new Map() }; }
+
+module.exports = { str, num, all, clear };

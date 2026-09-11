@@ -19,7 +19,8 @@ async function list() {
     `SELECT p.id, p.code, p.name, p.district, p.booking_days_ahead, p.is_active,
             COALESCE(json_agg(json_build_object(
               'id', s.id, 'code', s.code, 'label', s.label,
-              'starts_at', s.starts_at, 'ends_at', s.ends_at
+              'starts_at', s.starts_at, 'ends_at', s.ends_at,
+              'valid_from', s.valid_from, 'valid_to', s.valid_to
             ) ORDER BY s.sort_order) FILTER (WHERE s.id IS NOT NULL), '[]') AS slots
        FROM places p
        LEFT JOIN place_slots s ON s.place_id = p.id AND s.is_active

@@ -30,12 +30,15 @@ function financialYear(at = new Date()) {
  * "PRV/26-27/000001" — sixteen characters, the most a GST invoice number may
  * carry, using only the separators the rules allow.
  */
-const formatNo = (seq, at) => `PRV/${financialYear(at)}/${String(seq).padStart(6, '0')}`;
+const formatNo = (seq, at, prefix = 'PRV') => `${prefix}/${financialYear(at)}/${String(seq).padStart(6, '0')}`;
 
 async function issue(ticketId) {
   const gstPct = await settings.num('gst_percent_on_platform', 18);
   const sac = await settings.str('sac_code', '998559');
   const pos = await settings.str('place_of_supply', '29-Karnataka');
+  /* The prefix is a setting; its length is validated where it is changed, so the
+     number stays within the sixteen characters a GST invoice number may carry. */
+  const prefix = await settings.str('invoice_prefix', 'PRV');
 
   return tx(async (client) => {
     const t = (await client.query('SELECT * FROM tickets WHERE id = $1 FOR UPDATE', [ticketId])).rows[0];
@@ -53,7 +56,7 @@ async function issue(ticketId) {
       `INSERT INTO invoices (invoice_no, ticket_id, customer_id, entry_paise, service_paise,
                              taxable_paise, gst_paise, total_paise, gst_percent, place_of_supply, sac_code)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [formatNo(seq), t.id, t.customer_id, t.entry_paise, service, taxable, service - taxable,
+      [formatNo(seq, undefined, prefix), t.id, t.customer_id, t.entry_paise, service, taxable, service - taxable,
        t.total_paise, gstPct, pos, sac]);
     return r.rows[0];
   });
