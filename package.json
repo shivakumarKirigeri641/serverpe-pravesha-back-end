@@ -1,0 +1,50 @@
+{
+  "name": "serverpe-pravesha-back-end",
+  "version": "1.0.0",
+  "description": "Back end application for serverpe SaaS",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon src/app.js",
+    "dev": "nodemon src/app.js",
+    "db:create": "node scripts/create-db.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:check": "node scripts/migrate.js --check",
+    "db:setup": "node scripts/create-db.js && node scripts/migrate.js",
+    "reset": "node scripts/reset-data.js",
+    "reset:yes": "node scripts/reset-data.js --yes",
+    "flow:push": "node scripts/make-flow.js",
+    "flow:list": "node scripts/make-flow.js --list",
+    "flow:keys": "node scripts/make-flow-keys.js --check",
+    "admin:create": "node scripts/create-admin.js",
+    "staff:seed": "node scripts/seed-demo-staff.js",
+    "test:flow": "node scripts/test-flow.js",
+    "test:booking": "node scripts/test-booking.js",
+    "test:scanner": "node scripts/test-scanner.js",
+    "start:dry": "node -e \"process.env.WHATSAPP_DRY_RUN=String(true);require(\\\"./src/app.js\\\")\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shivakumarKirigeri641/serverpe-back-end.git"
+  },
+  "author": "Shivakumar Kirigeri",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/shivakumarKirigeri641/serverpe-back-end/issues"
+  },
+  "homepage": "https://github.com/shivakumarKirigeri641/serverpe-back-end#readme",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
+    "axios": "^1.15.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemailer": "^8.0.5",
+    "nodemon": "^3.1.14",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.20.0",
+    "pptxgenjs": "^4.0.1",
+    "razorpay": "^2.9.8"
+  }
+}

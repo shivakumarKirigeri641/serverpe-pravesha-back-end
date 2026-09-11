@@ -1,0 +1,311 @@
+/**
+ * routes/checkout.js — the payment page and the ways it can be confirmed.
+ *
+ * The page is deliberately plain and self-contained: one screen, the amount,
+ * one button. It is opened from a WhatsApp link on a phone that may be on a
+ * hill road, so there is no framework, no font download and no image.
+ *
+ * After paying, the customer is pushed straight back to WhatsApp. Leaving them
+ * on a "payment successful" web page is how people end up unsure whether they
+ * have a ticket — the ticket arrives in the chat, so that is where they should
+ * be looking.
+ */
+
+const express = require('express');
+const checkout = require('../gatepass/checkout');
+const booking = require('../gatepass/booking');
+const flow = require('../whatsapp/flow');
+const pricing = require('../gatepass/pricing');
+const { query } = require('../gatepass/db');
+const { PREFIX } = require('../config/paths');
+
+const router = express.Router();
+
+/** Escape anything that reaches the page, including our own data. */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const WA_LINK = () => `https://wa.me/${String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\D/g, '')}`;
+
+/* ────────────────────────────────────────────────────────────── the page */
+
+router.get('/pay/:token', async (req, res) => {
+  const found = await checkout.byToken(req.params.token);
+  if (!found?.ticket) return res.status(404).send(page('Link not found',
+    'This payment link is not valid. Please start again on WhatsApp.'));
+
+  const { payment, ticket } = found;
+
+  if (payment.status === 'paid') {
+    return res.send(page('Already paid',
+      `Ticket <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your ticket.`,
+      WA_LINK()));
+  }
+  if (ticket.status === 'expired' || ticket.status === 'cancelled') {
+    return res.send(page('This booking expired',
+      'The slot was released because payment was not completed in time. Please book again on WhatsApp.',
+      WA_LINK()));
+  }
+
+  let orderId;
+  try {
+    orderId = await checkout.ensureOrder(payment, ticket);
+  } catch (e) {
+    console.error('[checkout] order creation failed:', e.message);
+    return res.status(503).send(page('Payment temporarily unavailable',
+      'We could not start the payment just now. Please try the link again in a minute.'));
+  }
+
+  const k = checkout.keys();
+  res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token }));
+});
+
+/* ────────────────────────────────────────────── path 1: browser callback */
+
+router.post('/pay/:token/confirm', express.json(), async (req, res) => {
+  const found = await checkout.byToken(req.params.token);
+  if (!found?.ticket) return res.status(404).json({ ok: false });
+
+  const { payment, ticket } = found;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+
+  // Without this check the endpoint is just a URL anyone could post to claiming
+  // to have paid.
+  const good = checkout.verifyCallback({
+    order_id: razorpay_order_id, payment_id: razorpay_payment_id, signature: razorpay_signature });
+
+  if (!good) {
+    console.error('[checkout] callback signature failed for token', req.params.token);
+    return res.status(400).json({ ok: false, error: 'signature' });
+  }
+
+  await settle(payment, ticket, razorpay_payment_id, req.body);
+  res.json({ ok: true, ticket_no: ticket.ticket_no, whatsapp: WA_LINK() });
+});
+
+router.post('/pay/:token/failed', express.json(), async (req, res) => {
+  const found = await checkout.byToken(req.params.token);
+  if (found?.payment) {
+    await checkout.markFailed(found.payment.id, req.body?.reason);
+    // Hand the place straight back rather than waiting for the hold to age out
+    // — on a busy day that is a place someone else can buy immediately.
+    if (found.ticket?.status === 'held') await booking.releaseHold(found.ticket.id, 'payment_failed');
+  }
+  res.json({ ok: true });
+});
+
+/* ─────────────────────────────────────────────────── path 2: the webhook */
+
+router.post(`${PREFIX}/payments/webhook`, async (req, res) => {
+  const verdict = checkout.verifyWebhook(req.rawBody, req.get('x-razorpay-signature'));
+  if (verdict === 'bad') {
+    console.error('[rzp] REJECTED webhook — bad signature');
+    return res.sendStatus(401);
+  }
+  if (verdict === 'unset') console.warn('[rzp] RAZORPAY_WEBHOOK not set — accepting unverified');
+
+  res.sendStatus(200);   // acknowledge first; Razorpay retries otherwise
+
+  try {
+    const event = req.body?.event;
+    const entity = req.body?.payload?.payment?.entity;
+    if (!entity) return;
+
+    console.log('[rzp] webhook %s %s', event, entity.id);
+
+    if (event === 'payment.captured' || event === 'payment.authorized') {
+      const found = await byOrder(entity.order_id);
+      if (found) await settle(found.payment, found.ticket, entity.id, entity);
+    }
+    if (event === 'payment.failed') {
+      const found = await byOrder(entity.order_id);
+      if (found?.payment) await checkout.markFailed(found.payment.id, entity.error_description);
+    }
+  } catch (e) {
+    console.error('[rzp] webhook handler threw:', e.stack || e.message);
+  }
+});
+
+async function byOrder(orderId) {
+  if (!orderId) return null;
+  const p = (await query('SELECT * FROM payments WHERE order_id = $1', [orderId])).rows[0];
+  if (!p) return null;
+  const t = p.raw?.ticket_id ? await booking.byId(p.raw.ticket_id) : null;
+  return { payment: p, ticket: t };
+}
+
+/* ──────────────────────────────────────────────────────── the common end */
+
+/**
+ * Everything that must happen when money has arrived, in an order that is safe
+ * to repeat: record the payment, issue the ticket, send it. Whichever of the
+ * three paths gets here first does the work; the others find it already done.
+ */
+async function settle(payment, ticket, rzpPaymentId, raw) {
+  await checkout.markPaid(payment.id, rzpPaymentId, raw);
+  const issued = await booking.markPaid(ticket.id, payment.id);
+  if (!issued.ok) {
+    console.error('[checkout] could not issue ticket %s: %s', ticket.ticket_no, issued.reason);
+    return issued;
+  }
+  await flow.deliverTicket(ticket.id);
+  return issued;
+}
+
+/* ───────────────────────────────────────────────────────────────── pages */
+
+function page(title, message, link) {
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)}</title><style>
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+background:#f8fafc;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+.card{background:#fff;border-radius:16px;padding:32px 28px;max-width:380px;width:100%;
+box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
+h1{font-size:20px;margin:0 0 12px}p{color:#4b5563;margin:0 0 20px}
+a.btn{display:block;background:#0f766e;color:#fff;text-decoration:none;padding:14px;border-radius:10px;font-weight:600}
+</style></head><body><div class="card"><h1>${esc(title)}</h1><p>${message}</p>
+${link ? `<a class="btn" href="${esc(link)}">Back to WhatsApp</a>` : ''}</div></body></html>`;
+}
+
+function payPage({ ticket, payment, orderId, keyId, token }) {
+  const rs = (p) => pricing.rs(p);
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pay for ticket ${esc(ticket.ticket_no)}</title><style>
+:root{color-scheme:light}
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+background:#f1f5f9;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:18px;max-width:400px;width:100%;overflow:hidden;
+box-shadow:0 4px 24px rgba(15,23,42,.10)}
+.head{background:#0f766e;color:#fff;padding:22px 24px}
+.head h1{margin:0;font-size:17px;letter-spacing:.5px}
+.head p{margin:4px 0 0;font-size:12px;opacity:.85}
+.body{padding:22px 24px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;font-size:14px;color:#4b5563}
+.row b{color:#111827;font-weight:600;text-align:right}
+.rule{height:1px;background:#e5e7eb;margin:14px 0}
+.total{display:flex;justify-content:space-between;font-size:19px;font-weight:700;margin:6px 0 2px}
+.note{font-size:11px;color:#6b7280;margin-top:10px;line-height:1.45}
+button{width:100%;margin-top:20px;background:#0f766e;color:#fff;border:0;border-radius:12px;
+padding:16px;font-size:16px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6}
+.foot{text-align:center;font-size:11px;color:#9ca3af;padding:0 24px 20px}
+</style></head><body>
+<div class="card">
+  <div class="head"><h1>${esc(ticket.place_name)} · Entry ticket</h1>
+    <p>Ticket ${esc(ticket.ticket_no)}</p></div>
+  <div class="body">
+    <!-- NOT a summary of any kind. The visitor reviewed and agreed to all of
+         this on the previous page and tapped Pay; this page exists only to
+         open Razorpay, and it does so on load. Anything shown here is a second
+         summary standing between them and paying. The button below is a
+         fallback for the case where a browser refuses to open the sheet
+         without a tap. -->
+    <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">Opening payment…</p>
+    <button id="pay">Pay Rs. ${rs(ticket.total_paise)}</button>
+    <p class="note">The entry fee is collected on behalf of the Karnataka Tourism Department.
+    Your ticket arrives on WhatsApp as soon as payment succeeds.</p>
+  </div>
+  <div class="foot">Powered by ServerPe App Solutions</div>
+</div>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+var btn = document.getElementById('pay');
+
+/**
+ * Get the visitor back into the WhatsApp conversation after paying.
+ *
+ * This page is usually open inside WhatsApp's OWN in-app browser, and setting
+ * location to an https://wa.me/ link there frequently does nothing at all —
+ * the browser is already "in" WhatsApp, so it has nowhere to navigate. That is
+ * why payment looked like it succeeded and then simply sat there.
+ *
+ * The whatsapp:// scheme is what actually hands control back to the app, so it
+ * is tried first. The https link follows as a fallback for an ordinary browser,
+ * and a visible button is shown regardless — an automatic redirect that fails
+ * silently leaves somebody staring at a dead screen holding a paid ticket.
+ */
+function backToWhatsApp(httpsUrl) {
+  var num = String(${JSON.stringify(String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\\D/g, ''))});
+  document.querySelector('.body').innerHTML =
+    '<p style="text-align:center;font-size:15px;margin:8px 0 4px">'
+    + '<b>Payment received.</b><br>Your ticket and invoice are on WhatsApp.</p>'
+    + '<button id="back">Open WhatsApp</button>';
+  var back = document.getElementById('back');
+
+  var go = function () {
+    /* Closing the tab outright is the nicest ending, but a page may only close
+       a window that a script opened — a tab the user navigated to is not
+       closeable, and in WhatsApp's in-app browser there is nothing to close
+       anyway. So it is attempted, and everything else follows regardless. */
+    try { window.close(); } catch (e) { /* not permitted here */ }
+
+    /* Then hand control back to the app. Inside WhatsApp's own browser an
+       https://wa.me link often does nothing, because there is nowhere to
+       navigate to; the app scheme is what actually switches. */
+    if (num) { window.location.href = 'whatsapp://send?phone=' + num; }
+
+    setTimeout(function () {
+      try { window.close(); } catch (e) { /* still not permitted */ }
+      window.location.href = httpsUrl;
+    }, 1200);
+  };
+
+  back.onclick = go;
+  go();
+}
+
+var opts = {
+  key: ${JSON.stringify(keyId)},
+  order_id: ${JSON.stringify(orderId)},
+  amount: ${payment.amount_paise},
+  currency: 'INR',
+  // What Razorpay shows on the payment sheet and, later, on the card statement.
+  // The site's own name is what a visitor will recognise there.
+  name: ${JSON.stringify(`${ticket.place_name} entry`)},
+  description: 'Ticket ' + ${JSON.stringify(ticket.ticket_no)},
+  prefill: { contact: ${JSON.stringify(ticket.mobile)} },
+  theme: { color: '#0f766e' },
+  handler: function (r) {
+    btn.disabled = true; btn.textContent = 'Confirming...';
+    fetch('/pay/' + ${JSON.stringify(token)} + '/confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r)
+    }).then(function (x) { return x.json(); }).then(function (j) {
+      backToWhatsApp(j.whatsapp || ${JSON.stringify(WA_LINK())});
+    }).catch(function () {
+      btn.disabled = false; btn.textContent = 'Confirming failed - tap to retry';
+    });
+  },
+  modal: { ondismiss: function () { btn.disabled = false; btn.textContent = 'Pay Rs. ${rs(ticket.total_paise)}'; } }
+};
+function openPayment() {
+  btn.disabled = true;
+  var rz = new Razorpay(opts);
+  rz.on('payment.failed', function (e) {
+    fetch('/pay/' + ${JSON.stringify(token)} + '/failed', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: (e.error && e.error.description) || 'failed' })
+    });
+    btn.disabled = false; btn.textContent = 'Payment failed - try again';
+    document.getElementById('msg').textContent = 'That payment did not go through.';
+  });
+  rz.open();
+}
+btn.onclick = openPayment;
+
+/* Open as soon as the page loads. The visitor already agreed and tapped Pay on
+   the review page — asking them to tap Pay a second time is the extra screen
+   this page was accused of being. If a browser refuses to open the sheet
+   without a gesture, the button is right there. */
+window.addEventListener('load', function () {
+  try { openPayment(); } catch (e) {
+    document.getElementById('msg').textContent = 'Tap below to pay.';
+    btn.disabled = false;
+  }
+});
+</script></body></html>`;
+}
+
+module.exports = router;
