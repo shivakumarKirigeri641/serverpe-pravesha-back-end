@@ -14,6 +14,7 @@
  */
 
 const { one, query } = require('./db');
+const slotTime = require('./slotTime');
 
 /**
  * A row is created on demand rather than seeded far ahead.
@@ -61,15 +62,32 @@ async function available(placeId, slotId, categoryId, travelDate) {
   };
 }
 
-/** Both slots at once, for the category being booked — what the form shows. */
+/**
+ * Both slots at once, for the category being booked — what the form shows.
+ *
+ * Two separate reasons a slot may be unavailable, and they are kept apart:
+ * capacity is gone, or the slot's last entry has passed. A visitor told "full"
+ * about a slot that simply finished an hour ago is being told something untrue,
+ * and will try again tomorrow expecting it to be free.
+ */
 async function forDate(placeId, categoryId, travelDate) {
   const slots = await query(
-    `SELECT id, code, label FROM place_slots
+    `SELECT id, code, label, starts_at, ends_at FROM place_slots
       WHERE place_id=$1 AND is_active ORDER BY sort_order`, [placeId]);
+
   const out = [];
   for (const s of slots.rows) {
     const a = await available(placeId, s.id, categoryId, travelDate);
-    out.push(Object.assign({ slotId: String(s.id), code: s.code, label: s.label }, a));
+    const t = slotTime.check(s, travelDate);
+    out.push(Object.assign({
+      slotId: String(s.id), code: s.code, label: s.label,
+      lastEntry: t.lastEntry,
+      timeClosed: !t.bookable,
+      timeReason: t.reason || null,
+    }, a, {
+      /* One field the form can trust, whichever reason applies. */
+      bookable: a.isOpen && a.remaining > 0 && t.bookable,
+    }));
   }
   return out;
 }

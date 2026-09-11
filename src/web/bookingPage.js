@@ -19,17 +19,22 @@ const SHELL = (title, body) => `<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>${title} · Pravesha</title>
 <style>
-  :root{color-scheme:light dark;--ink:#15171a;--muted:#6b7280;--line:#e5e7eb;--bg:#f6f7f9;
-        --card:#fff;--accent:#8B1A1A;--accent-ink:#fff;--ok:#0f7b3e;--warn:#b45309;--bad:#b91c1c;
-        --okbg:#e8f5ee;--badbg:#fdeaea;--warnbg:#fef6e7}
-  @media(prefers-color-scheme:dark){:root{--ink:#e8e8e8;--muted:#9aa0a6;--line:#2c2f33;--bg:#0f1113;
-        --card:#181b1e;--okbg:#11301f;--badbg:#3a1414;--warnbg:#3a2c10}}
+  /* WhatsApp's own palette. The form opens inside WhatsApp's browser straight
+     from the chat, so it should look like part of it rather than a different
+     product the chat handed you off to. */
+  :root{color-scheme:light dark;--ink:#111b21;--muted:#667781;--line:#e9edef;--bg:#efeae2;
+        --card:#fff;--accent:#008069;--accent2:#00a884;--accent-ink:#fff;--head:#008069;--head-ink:#fff;
+        --ok:#1da851;--warn:#b45309;--bad:#b91c1c;
+        --okbg:#e7f8ef;--badbg:#fdeaea;--warnbg:#fef6e7}
+  @media(prefers-color-scheme:dark){:root{--ink:#e9edef;--muted:#8696a0;--line:#2a3942;--bg:#0b141a;
+        --card:#111b21;--accent:#00a884;--accent2:#00a884;--accent-ink:#0b141a;--head:#202c33;--head-ink:#e9edef;
+        --okbg:#0d2f22;--badbg:#3a1414;--warnbg:#3a2c10;--ok:#00d97e}}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
        -webkit-text-size-adjust:100%}
   .wrap{max-width:520px;margin:0 auto;padding:0 0 120px}
-  header{background:var(--accent);color:var(--accent-ink);padding:18px 20px 16px}
+  header{background:var(--head);color:var(--head-ink);padding:18px 20px 16px}
   .brand{font-weight:700;font-size:19px;letter-spacing:-.2px}
   .dept{opacity:.85;font-size:12.5px;margin-top:1px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
@@ -45,6 +50,14 @@ const SHELL = (title, body) => `<!doctype html>
   input[readonly]{background:var(--bg);color:var(--muted)}
   input.plate{text-transform:uppercase;letter-spacing:.12em;font-weight:700;font-size:19px;
               text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  /* The placeholder was reading as a filled-in value: same weight, same size,
+     same spacing as a real entry. Lightened and un-bolded so it is plainly a
+     hint and not somebody else's number already in the box. */
+  input.plate::placeholder{color:var(--muted);opacity:.55;font-weight:400;letter-spacing:.06em;font-size:16px}
+  .masked{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
+  .locked{position:relative}
+  .locked::after{content:'🔒';position:absolute;right:12px;top:50%;transform:translateY(-50%);
+                 font-size:12px;opacity:.45;pointer-events:none}
   button{width:100%;padding:14px;font-size:16px;font-weight:650;border:0;border-radius:10px;
          background:var(--accent);color:#fff;font-family:inherit;cursor:pointer}
   button:disabled{opacity:.45;cursor:not-allowed}
@@ -62,12 +75,13 @@ const SHELL = (title, body) => `<!doctype html>
          padding:3px 11px;font-size:12px;font-weight:650;margin-top:9px}
   .slot{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);
         border-radius:11px;padding:13px;margin-bottom:10px;cursor:pointer}
-  .slot.sel{border-color:var(--accent);background:rgba(139,26,26,.05)}
+  .slot.sel{border-color:var(--accent);background:rgba(0,168,132,.09)}
   .slot.full{opacity:.5;cursor:not-allowed}
   .slot input{width:auto;flex:none;accent-color:var(--accent)}
   .slot-main{flex:1}
   .slot-name{font-weight:650;font-size:14.5px;display:block}
   .slot-left{font-size:12.5px;color:var(--muted);margin-top:1px;display:block}
+  .slot-left.closed{color:var(--bad)}
   .row{display:flex;justify-content:space-between;padding:7px 0;font-size:14.5px}
   .row.total{border-top:1.5px solid var(--line);margin-top:7px;padding-top:11px;
              font-weight:700;font-size:17px}
@@ -102,6 +116,19 @@ function expired(reason) {
   </div>`);
 }
 
+/**
+ * Everything but the last four digits.
+ *
+ * The number is shown so the visitor can see the pass will reach the right
+ * phone, not so it can be read over their shoulder — this form is opened on a
+ * phone at a viewpoint, often with other people around.
+ */
+function mask(mobile) {
+  const d = String(mobile || '').replace(/\D/g, '');
+  if (d.length <= 4) return d;
+  return '\u2022'.repeat(d.length - 4) + ' ' + d.slice(-4);
+}
+
 function render({ token, customer, places, dates, tariff }) {
   const name = esc((customer && (customer.name || customer.wa_profile_name)) || '');
   const mobile = esc((customer && customer.mobile) || '');
@@ -116,7 +143,10 @@ function render({ token, customer, places, dates, tariff }) {
   const tariffLine = tariff.map((t) =>
     `<b>${esc(t.label.split('/')[0].trim())}</b> &#8377;${Number(t.entryPaise) / 100}`).join(' &middot; ');
 
-  return SHELL('Book entry pass', BODY({ token: esc(token), name, mobile, placeOpts, dateOpts, tariffLine }));
+  return SHELL('Book entry pass', BODY({
+    token: esc(token), name, maskedMobile: esc(mask(mobile)),
+    placeOpts, dateOpts, tariffLine,
+  }));
 }
 
 const BODY = (v) => `
@@ -126,9 +156,10 @@ const BODY = (v) => `
   <div class="card">
     <div class="step"><span class="num">1</span>Your details</div>
     <label for="name">Name</label>
-    <input id="name" value="${v.name}" placeholder="Your name" maxlength="60">
+    <div class="locked"><input id="name" value="${v.name}" readonly></div>
     <label for="mobile">WhatsApp number</label>
-    <input id="mobile" value="${v.mobile}" readonly>
+    <div class="locked"><input id="mobile" class="masked" value="${v.maskedMobile}" readonly></div>
+    <div class="hint">Taken from your WhatsApp account.</div>
   </div>
 
   <div class="card">
@@ -143,8 +174,8 @@ const BODY = (v) => `
 
   <div class="card">
     <div class="step"><span class="num">3</span>Your vehicle</div>
-    <label for="reg">Vehicle registration number</label>
-    <input id="reg" class="plate" placeholder="KA31N8147" maxlength="14" autocapitalize="characters" spellcheck="false">
+    <label for="reg">Enter vehicle number</label>
+    <input id="reg" class="plate" placeholder="KA01AB1234" maxlength="14" autocapitalize="characters" spellcheck="false">
     <div class="hint">We look this up to set the correct entry fee.</div>
     <div style="margin-top:12px"><button type="button" id="check">Check vehicle</button></div>
     <div class="msg bad" id="verr"></div>

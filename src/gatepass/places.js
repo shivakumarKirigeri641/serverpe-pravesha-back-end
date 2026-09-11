@@ -12,6 +12,7 @@
  */
 
 const { query, one } = require('./db');
+const slotTime = require('./slotTime');
 
 async function list() {
   const r = await query(
@@ -30,17 +31,37 @@ async function list() {
 const byCode = (code) => one('SELECT * FROM places WHERE code = $1', [code]);
 const byId = (id) => one('SELECT * FROM places WHERE id = $1', [id]);
 
-/** The dates a visitor may pick: today through booking_days_ahead. */
-function bookableDates(place) {
-  const days = place?.booking_days_ahead || 14;
+/**
+ * The dates a visitor may pick: today through booking_days_ahead.
+ *
+ * Today is dropped once its last slot has closed. Leaving it selectable means
+ * choosing it, entering a vehicle, and finding every slot greyed out -- a dead
+ * end two steps in, which is worse than an option that was never offered.
+ *
+ * Dates are built from the IST calendar rather than the server's, so "today"
+ * means today on the hill. A server running UTC would otherwise roll the date
+ * over five and a half hours late.
+ */
+function bookableDates(place, slots = []) {
+  const days = (place && place.booking_days_ahead) || 14;
+  const todayIST = slotTime.nowIST().date;
+  const [ty, tm, td] = todayIST.split('-').map(Number);
+
   const out = [];
-  const today = new Date();
   for (let i = 0; i < days; i += 1) {
-    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+    const d = new Date(Date.UTC(ty, tm - 1, td + i));
+    const value = d.toISOString().slice(0, 10);
+    const isToday = i === 0;
+    const stillOpen = !isToday || slotTime.anyBookable(slots, value);
+
+    if (isToday && !stillOpen) continue; // finished for the day
+
     out.push({
-      value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
-      isToday: i === 0,
+      value,
+      label: d.toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+      }),
+      isToday,
     });
   }
   return out;

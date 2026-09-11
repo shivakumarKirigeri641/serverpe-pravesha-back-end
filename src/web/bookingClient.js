@@ -95,15 +95,35 @@
       travelDate: $('date').value
     }).then(function (r) {
       if (!r.ok) { $('slots').innerHTML = '<div class="hint">Could not load availability.</div>'; return; }
+      /* Why a slot cannot be picked is said plainly, because the reasons mean
+         different things to the visitor: "Full" means try another slot, while
+         "Finished for today" means try another day. */
+      var WHY = {
+        slot_over: 'Finished for today',
+        too_late: 'Closed — last entry was ',
+        date_past: 'This date has passed'
+      };
+      var anyOpen = false;
       $('slots').innerHTML = r.slots.map(function (s) {
-        var full = !s.isOpen || s.remaining <= 0;
-        var left = !s.isOpen ? (s.closedNote || 'Closed')
-          : (s.remaining <= 0 ? 'Full' : s.remaining + ' of ' + s.capacity + ' left');
-        return '<label class="slot' + (full ? ' full' : '') + '" data-slot="' + s.slotId + '">'
-          + '<input type="radio" name="slot" value="' + s.slotId + '"' + (full ? ' disabled' : '') + '>'
+        var left, closed = !s.bookable;
+        if (s.timeClosed) {
+          left = s.timeReason === 'too_late' ? WHY.too_late + s.lastEntry : (WHY[s.timeReason] || 'Closed');
+        } else if (!s.isOpen) {
+          left = s.closedNote || 'Closed';
+        } else if (s.remaining <= 0) {
+          left = 'Full';
+        } else {
+          left = s.remaining + ' of ' + s.capacity + ' left · last entry ' + s.lastEntry;
+          anyOpen = true;
+        }
+        return '<label class="slot' + (closed ? ' full' : '') + '" data-slot="' + s.slotId + '">'
+          + '<input type="radio" name="slot" value="' + s.slotId + '"' + (closed ? ' disabled' : '') + '>'
           + '<span class="slot-main"><span class="slot-name">' + s.label + '</span>'
-          + '<span class="slot-left">' + left + '</span></span></label>';
+          + '<span class="slot-left' + (closed ? ' closed' : '') + '">' + left + '</span></span></label>';
       }).join('');
+      if (!anyOpen) {
+        $('slots').innerHTML += '<div class="msg warn show">No slots are available on this date. Please choose another date.</div>';
+      }
 
       var radios = $('slots').querySelectorAll('input[name=slot]');
       Array.prototype.forEach.call(radios, function (i) {

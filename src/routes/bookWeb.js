@@ -53,7 +53,8 @@ router.get('/book/:token', gate, async (req, res) => {
 
   const list = await places.list();
   const live = list.filter((p) => p.is_active);
-  const dates = places.bookableDates(live[0] || list[0]);
+  const first = live[0] || list[0];
+  const dates = places.bookableDates(first, first ? first.slots : []);
   const tariffRows = live[0] ? await pricing.tariff(live[0].id) : [];
 
   res.type('html').send(page.render({
