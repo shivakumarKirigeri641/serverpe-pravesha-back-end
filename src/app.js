@@ -31,6 +31,7 @@ app.use('/', require('./routes/bookWeb'));
 app.use('/', require('./routes/checkout'));
 app.use('/', require('./routes/verify'));
 app.use('/', require('./routes/legal'));
+app.use('/', require('./routes/vehicleApi'));
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };
@@ -79,6 +80,9 @@ app.listen(PORT, () => {
   console.log(`  vehicles ${require('./ulip/config').config.source() === 'ulip'
     ? 'ULIP direct (this server must be whitelisted)'
     : `gateway ${process.env.GATEWAY_BASE_URL || '(GATEWAY_BASE_URL not set)'}`}`);
+  if (require('./ulip/config').config.source() === 'ulip' && process.env.VEHICLE_LOOKUP_KEY) {
+    console.log(`  lookup   ${process.env.PUBLIC_BASE_URL || ''}/api/v1/vehicle/:regNo/{rc,challans,fastag} (x-api-key)`);
+  }
   console.log(`  replies  ${String(process.env.WHATSAPP_REPLY_ENABLED) !== 'false' ? 'enabled' : 'disabled'}`
     + `${String(process.env.WHATSAPP_DRY_RUN) === 'true' ? ' (DRY RUN)' : ''}\n`);
 });
