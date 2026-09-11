@@ -29,7 +29,6 @@ const db = require('./../src/gatepass/db');
 const booking = require('../src/gatepass/booking');
 const pricing = require('../src/gatepass/pricing');
 const inventory = require('../src/gatepass/inventory');
-const sign = require('../src/gatepass/sign');
 
 const DEMO_PREFIX = '5';                 // cannot be a real Indian mobile
 const WIPE = process.argv.includes('--wipe');
@@ -174,13 +173,10 @@ async function seed() {
       if (!held.ok) continue;                      // sold out or already booked
 
       const t = held.ticket;
-      const qr = sign.signTicket({
-        ticket_no: t.ticket_no, place_code: place.code, travel_date: travelDate,
-        slot_code: slot.code, category_code: category.code, reg_no: vehicle.reg_no });
 
       await db.query(
-        `UPDATE tickets SET status = 'paid', qr_payload = $2, held_until = NULL,
-                created_at = $3, modified_at = $3 WHERE id = $1`, [t.id, qr, createdAt]);
+        `UPDATE tickets SET status = 'paid', held_until = NULL,
+                created_at = $2, modified_at = $2 WHERE id = $1`, [t.id, createdAt]);
       // confirm() writes through a client; the pool exposes the same query method.
       await inventory.confirm({ query: db.query }, { placeId: place.id, travelDate,
         slotId: slot.id, categoryId: category.id });
@@ -202,7 +198,7 @@ async function seed() {
           `UPDATE tickets SET status = 'used', used_at = $2 WHERE id = $1`, [t.id, at]);
         scanned++;
 
-        /* And occasionally somebody tries the same code twice, or an edited one. */
+        /* And occasionally the same vehicle is presented twice in a day. */
         if (chance(0.03)) {
           const again = new Date(at.getTime() + between(5, 90) * 60000);
           await db.query(
@@ -212,13 +208,17 @@ async function seed() {
             [t.id, t.ticket_no, t.reg_no, checkpost.id, pick(staff).id, again]);
           caught++;
         }
-        if (chance(0.02)) {
-          const forged = new Date(at.getTime() + between(5, 120) * 60000);
+        /* And a vehicle that simply never booked — the commonest refusal at a
+           barrier, and the one whose monthly count is worth showing to the
+           department. */
+        if (chance(0.04)) {
+          const walkUp = new Date(at.getTime() + between(5, 120) * 60000);
+          const plate = plateFor(between(0, 200));
           await db.query(
-            `INSERT INTO scans (ticket_no, reg_no, checkpost_id, staff_id,
+            `INSERT INTO scans (reg_no, checkpost_id, staff_id,
                                 verdict, raw_payload, scanned_at)
-             VALUES ($1,$2,$3,$4,'invalid_signature','DEMO',$5)`,
-            [t.ticket_no, plateFor(between(0, 200)), checkpost.id, pick(staff).id, forged]);
+             VALUES ($1,$2,$3,'not_found',$4,$5)`,
+            [plate, checkpost.id, pick(staff).id, plate.slice(-4), walkUp]);
           caught++;
         }
       }
@@ -235,10 +235,6 @@ async function seed() {
 (async () => {
   if (WIPE) { await wipe(); process.exit(0); }
 
-  if (!process.env.TICKET_SIGN_PRIVATE_KEY) {
-    console.error('\n  TICKET_SIGN_PRIVATE_KEY is not set — cannot sign demo tickets.\n');
-    process.exit(1);
-  }
   console.log(`\n  Seeding ${DAYS} days of demo history.`);
   console.log('  Mobile numbers all begin with 5, so none can belong to a real person,');
   console.log('  and nothing here is ever sent to WhatsApp.');

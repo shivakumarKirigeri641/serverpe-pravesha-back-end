@@ -38,7 +38,7 @@ router.get('/pay/:token', async (req, res) => {
 
   if (payment.status === 'paid') {
     return res.send(page('Already paid',
-      `Ticket <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your QR code.`,
+      `Ticket <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your ticket.`,
       WA_LINK()));
   }
   if (ticket.status === 'expired' || ticket.status === 'cancelled') {
@@ -205,7 +205,7 @@ button:disabled{opacity:.6}
     <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">Opening payment…</p>
     <button id="pay">Pay Rs. ${rs(ticket.total_paise)}</button>
     <p class="note">The entry fee is collected on behalf of the Karnataka Tourism Department.
-    Your QR ticket arrives on WhatsApp as soon as payment succeeds.</p>
+    Your ticket arrives on WhatsApp as soon as payment succeeds.</p>
   </div>
   <div class="foot">Powered by ServerPe App Solutions</div>
 </div>

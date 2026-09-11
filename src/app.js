@@ -10,7 +10,7 @@ const encryptResponse = require("./middlewares/encryptResponse");
 const responseBranding = require("./middlewares/responseBranding");
 const whatsappRoutes = require("./routes/whatsapp");
 const checkoutRoutes = require("./routes/checkout");
-const scannerRoutes = require("./routes/scanner");
+const checkpostRoutes = require("./routes/checkpost");
 const policyRoutes = require("./routes/policy");
 const flowRoutes = require("./routes/flowEndpoint");
 const bookWebRoutes = require("./routes/bookWeb");
@@ -62,23 +62,18 @@ app.use(globalLimiter);
 app.use(responseBranding);
 
 /* ── Gate-pass routes go BEFORE encryptResponse, deliberately.
-   Meta, Razorpay, the customer's browser and the checkpost scanner are not our
+   Meta, Razorpay, the customer's browser and the checkpost app are not our
    front-end and know nothing about our envelope: an encrypted body would be an
    unreadable webhook reply and a blank payment page. Everything under /api
    below keeps the encryption it has always had. */
 app.use(PREFIX, whatsappRoutes);
 app.use("/", checkoutRoutes);
-app.use("/", scannerRoutes);
+app.use("/", checkpostRoutes);
 app.use("/", policyRoutes);
 app.use(PREFIX, flowRoutes.router);
 app.use("/", bookWebRoutes);
 app.use("/", formsWebRoutes);
 app.use("/admin/api", adminRoutes);
-
-/* The fraud-demonstration pages, served under unguessable filenames so the phone
-   can open one while the laptop scans it. Each holds a real ticket payload —
-   delete public/demo once a demonstration is over. */
-app.use("/demo", express.static(path.join(__dirname, "..", "public", "demo")));
 
 /* 🔐 Encrypt all JSON responses */
 app.use(encryptResponse);

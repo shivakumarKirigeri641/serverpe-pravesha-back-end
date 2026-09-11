@@ -15,9 +15,9 @@ const db = require('../src/gatepass/db');
 const customers = require('../src/gatepass/customers');
 const vehicles = require('../src/gatepass/vehicle');
 const booking = require('../src/gatepass/booking');
+const scan = require('../src/gatepass/scan');
 const pricing = require('../src/gatepass/pricing');
 const inventory = require('../src/gatepass/inventory');
-const sign = require('../src/gatepass/sign');
 
 const MOBILE = process.env.TEST_MOBILE;
 const REG = 'KA31N8147';
@@ -85,23 +85,36 @@ const say = (ok, msg) => console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${msg}`);
 
   /* ------------------------------------------------------- the signature */
 
-  const qr = paid.ticket.qr_payload;
-  console.log(`\n  QR (${qr.length} chars): ${qr}\n`);
+  /* WHAT REPLACED THE SIGNATURE TESTS.
+     There used to be four checks here that took a signed QR, edited the plate
+     or the date, and confirmed the gate rejected it. They are gone because
+     there is no longer anything to forge: the gate looks a vehicle up in its
+     own records, and a plate that is not there is refused however it arrives.
+     What is worth proving instead is that the lookup finds the right booking
+     and refuses everything else. */
 
-  const v = sign.verifyTicket(qr);
-  check(v.ok && v.ticket.reg_no === REG, `genuine ticket verifies, plate ${v.ticket?.reg_no}`);
+  const found = await scan.search('8147', { place_id: place.id });
+  check(found.ok && found.candidates.length === 1,
+    `the plate's last four find exactly one booking (${found.candidates?.length})`);
+  check(found.candidates[0].ticket.reg_no === REG,
+    `and it is the right vehicle: ${found.candidates[0].ticket.reg_no}`);
+  /* This booking is for TOMORROW, so presenting it today is exactly the case
+     the gate has to catch — and it must say which day it is for, not merely
+     refuse. Somebody turned away at a barrier deserves to be told the date
+     they actually booked. */
+  check(found.candidates[0].verdict === 'wrong_day',
+    `presented a day early it reads: ${found.candidates[0].verdict}`);
+  check(/not today/i.test(found.candidates[0].message || ''),
+    `and says which day it is for: "${found.candidates[0].message}"`);
 
-  // The fraud, exactly as described: edit the plate and present it.
-  const forged = qr.replace(REG, 'KA05MM9999');
-  check(!sign.verifyTicket(forged).ok, 'plate-swapped ticket REJECTED');
+  const nobody = await scan.search('0000', { place_id: place.id });
+  check(nobody.ok && nobody.candidates.length === 0,
+    'a plate nobody booked returns nothing at all');
 
-  const dateShifted = qr.replace(tomorrow.replace(/-/g, ''), '20991231');
-  check(!sign.verifyTicket(dateShifted).ok, 'date-shifted ticket REJECTED');
+  const tooShort = await scan.search('81', { place_id: place.id });
+  check(!tooShort.ok && tooShort.reason === 'too_short',
+    'two characters is refused rather than answered');
 
-  const slotSwapped = qr.replace('|0612|', '|1206|');
-  check(!sign.verifyTicket(slotSwapped).ok, 'slot-swapped ticket REJECTED');
-
-  check(!sign.verifyTicket('literally anything').ok, 'garbage REJECTED');
 
   await finish(failures, held.ticket.id);
 })().catch((e) => { console.error('\n', e, '\n'); process.exit(1); });

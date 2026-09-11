@@ -23,7 +23,7 @@ const ENHANCEMENTS = [
     title: 'Postpone a ticket, once',
     status: 'built',
     what: 'A visitor whose plans change moves the ticket to another day themselves, in the same '
-        + 'WhatsApp conversation, at no cost. The old QR stops working by itself and a new one '
+        + 'WhatsApp conversation, at no cost. The booking simply carries the new date and a new '
         + 'is issued.',
     why: 'Without it every change of plan is either a refund or a wasted place. One free move '
         + 'is the limit the department has asked for — enough for a genuine change, not enough '

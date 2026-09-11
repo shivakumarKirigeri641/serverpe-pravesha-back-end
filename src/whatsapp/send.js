@@ -43,6 +43,15 @@ async function windowOpen(mobile) {
   return Date.now() - new Date(row.last_inbound_at).getTime() < 24 * 60 * 60 * 1000;
 }
 
+/**
+ * Is this a dry run?
+ *
+ * Read on every call rather than captured at require time, so a test can turn
+ * it on after the module is loaded — several do, and a cached boolean would
+ * silently ignore them and start sending for real.
+ */
+const dryRun = () => String(process.env.WHATSAPP_DRY_RUN).toLowerCase() === 'true';
+
 async function post(payload, meta) {
   const { mobile, type, body, templateName } = meta;
 
@@ -64,7 +73,7 @@ async function post(payload, meta) {
    * is still written to wa_messages, so the tests read back exactly what they
    * would have read. Only the network call is skipped.
    */
-  if (String(process.env.WHATSAPP_DRY_RUN).toLowerCase() === 'true') {
+  if (dryRun()) {
     const fakeId = `dry.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
     await record({ mobile, type, body, templateName, waMessageId: fakeId, payload });
     console.log('[wa] DRY RUN %s %s %s', mobile, type, JSON.stringify(body || '').slice(0, 70));
@@ -322,7 +331,13 @@ async function document(mobile, filePath, { filename, caption } = {}) {
   const name = filename || require('path').basename(filePath);
 
   let mediaId;
-  try {
+  if (dryRun()) {
+    /* The upload runs BEFORE post(), so post()'s dry-run branch does not stop
+       it: without this, a "dry" test run still pushed every ticket and invoice
+       PDF to Meta's media endpoint over the network. That is slow, needs a
+       working token, and is exactly the traffic the dry run exists to avoid. */
+    mediaId = 'dry.media';
+  } else try {
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
     form.append('type', 'application/pdf');
@@ -378,9 +393,9 @@ async function template(mobile, name, params = [], { language = 'en' } = {}) {
 }
 
 /**
- * Send an image — the ticket QR, in practice.
+ * Send an image — the ticket card, in practice.
  *
- * The QR goes as an image rather than inside the PDF alone because of what
+ * The card goes as an image rather than inside the PDF alone because of what
  * happens at the gate: the visitor has one hand on the wheel and the sun on the
  * screen. An image opens in the chat at full width with one tap. The PDF is
  * still sent alongside for printing and for the record.
@@ -394,7 +409,9 @@ async function image(mobile, buffer, { filename = 'ticket.png', caption } = {}) 
   }
 
   let mediaId;
-  try {
+  if (dryRun()) {
+    mediaId = 'dry.media';    // see the note in document()
+  } else try {
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
     form.append('type', 'image/png');

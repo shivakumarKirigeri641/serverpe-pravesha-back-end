@@ -3,21 +3,25 @@
  *
  * Three artefacts, because the gate and the accountant need different things:
  *
- *   * A QR IMAGE, sent into the chat. At the barrier the visitor taps once and
- *     holds up the phone. No PDF viewer, no zooming, no scrolling.
- *   * A PDF, for anyone who wants to print it or keep it. It carries the same
- *     QR, so both routes verify identically.
- *   * The amounts, split as the invoice must show them — entry fee collected
- *     for the department, our service fee, and GST on the service fee alone.
+ *   * A TICKET CARD image, sent into the chat. It is a receipt, not a
+ *     credential: the visitor shows nothing at the barrier, and this exists so
+ *     they can check before setting off that the booking is for the right
+ *     vehicle on the right day.
+ *   * A TICKET PDF, for anyone who wants to print it or keep it, carrying the
+ *     full conditions that will not fit on a phone-screen card.
+ *   * A TAX INVOICE PDF — a separate document, built in invoicePdf.js. It was
+ *     once a few lines at the foot of the ticket, which served neither reader:
+ *     clutter at a barrier, and short of the particulars a tax invoice must
+ *     carry. The entry fee appears there as a pure-agent reimbursement outside
+ *     the taxable value, with GST on our service fee alone.
  *
  * Sending is idempotent. The three payment paths all end here, and a visitor
- * must not receive three QR codes for one ticket.
+ * must not receive three tickets for one booking.
  */
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
 const { query, one } = require('./db');
 const pricing = require('./pricing');
@@ -25,6 +29,7 @@ const settings = require('./settings');
 const send = require('../whatsapp/send');
 const ticketCard = require('./ticketCard');
 const store = require('../whatsapp/store');
+const { invoicePdf } = require('./invoicePdf');
 const { t: tr } = require('./i18n');
 
 const INK = '#111827';
@@ -47,26 +52,6 @@ const slug = (s) => String(s || 'Ticket').replace(/[^A-Za-z0-9]+/g, '-').replace
 
 const spaced = (reg) => String(reg).replace(/([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})/, '$1 $2 $3 $4').replace(/\s+/g, ' ').trim();
 
-/**
- * The QR, at a size that scans.
- *
- * Error correction is deliberately LOW, not HIGH. The instinct is to choose
- * high, but the payload is 140 characters and higher correction means more
- * modules in the same square — finer detail, which scans WORSE on a phone
- * screen behind glass in sunlight. The ticket is displayed on a screen or
- * printed fresh, not weathered on a wall, so damage tolerance buys nothing and
- * costs legibility.
- */
-async function qrPng(payload, scale = 8) {
-  return QRCode.toBuffer(payload, {
-    errorCorrectionLevel: 'L',
-    type: 'png',
-    margin: 2,
-    scale,
-    color: { dark: '#000000', light: '#ffffff' },
-  });
-}
-
 /* ─────────────────────────────────────────────────────────────────── PDF */
 
 async function ticketPdf(t) {
@@ -75,7 +60,6 @@ async function ticketPdf(t) {
   const file = path.join(dir, `ticket-${t.ticket_no}.pdf`);
 
   const cfg = await settings.all();
-  const qr = await qrPng(t.qr_payload, 10);
 
   const doc = new PDFDocument({ size: 'A4', margin: 0 });
   const stream = fs.createWriteStream(file);
@@ -93,16 +77,22 @@ async function ticketPdf(t) {
   doc.font('Helvetica').fontSize(9)
      .text(cfg.collecting_for || 'Karnataka Tourism Department', M, 74);
 
-  /* The two things a gate looks at: the number and the code */
+  /* The booking code for support to quote, and the plate the gate looks up */
   let y = 128;
   doc.fillColor(MUTED).font('Helvetica').fontSize(9)
      .text('TICKET NUMBER', M, y, { characterSpacing: 1.5 });
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(30)
      .text(t.ticket_no, M, y + 14, { characterSpacing: 3 });
 
-  doc.image(qr, W - M - 150, y - 6, { width: 150 });
+  /* The plate, printed large enough to check against a bumper from the
+     driver's seat. It is the only thing the gate reads. */
+  doc.rect(W - M - 200, y - 10, 200, 92).fill('#f4f8f7');
   doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
-     .text('Scan at the checkpost', W - M - 150, y + 150, { width: 150, align: 'center' });
+     .text('VEHICLE NUMBER', W - M - 200, y + 4, { width: 200, align: 'center', characterSpacing: 1.4 });
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(23)
+     .text(t.reg_no, W - M - 200, y + 24, { width: 200, align: 'center' });
+  doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
+     .text('Nothing to show at the gate', W - M - 200, y + 60, { width: 200, align: 'center' });
 
   /* Details */
   y = 232;
@@ -149,14 +139,21 @@ async function ticketPdf(t) {
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(9).text('PLEASE NOTE', M, y, { characterSpacing: 1.2 });
   y += 14;
   const notes = [
+    'The checkpost checks only your vehicle number. Make sure you booked with the number '
+      + 'plate of the vehicle you will actually bring.',
+    'Do not change the vehicle at the last moment. This number is what the staff enter and '
+      + 'validate at the checkpost — a different vehicle will not be allowed in.',
+    'There is nothing to show at the gate. Let the staff member enter your vehicle number, '
+      + 'and you can move on.',
     'This ticket is valid only for the vehicle number and the date and time shown above.',
-    'One entry per vehicle per day. The QR code can be scanned once.',
-    'Show the QR code at the checkpost. A printed or screenshot copy of the code works equally well.',
-    'The QR is digitally signed. An edited or copied ticket will be rejected at the gate.',
+    'One entry per vehicle per day.',
   ];
+  /* Advanced by where each note actually ended, not by a fixed step: these
+     wrap to two lines and a fixed 14 points printed the next one on top. */
   for (const n of notes) {
-    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(`•  ${n}`, M, y, { width: W - M * 2 });
-    y += 14;
+    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5)
+       .text(`•  ${n}`, M, y, { width: W - M * 2, lineGap: 1 });
+    y = doc.y + 5;
   }
 
   /* Footer */
@@ -186,17 +183,18 @@ async function ticketPdf(t) {
 async function sendTicket(ticketId, { force = false } = {}) {
   const t = await one(
     `SELECT t.*, p.name AS place_name, s.label AS slot_label, c.label AS category_label,
-            cu.language
+            cu.language, cu.wa_profile_name AS customer_name,
+            pay.payment_id AS payment_ref, pay.order_id, pay.gateway
        FROM tickets t
        JOIN places p ON p.id = t.place_id
        JOIN place_slots s ON s.id = t.slot_id
        JOIN vehicle_categories c ON c.id = t.category_id
        LEFT JOIN customers cu ON cu.id = t.customer_id
+       LEFT JOIN payments pay ON pay.id = t.payment_id
       WHERE t.id = $1`, [ticketId]);
 
   if (!t) return { ok: false, reason: 'not_found' };
   if (t.status !== 'paid' && t.status !== 'used') return { ok: false, reason: 'not_paid' };
-  if (!t.qr_payload) return { ok: false, reason: 'unsigned' };
 
   if (!force) {
     const sent = await one(
@@ -215,10 +213,10 @@ async function sendTicket(ticketId, { force = false } = {}) {
     `🎟️ *${tr(L, 'ticket_word')} ${t.ticket_no}*\n\n`
     + `${t.reg_no}  ·  ${t.category_label}\n`
     + `${longDate(t.travel_date)}\n${t.slot_label}\n${t.place_name}\n\n`
-    + tr(L, 'show_qr_at_gate');
+    + tr(L, 'gate_instruction');
 
-  // The composed card, not a bare QR: the visitor shows this to a uniformed
-  // officer, and it has to look like a government ticket before anyone scans it.
+  // A composed card rather than a bare summary: it has to look like a
+  // government ticket to the relative who asks whether it is genuine.
   const png = await ticketCard.render(t, await settings.all());
   const img = await send.image(t.mobile, png, { filename: `${t.ticket_no}.png`, caption });
 
@@ -230,16 +228,33 @@ async function sendTicket(ticketId, { force = false } = {}) {
       caption: tr(L, 'ticket_and_receipt'),
     });
   } catch (e) {
-    // A PDF that failed to render must not cost the customer their QR — the
-    // image above is the part that gets them through the gate.
+    // A PDF that failed to render must not cost the customer their ticket —
+    // and in any case nothing they hold is what gets them through the gate.
     console.error('[deliver] pdf failed:', e.message);
+  }
+
+  /* The tax invoice, as a second document.
+     Sent after the ticket, never instead of it, and wrapped separately for the
+     same reason: an invoice that fails to render is an accounting inconvenience
+     the visitor can be sent later. The invoice ROW is created either way — the
+     number is reserved and the amounts are frozen even if the PDF or the send
+     fails, so a resend produces the same document rather than a new one. */
+  let invoice = null;
+  try {
+    const { file, invoice: row } = await invoicePdf(t);
+    invoice = await send.document(t.mobile, file, {
+      filename: `Invoice-${row.invoice_no.replace(/\//g, '-')}.pdf`,
+      caption: tr(L, 'invoice_caption'),
+    });
+  } catch (e) {
+    console.error('[deliver] invoice failed:', e.message);
   }
 
   await query(
     `INSERT INTO event_log (customer_id, kind, detail) VALUES ($1, 'ticket_sent', $2)`,
     [t.customer_id, JSON.stringify({
       ticket_no: t.ticket_no, reg_no: t.reg_no, travel_date: t.travel_date,
-      image_ok: !!img?.ok, pdf_ok: !!pdf?.ok })]);
+      image_ok: !!img?.ok, pdf_ok: !!pdf?.ok, invoice_ok: !!invoice?.ok })]);
 
   /* No "Book another".
      One vehicle may hold one ticket per day, so offering another booking
@@ -263,7 +278,7 @@ async function sendTicket(ticketId, { force = false } = {}) {
     }
   } catch { /* the prompt still went out; the state is a convenience */ }
 
-  return { ok: true, image: img, pdf };
+  return { ok: true, image: img, pdf, invoice };
 }
 
-module.exports = { sendTicket, ticketPdf, qrPng, longDate, spaced };
+module.exports = { sendTicket, ticketPdf, longDate, spaced };

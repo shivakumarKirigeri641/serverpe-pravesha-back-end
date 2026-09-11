@@ -7,9 +7,8 @@
  *      happened or neither did; a ticket without a claimed place is an oversold
  *      slot, and a claim without a ticket is a place nobody can buy.
  *   2. Take the money.
- *   3. Sign the QR only after the money is confirmed. An unpaid signed ticket
- *      is a valid ticket — the signature does not know about payment — so it
- *      must not exist until payment does.
+ *   3. Mark it paid only after the money is confirmed. Until then the row is a
+ *      claim on a place, not a booking, and the gate must not honour it.
  *
  * The uniqueness rule is enforced by the database, not by a check here. Two
  * simultaneous bookings for one vehicle would both pass an application-level
@@ -20,7 +19,6 @@
 const { query, one, tx } = require('./db');
 const inventory = require('./inventory');
 const pricing = require('./pricing');
-const sign = require('./sign');
 const settings = require('./settings');
 const crypto = require('crypto');
 
@@ -195,7 +193,8 @@ async function existingForDate(vehicleId, travelDate) {
  * sentence to the customer, so they are distinguished rather than collapsed
  * into a generic failure.
  */
-async function hold({ customer, vehicle, place, slot, category, travelDate }) {
+async function hold({ customer, vehicle, place, slot, category, travelDate,
+                      declared = false, declaredReason = null }) {
   const price = await pricing.priceFor(place.id, category.id);
   const b = await pricing.breakdown(price);
   const minutes = await inventory.holdMinutes();
@@ -215,8 +214,9 @@ async function hold({ customer, vehicle, place, slot, category, travelDate }) {
            (ticket_no, reference_id, customer_id, vehicle_id, place_id, slot_id,
             category_id, travel_date, reg_no, mobile,
             entry_paise, platform_paise, gst_paise, total_paise,
+            category_declared, declared_reason,
             status, held_until)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'held',
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$16,$17,'held',
                  now() + ($15 || ' minutes')::interval)
          RETURNING *`,
         [ticketNo(),
@@ -224,7 +224,7 @@ async function hold({ customer, vehicle, place, slot, category, travelDate }) {
          customer.id, vehicle.id, place.id, slot.id, category.id, travelDate,
          vehicle.reg_no, customer.mobile,
          b.entry_paise, b.platform_paise, b.gst_paise, b.total_paise,
-         String(minutes)]);
+         String(minutes), !!declared, declared ? declaredReason : null]);
 
       return { ok: true, ticket: r.rows[0], breakdown: b };
     });
@@ -240,7 +240,7 @@ async function hold({ customer, vehicle, place, slot, category, travelDate }) {
 /* ────────────────────────────────────────────────────────────── the payment */
 
 /**
- * Payment confirmed: convert the hold into a booking and sign the QR.
+ * Payment confirmed: convert the hold into a booking.
  *
  * IDEMPOTENT BY CONSTRUCTION. The browser callback, the webhook and the
  * reconciler all call this for the same payment, often within a second of each
@@ -279,18 +279,16 @@ async function markPaid(ticketId, paymentId) {
       slotId: t.slot_id, categoryId: t.category_id,
     });
 
-    // Signed only now. Before this moment there was no ticket, only a claim.
-    const qr = sign.signTicket({
-      ticket_no: t.ticket_no, place_code: t.place_code, travel_date: t.travel_date,
-      slot_code: t.slot_code, category_code: t.category_code, reg_no: t.reg_no,
-    });
-
+    /* The booking exists from this moment. Nothing is issued to be carried or
+       presented — the gate reads the plate and looks the vehicle up, so what
+       makes this ticket real is the row, not an artefact in the visitor's
+       hand. */
     const updated = (await client.query(
       `UPDATE tickets
           SET status = 'paid', payment_id = COALESCE($2, payment_id),
-              qr_payload = $3, held_until = NULL, modified_at = now()
+              held_until = NULL, modified_at = now()
         WHERE id = $1
-        RETURNING *`, [ticketId, paymentId || null, qr])).rows[0];
+        RETURNING *`, [ticketId, paymentId || null])).rows[0];
 
     return { ok: true, ticket: { ...updated, place_code: t.place_code,
       slot_code: t.slot_code, category_code: t.category_code } };

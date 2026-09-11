@@ -152,14 +152,41 @@ const state = async () =>
   out = await lastOut();
   check(/Book ticket/.test(out.body||'') || out.message_type==='interactive', 'menu offered');
 
-  await pick('menu_book', 'Book ticket');
-  check((await state()).state === 'in_web_form', 'Book ticket -> the booking form link');
-  check(await sentInteractive(), 'a link button was sent, not a question');
-
   const consented = await db.one(
     `SELECT 1 FROM event_log e JOIN customers c ON c.id = e.customer_id
       WHERE c.mobile = $1 AND e.kind = 'consent_given'`, [MOBILE]);
   check(!!consented, 'consent recorded in event_log with a timestamp');
+
+  /* ------------------------------------------ the terms, every time */
+
+  /* Agreeing once does not cover every later booking. A visitor who comes back
+     and types "hi" is shown the terms again, because the fees and the
+     cancellation rule may have changed since the last time and only the
+     version that was on their screen can be held against them.
+
+     Language, by contrast, is remembered — that was answered about them, not
+     about the terms, and re-asking it every time would be an obstacle rather
+     than a protection. */
+  await text('hi');
+  check((await state()).state === 'consent',
+    'a returning visitor typing "hi" is asked to agree again');
+  out = await lastOut();
+  check(!/[ಀ-೿]/.test(out.body || ''),
+    'the second consent is in the language already chosen, not re-asked');
+
+  await tap('consent_yes', 'Agree');
+  check((await state()).state === 'menu', 'agreeing again -> the menu');
+
+  const accepts = await db.query(
+    `SELECT e.detail FROM event_log e JOIN customers c ON c.id = e.customer_id
+      WHERE c.mobile = $1 AND e.kind = 'consent_given' ORDER BY e.id`, [MOBILE]);
+  check(accepts.rows.length === 2, `each acceptance logged separately (${accepts.rows.length})`);
+  check(!!accepts.rows[1].detail?.policy_version,
+    `the accepted policy version is recorded (${accepts.rows[1].detail?.policy_version})`);
+
+  await pick('menu_book', 'Book ticket');
+  check((await state()).state === 'in_web_form', 'Book ticket -> the booking form link');
+  check(await sentInteractive(), 'a link button was sent, not a question');
 
   /* --------------------------------------------- booking, via the form */
 
@@ -171,9 +198,17 @@ const state = async () =>
   const bookToken = fe.newToken(cust.id, MOBILE, 'booking', 120);
   await new Promise((r) => setTimeout(r, 300));
 
-  const api = (p, b) => fetch(`${BASE}/book/${bookToken}/${p}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(b) }).then((r) => r.json());
+  /* Sealed, exactly as the page seals — so everything below this line runs
+     over the encrypted path rather than the plain fallback. A test that posts
+     plain JSON proves only that the fallback works, and would have been just
+     as green with the encryption broken in both directions. */
+  const wire = require('../src/routes/wire');
+  const api = async (p, b) => {
+    const r = await fetch(`${BASE}/book/${bookToken}/${p}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ d: wire.seal(b, bookToken) }) }).then((x) => x.json());
+    return typeof r?.d === 'string' ? wire.open(r.d, bookToken) : r;
+  };
 
   const page = await fetch(`${BASE}/book/${bookToken}`);
   check(page.status === 200, 'the booking page opens with a valid token');
@@ -182,6 +217,38 @@ const state = async () =>
 
   const day = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   const place = await db.one("SELECT id FROM places WHERE code = 'MULLAYANAGIRI'");
+
+  /* ------------------------------------------- the wire, from outside */
+
+  /* What a network tab or an intercepting proxy would actually see. The point
+     of the check is the absence: no plate, no price, no availability. */
+  const raw = await fetch(`${BASE}/book/${bookToken}/vehicle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ d: wire.seal(
+      { reg_no: REG, place_id: place.id, travel_date: day }, bookToken) }) })
+    .then((r) => r.text());
+  check(!/reg_no|entry|category|KA31/i.test(raw),
+    'the response body is opaque — no plate, price or category in the clear');
+  /* Asserted on the parsed shape rather than by matching the raw text: there
+     is exactly one field and it is base64, which is the actual claim. */
+  const shape = JSON.parse(raw);
+  check(Object.keys(shape).length === 1 && typeof shape.d === 'string'
+        && /^[A-Za-z0-9+/=]+$/.test(shape.d),
+    `the response carries one sealed field and nothing else (${Object.keys(shape).join('|')})`);
+  check(!!wire.open(JSON.parse(raw).d, bookToken)?.ok,
+    'and it opens with the right key');
+
+  /* A body sealed for one booking link must not open on another: the key is
+     derived per token, which is what stops a captured request being replayed
+     against somebody else's booking. */
+  const otherToken = fe.newToken(cust.id, MOBILE, 'booking', 120);
+  check(wire.open(JSON.parse(raw).d, otherToken) === null,
+    'a body sealed for one link does not open with another link key');
+
+  const tampered = await fetch(`${BASE}/book/${bookToken}/vehicle`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ d: wire.seal({ reg_no: REG }, otherToken) }) });
+  check(tampered.status === 400, `a body we cannot open is refused (${tampered.status})`);
 
   const bad = await api('vehicle', { reg_no: 'not a plate', place_id: place.id, travel_date: day });
   check(bad.ok === false && /does not look like/i.test(bad.error || ''),
@@ -197,6 +264,87 @@ const state = async () =>
     'plate normalised to capitals, no spacing');
   check(!!veh.category_id, `vehicle categorised (category_id ${veh.category_id})`);
   check(veh.total === '113', `price: ₹${veh.entry} entry + ₹${veh.fee} fee = ₹${veh.total}`);
+
+  /* ------------------------------------------ plates that are not modern */
+
+  /* An old Mysore-era registration — MYE 3033 — is a real vehicle that still
+     drives up the hill. The format check used to refuse it outright, and the
+     RC database has no record of it either, so there is nothing to read the
+     vehicle type from. It must be accepted, and the visitor must be ASKED
+     what they are driving rather than silently charged the car rate. */
+  const oldOne = await api('vehicle',
+    { reg_no: 'MYE 3033', place_id: place.id, travel_date: day });
+  check(oldOne.ok === true, 'an old three-letter registration is accepted');
+  check(oldOne.reg_pretty === 'MYE3033', `stored unspaced (${oldOne.reg_pretty})`);
+  check(oldOne.needs_type === true, 'with no RC record, the vehicle type is asked, not guessed');
+  check(Array.isArray(oldOne.types) && oldOne.types.length >= 2
+        && oldOne.types.every((x) => x.id && x.label && x.total),
+    `every type offered with its price (${(oldOne.types || []).map((x) => x.label).join(', ')})`);
+
+  /* ----------------------------- a vehicle Parivahan has never heard of */
+
+  /* THE ON-THE-SPOT CASE. Someone drives up in a vehicle the registration
+     database does not carry — an old plate, a temporary registration, or a new
+     one that has not propagated yet — and books at the barrier. The booking
+     must not fail: it is a real vehicle with a real owner holding a real RC
+     book, and refusing to sell them a ticket over a database we do not control
+     would be absurd.
+
+     So they are asked what they are driving, and that fact travels with the
+     ticket to the gate — because the staff member is the only person who can
+     see that a declared two-wheeler is a Tempo Traveller. */
+  /* Required here rather than relying on the declarations further down: those
+     are `const` in the same function scope, so reaching them from above is a
+     temporal-dead-zone error rather than a hoist. */
+  const bookingMod = require('../src/gatepass/booking');
+  const scanMod = require('../src/gatepass/scan');
+
+  const declToken = fe.newToken(cust.id, MOBILE, 'booking', 120);
+  await new Promise((r) => setTimeout(r, 300));
+  const dapi = async (path, b) => {
+    const r = await fetch(`${BASE}/book/${declToken}/${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ d: wire.seal(b, declToken) }) }).then((x) => x.json());
+    return typeof r?.d === 'string' ? wire.open(r.d, declToken) : r;
+  };
+
+  const declDay = new Date(Date.now() + 5 * 86400000).toLocaleDateString('en-CA');
+  const unknown = await dapi('vehicle',
+    { reg_no: 'MYE 3033', place_id: place.id, travel_date: declDay });
+  check(unknown.ok && unknown.needs_type, 'an unknown vehicle asks the visitor for the type');
+
+  const bike = unknown.types.find((x) => /two/i.test(x.label)) || unknown.types[0];
+  const dslots = await dapi('slots',
+    { place_id: place.id, travel_date: declDay, category_id: bike.id });
+  const openSlot = dslots.slots.find((x) => x.open);
+
+  const dconf = await dapi('confirm', {
+    agree: true, place_id: place.id, travel_date: declDay,
+    slot: openSlot.code, reg_no: 'MYE3033', category_id: bike.id });
+  check(dconf.ok, `the booking goes through anyway (${dconf.error || 'paid link issued'})`);
+
+  const dticket = await db.one(
+    `SELECT * FROM tickets WHERE reg_no = 'MYE3033' ORDER BY id DESC LIMIT 1`);
+  check(dticket?.category_declared === true,
+    'and the ticket records that the visitor chose the type');
+  check(dticket?.declared_reason === 'no_record',
+    `with why, told apart from a supplier outage (${dticket?.declared_reason})`);
+  check(Number(dticket.category_id) === Number(bike.id),
+    'priced at the category they picked, not at the fallback');
+
+  /* It has to reach the person at the barrier, or recording it was pointless. */
+  await bookingMod.markPaid(dticket.id, null);
+  const atGate = await scanMod.search('3033', { place_id: place.id });
+  const row = atGate.candidates.find((c) => c.ticket.reg_no === 'MYE3033');
+  check(!!row && row.ticket.category_declared === true,
+    'the gate is told the type was declared, not verified');
+
+  await db.query('DELETE FROM tickets WHERE id = $1', [dticket.id]);
+
+  /* And the Bharat series, which a new car bought out of state will carry. */
+  const bh = await api('vehicle',
+    { reg_no: '22 BH 1234 AA', place_id: place.id, travel_date: day });
+  check(bh.ok === true, 'a Bharat-series registration is accepted');
 
   const slots = await api('slots',
     { place_id: place.id, travel_date: day, category_id: veh.category_id });
@@ -214,7 +362,7 @@ const state = async () =>
   const ticket = await db.one(
     `SELECT * FROM tickets WHERE mobile = $1 ORDER BY id DESC LIMIT 1`, [MOBILE]);
   check(ticket?.status === 'held', `ticket ${ticket?.ticket_no} held, not yet paid`);
-  check(!ticket?.qr_payload, 'NO signed QR exists before payment');
+  check(ticket?.status === 'held', `the place is held, not yet sold (${ticket?.status})`);
 
   const inv = await db.one(
     `SELECT held FROM slot_inventory WHERE place_id = $1 AND travel_date = $2
@@ -226,12 +374,55 @@ const state = async () =>
 
   const booking = require('../src/gatepass/booking');
   const paid = await booking.markPaid(ticket.id, null);
-  check(paid.ok && !!paid.ticket.qr_payload, 'payment issues the signed QR');
+  check(paid.ok && paid.ticket.status === 'paid', 'payment turns the hold into a booking');
 
-  const sign = require('../src/gatepass/sign');
-  const v = sign.verifyTicket(paid.ticket.qr_payload);
-  check(v.ok && v.ticket.reg_no === REG && v.ticket.travel_date === day,
-    `QR carries the right plate and date: ${v.ticket?.reg_no} ${v.ticket?.travel_date}`);
+  /* The booking is what the gate reads, so that is what is checked: the right
+     vehicle, on the right day, findable by the last four characters of the
+     plate — which is all a staff member at a barrier will have. */
+  const scan = require('../src/gatepass/scan');
+  const gate = await scan.search(REG.slice(-4), { place_id: ticket.place_id });
+  check(gate.ok && gate.candidates.some((c) => c.ticket.ticket_no === ticket.ticket_no),
+    `the gate finds the booking by the plate's last four (${REG.slice(-4)})`);
+  check(paid.ticket.reg_no === REG && String(paid.ticket.travel_date).slice(0, 10) === day,
+    `booked against the right plate and date: ${paid.ticket.reg_no} ${day}`);
+
+
+  /* ------------------------------------------ the two documents */
+
+  /* A ticket and a tax invoice, sent as separate files. The ticket is held up
+     at a barrier; the invoice is filed. They are checked together here because
+     the failure worth catching is one arriving without the other. */
+  const deliver = require('../src/gatepass/deliver');
+  const sent = await deliver.sendTicket(ticket.id, { force: true });
+  check(sent.ok, 'ticket delivered');
+
+  const bill = await db.one('SELECT * FROM invoices WHERE ticket_id = $1', [ticket.id]);
+  check(!!bill, 'a tax invoice was raised for the ticket');
+  check(/^PRV\/\d{2}-\d{2}\/\d{5}$/.test(bill?.invoice_no || ''),
+    `invoice numbered in a GST series (${bill?.invoice_no})`);
+
+  /* The split is the thing an assessing officer would look at first: GST is on
+     our fee ALONE, and the entry fee passes through untaxed as a pure agent
+     collection. An invoice that taxed the whole Rs.113 would overstate our
+     turnover roughly eight times over. */
+  check(bill?.entry_paise + bill?.service_paise === bill?.total_paise,
+    `entry ${bill?.entry_paise} + service ${bill?.service_paise} = ${bill?.total_paise}`);
+  check(bill?.taxable_paise + bill?.gst_paise === bill?.service_paise,
+    `GST falls on the service fee alone: ${bill?.taxable_paise} + ${bill?.gst_paise} = ${bill?.service_paise}`);
+  check(bill?.taxable_paise < bill?.entry_paise,
+    'the entry fee is outside the taxable value');
+
+  const docs = await db.query(
+    `SELECT body FROM wa_messages WHERE mobile = $1 AND direction = 'out'
+        AND message_type = 'document' ORDER BY id DESC LIMIT 2`, [MOBILE]);
+  check(docs.rows.length === 2, `both PDFs sent, not one (${docs.rows.length})`);
+
+  /* Re-sending must not raise a second invoice. A GST series with two numbers
+     for one supply is worse than one that failed to send. */
+  await deliver.sendTicket(ticket.id, { force: true });
+  const again = await db.query('SELECT invoice_no FROM invoices WHERE ticket_id = $1', [ticket.id]);
+  check(again.rows.length === 1 && again.rows[0].invoice_no === bill.invoice_no,
+    'a re-send reuses the same invoice number, it does not raise a second');
 
   /* ------------------------------------------- the rule, from the outside */
 
@@ -279,19 +470,19 @@ const state = async () =>
     `ticket moved ${day} -> ${moved.travel_date} (move #${moved.move_count})`);
   check(String(moved.moved_from_date) === day, `history kept: moved_from_date ${moved.moved_from_date}`);
 
-  /* The old QR must stop working, and it must do so by itself. */
-  const oldQr = paid.ticket.qr_payload;
-  const oldStill = sign.verifyTicket(oldQr);
-  check(oldStill.ok && oldStill.ticket.travel_date === day,
-    'the old QR still carries a valid signature — for the OLD date');
-  const scan = require('../src/gatepass/scan');
-  const atOldDate = await scan.decide(oldQr, { place_id: moved.place_id }, new Date(`${day}T09:00:00`));
-  check(atOldDate.verdict === 'wrong_day' || atOldDate.verdict === 'invalid_signature',
-    `presented on the old date it now reads: ${atOldDate.verdict}`);
-
-  const newQr = sign.verifyTicket(moved.qr_payload);
-  check(newQr.ok && newQr.ticket.travel_date === newDay,
-    `the re-signed QR carries the new date: ${newQr.ticket?.travel_date}`);
+  /* Moving the date used to mean re-signing the QR, so that the old code read
+     as 'wrong_day' at the gate. There is no code now — the booking simply
+     carries the new date, and the gate reads whatever the row says. What is
+     still worth proving is that the original date stops working. */
+  const onOldDay = await scan.judge(
+    await db.one(`SELECT t.*, s.starts_at, s.ends_at, s.label AS slot_label, p.name AS place_name
+                    FROM tickets t JOIN place_slots s ON s.id = t.slot_id
+                    JOIN places p ON p.id = t.place_id WHERE t.id = $1`, [ticket.id]),
+    { place_id: moved.place_id }, new Date(`${day}T09:00:00`));
+  check(onOldDay.verdict === 'wrong_day',
+    `presented on the original date it now reads: ${onOldDay.verdict}`);
+  check(String(moved.travel_date).slice(0, 10) === newDay,
+    `and the booking carries the new date: ${String(moved.travel_date).slice(0, 10)}`);
 
   /* Capacity must have followed the ticket, not been counted twice. Measured as
      a change rather than as totals, because the database may hold any amount of

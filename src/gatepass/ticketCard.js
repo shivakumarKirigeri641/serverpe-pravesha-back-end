@@ -1,33 +1,39 @@
 /**
  * ticketCard.js — the image a visitor actually holds up at the barrier.
  *
- * A bare QR code was the first version and it was wrong. What arrives on
- * WhatsApp is the thing a person shows to a uniformed officer at 7 a.m.: it has
- * to look official at a glance, from a metre away, before anyone scans
- * anything.
+ * What arrives on WhatsApp has to look like a government ticket at a glance,
+ * from a metre away — it is the thing a visitor opens at 7 a.m. to check they
+ * are at the right place on the right day, and the thing they show a relative
+ * who asks whether it is genuine.
  *
  * So the card is composed rather than dumped:
  *
  *   the issuing authority at the top — the visitor is entering a state tourism
  *   site, and that is whose ticket this is;
  *
- *   the QR in the middle, DELIBERATELY NOT HUGE. A 140-character payload at
- *   this size still scans instantly, and leaving air around it makes the card
- *   read as a document rather than as a barcode;
+ *   THE NUMBER PLATE in the middle, as large as the card allows. It is the
+ *   only thing at the barrier that matters: the staff member reads the last few
+ *   characters off the bumper, types them, and the gate answers. The plate is
+ *   printed here so the visitor can confirm at a glance that the booking is for
+ *   the vehicle they actually brought — which is the one mistake that cannot be
+ *   fixed at the gate;
  *
- *   a verification code beneath it — visible, meaningless to a reader, and
- *   derived from the signature so that it changes whenever the ticket does. It
- *   exists to be looked at, not decoded;
+ *   the visit — place, date, entry time — beneath it;
+ *
+ *   one line telling the visitor there is nothing to show and to let the staff
+ *   member type the number;
  *
  *   and the vendor line at the bottom, small.
  *
- * Rendered at 2x and drawn at whole pixels, because a QR resampled by a
- * messaging app is a QR that stops scanning.
+ * THERE IS NO QR CODE, and that is the point. A ticket is bound to a vehicle,
+ * not to a person, so the plate was always the thing being checked and the code
+ * was an elaborate way of restating it. Removing it also removed every failure
+ * that had nothing to do with entry — a flat battery, a cracked screen, a
+ * deleted chat, sunlight on glass. What the visitor now receives is a receipt,
+ * not a credential.
  */
 
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
-const QRCode = require('qrcode');
-const crypto = require('crypto');
 const path = require('path');
 const { kn } = require('./kn');
 
@@ -58,7 +64,7 @@ GlobalFonts.registerFromPath(path.join(FONT_DIR, 'NotoSansKannada-Bold.ttf'), 'N
 
 /* Logical size; everything below is in these units and scaled at the end. */
 const W = 620;
-const H = 1000;
+const H = 1180;
 const SCALE = 2;
 
 const C = {
@@ -71,28 +77,22 @@ const C = {
   rule: '#d9e0dd',
   code: '#0f4f48',
   footer: '#8b9793',
+  warn: '#8a2b20',
 };
 
 /**
- * The visible verification code.
+ * The plate, spaced for reading.
  *
- * Taken from the ticket's own signature, so it cannot be produced without the
- * private key and it changes the moment anything about the ticket changes — a
- * postponed ticket gets a new one, which is exactly right.
- *
- * Grouped in fours because that is how people read a code aloud over a phone,
- * and drawn from an alphabet without O/0 or I/1 for the same reason.
+ * Stored unspaced everywhere — one vehicle is one string, and "KA31N8147" and
+ * "KA 31 N 8147" must never become two rows. But this is the one place a human
+ * reads it off a screen at arm's length and compares it to a bumper, and the
+ * grouped form is materially easier to check. Anything that does not parse as a
+ * modern plate (an old MYE 3033, a Bharat series) is left exactly as it is.
  */
-function verificationCode(qrPayload) {
-  const sig = String(qrPayload).split('|').pop() || '';
-  const digest = crypto.createHash('sha256').update(sig).digest();
-  const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-  let out = '';
-  for (let i = 0; i < 16; i++) {
-    out += ALPHABET[digest[i] % ALPHABET.length];
-    if (i % 4 === 3 && i !== 15) out += ' ';
-  }
-  return out;
+function plateGroups(reg) {
+  const s = String(reg || '').toUpperCase();
+  const m = s.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})$/);
+  return m ? [m[1], m[2], m[3], m[4]].filter(Boolean).join(' ') : s;
 }
 
 /**
@@ -108,6 +108,33 @@ function verificationCode(qrPayload) {
  * as one run and lets the text shaper do its job.
  */
 const isLatin = (s) => /^[\x20-\x7E]*$/.test(s);
+
+/**
+ * A centred paragraph, wrapped to a width.
+ *
+ * Canvas has no text box, so the breaking is done here. Words are joined back
+ * into whole lines before drawing — never character by character — because a
+ * Kannada line drawn glyph at a time loses its vowel signs, and because this is
+ * the one paragraph on the card that a visitor actually reads.
+ */
+function wrap(ctx, text, y, maxWidth, { font, color, lineHeight = 20 }) {
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+
+  const words = String(text).split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (ctx.measureText(next).width > maxWidth && line) { lines.push(line); line = w; }
+    else line = next;
+  }
+  if (line) lines.push(line);
+
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * lineHeight));
+  return y + lines.length * lineHeight;
+}
 
 function centre(ctx, text, y, { font, color, spacing = 0 }) {
   ctx.font = font;
@@ -134,7 +161,7 @@ function centre(ctx, text, y, { font, color, spacing = 0 }) {
  * Build the PNG.
  *
  * @param t  a ticket row with place_name, reg_no, travel_date, slot_label,
- *           category_label, ticket_no and qr_payload
+ *           category_label and ticket_no; maker and model if the RC knew them
  * @param cfg  app_settings, for the authority line and the vendor line
  */
 async function render(t, cfg = {}) {
@@ -184,60 +211,121 @@ async function render(t, cfg = {}) {
   centre(ctx, t.place_name, BAND + 100,
     { font: '600 26px Segoe UI, Arial, sans-serif', color: C.ink });
 
-  /* ── The QR ─────────────────────────────────────────────────────────── */
+  /* ── The plate ──────────────────────────────────────────────────────── */
 
-  const QR = 300;
-  const qrPng = await QRCode.toBuffer(t.qr_payload, {
-    errorCorrectionLevel: 'L', type: 'png', margin: 1, scale: 10,
-    color: { dark: '#0d1a18', light: '#ffffff' },
-  });
+  /* The hero of the card, because it is the only thing checked at the barrier.
+     Framed and set large enough to read from the passenger seat: the visitor's
+     job here is to notice, before they set off, that the booking is for the
+     vehicle they actually brought. That is the one mistake the gate cannot fix
+     for them — a booking against a plate that is sitting in the driveway at
+     home is a booking nobody can honour. */
+  const PB = { x: 70, y: BAND + 130, w: W - 140, h: 132 };
 
-  // loadImage, not `new Image().src = buffer` — the latter returns before the
-  // bytes are decoded, and drawImage then quietly paints nothing at all. A
-  // ticket that renders with a blank square where its QR should be is the worst
-  // possible failure here, because it looks fine until someone tries to scan it.
-  const img = await loadImage(qrPng);
+  ctx.fillStyle = '#f4f8f7';
+  ctx.fillRect(PB.x, PB.y, PB.w, PB.h);
+  ctx.strokeStyle = C.band;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(PB.x + 1, PB.y + 1, PB.w - 2, PB.h - 2);
 
-  const qx = Math.round((W - QR) / 2);
-  const qy = BAND + 134;
+  centre(ctx, kn('vehicle_number'), PB.y + 30,
+    { font: '600 13px NotoKannada, Segoe UI, sans-serif', color: C.muted });
 
-  // A hairline frame: it separates the code from the paper on a bright screen
-  // and stops a scanner from wandering off the edge of it.
+  /* Sized to fit rather than fixed: KA31N8147 and 22 BH 1234 AA are different
+     lengths, and a plate that overflows its frame looks like a fault. */
+  const plate = plateGroups(t.reg_no);
+  let plateSize = 54;
+  ctx.font = `700 ${plateSize}px Segoe UI, Arial, sans-serif`;
+  while (ctx.measureText(plate).width > PB.w - 48 && plateSize > 28) {
+    plateSize -= 2;
+    ctx.font = `700 ${plateSize}px Segoe UI, Arial, sans-serif`;
+  }
+  centre(ctx, plate, PB.y + 92,
+    { font: `700 ${plateSize}px Segoe UI, Arial, sans-serif`, color: C.ink, spacing: 2 });
+
+  centre(ctx, [t.maker, t.model].filter(Boolean).join(' ') || t.category_label,
+    PB.y + 118, { font: '13px Segoe UI, Arial, sans-serif', color: C.muted });
+
+  /* ── The visit ──────────────────────────────────────────────────────── */
+
+  let y = PB.y + PB.h + 46;
+
   ctx.strokeStyle = C.rule;
   ctx.lineWidth = 1;
-  ctx.strokeRect(qx - 14.5, qy - 14.5, QR + 29, QR + 29);
-  ctx.drawImage(img, qx, qy, QR, QR);
-
-  /* Kannada first, English under it — the rule the whole ticket follows. */
-  centre(ctx, kn('show_at_checkpost'), qy + QR + 42,
-    { font: '600 15px NotoKannadaBold, NotoKannada, Segoe UI, sans-serif', color: C.ink });
-  centre(ctx, 'SHOW THIS AT THE CHECKPOST', qy + QR + 62,
-    { font: '600 10px Segoe UI, Arial, sans-serif', color: C.muted, spacing: 2.4 });
-
-  /* ── The verification code ──────────────────────────────────────────── */
-
-  let y = qy + QR + 116;
-
-  ctx.strokeStyle = C.rule;
   ctx.beginPath(); ctx.moveTo(60, y - 26); ctx.lineTo(W - 60, y - 26); ctx.stroke();
 
-  centre(ctx, kn('secure_code'), y,
-    { font: '600 13px NotoKannada, Segoe UI, sans-serif', color: C.muted });
-  centre(ctx, 'SECURE VERIFICATION CODE', y + 18,
+  /* Two columns, because date and time are read together and a stacked list of
+     four labels is slower to scan than two pairs side by side. */
+  const col = (x, knLabel, enLabel, value) => {
+    ctx.textAlign = 'center';
+    ctx.font = '11px NotoKannada, Segoe UI, sans-serif';
+    ctx.fillStyle = C.muted;
+    ctx.fillText(knLabel, x, y);
+    ctx.font = '600 8.5px Segoe UI, Arial, sans-serif';
+    ctx.fillText(enLabel, x, y + 15);
+    ctx.font = '600 19px Segoe UI, Arial, sans-serif';
+    ctx.fillStyle = C.ink;
+    ctx.fillText(value, x, y + 42);
+  };
+
+  col(W * 0.30, kn('travel_date'), 'DATE', shortDate(t.travel_date));
+  col(W * 0.70, kn('entry_time'), 'ENTRY TIME', slotShort(t.slot_label));
+
+  y += 78;
+  col(W * 0.30, kn('vehicle_type'), 'VEHICLE TYPE', t.category_label);
+  col(W * 0.70, kn('booking_code'), 'BOOKING CODE', t.ticket_no);
+
+  /* ── What the visitor has to do ─────────────────────────────────────── */
+
+  /* Cleared of the value row above by a full line, not by a few pixels: the
+     tinted panel drawn below starts at y-26, and a gap measured too finely put
+     its top edge through the descenders of "Car / Jeep / SUV". */
+  y += 112;
+
+  ctx.fillStyle = '#eef5f3';
+  ctx.fillRect(50, y - 28, W - 100, 150);
+
+  centre(ctx, kn('nothing_to_show'), y,
+    { font: '600 17px NotoKannadaBold, NotoKannada, Segoe UI, sans-serif', color: C.band });
+  centre(ctx, 'NOTHING TO SHOW AT THE GATE', y + 20,
     { font: '600 9px Segoe UI, Arial, sans-serif', color: C.muted, spacing: 2.2 });
 
-  centre(ctx, verificationCode(t.qr_payload), y + 52,
-    { font: '600 25px Consolas, "Courier New", monospace', color: C.code, spacing: 1.5 });
+  const after = wrap(ctx, kn('staff_will_type'), y + 44, W - 140,
+    { font: '13px NotoKannada, Segoe UI, sans-serif', color: C.ink, lineHeight: 20 });
 
-  centre(ctx, kn('ticket_no'), y + 78,
-    { font: '12px NotoKannada, Segoe UI, sans-serif', color: C.muted });
-  centre(ctx, `TICKET  ${t.ticket_no}`, y + 96,
-    { font: '600 13px Consolas, "Courier New", monospace', color: C.muted, spacing: 2 });
+  /* THE WARNING THAT EARNS ITS PLACE INSIDE THE PANEL: arriving in a different
+     vehicle from the one booked is the single mistake the gate cannot fix, so
+     it sits with the instruction rather than down among the conditions. */
+  centre(ctx, kn('bring_this_vehicle'), after + 16,
+    { font: '600 13.5px NotoKannadaBold, NotoKannada, Segoe UI, sans-serif', color: C.warn });
+  centre(ctx, 'BRING THIS VEHICLE — ANOTHER VEHICLE WILL NOT BE ALLOWED IN',
+    after + 35, { font: '600 9px Segoe UI, Arial, sans-serif', color: C.warn, spacing: 1.1 });
 
-  /* One line of human detail. The visitor is standing at a barrier and needs to
-     know this is the right day without opening the PDF. */
-  centre(ctx, `${t.reg_no}   ·   ${shortDate(t.travel_date)}   ·   ${slotShort(t.slot_label)}`,
-    y + 130, { font: '600 16px Segoe UI, Arial, sans-serif', color: C.ink });
+  /* ── The conditions ─────────────────────────────────────────────────── */
+
+  /* Flowed from a running y rather than placed at fixed offsets, because the
+     Kannada wraps to a different number of lines than the English and a fixed
+     layout would collide on one of them. */
+  y = after + 78;
+
+  centre(ctx, 'PLEASE NOTE', y,
+    { font: '600 9.5px Segoe UI, Arial, sans-serif', color: C.muted, spacing: 2.4 });
+  y += 22;
+
+  for (const [knKey, en] of [
+    ['note_only_number',
+      'The checkpost checks only your vehicle number. Make sure you booked with the '
+      + 'number plate of the vehicle you will actually bring.'],
+    ['note_no_swap',
+      'Do not change the vehicle at the last moment. This number is what the staff '
+      + 'enter and validate at the checkpost — a different vehicle will not be allowed in.'],
+    ['note_one_entry', 'One entry per vehicle per day.'],
+  ]) {
+    y = wrap(ctx, kn(knKey), y, W - 120,
+      { font: '12px NotoKannada, Segoe UI, sans-serif', color: C.ink, lineHeight: 19 });
+    y = wrap(ctx, en, y + 2, W - 120,
+      { font: '10.5px Segoe UI, Arial, sans-serif', color: C.muted, lineHeight: 15 });
+    y += 12;
+  }
 
   /* ── Footer ─────────────────────────────────────────────────────────── */
 
@@ -281,4 +369,4 @@ function shortDate(d) {
 const slotShort = (label) => String(label || '')
   .replace(/:00/g, '').replace(/\s+/g, ' ').trim();
 
-module.exports = { render, verificationCode };
+module.exports = { render, plateGroups };

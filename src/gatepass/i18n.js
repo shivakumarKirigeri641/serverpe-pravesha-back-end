@@ -33,7 +33,7 @@ const S = {
   menu_book:           { kn: 'ಟಿಕೆಟ್ ಬುಕ್ ಮಾಡಿ',            en: 'Book a ticket' },
   menu_book_desc:      { kn: 'ವಾಹನ ಪ್ರವೇಶ ಟಿಕೆಟ್',           en: 'Vehicle entry ticket' },
   menu_download:       { kn: 'ಟಿಕೆಟ್ ಪಡೆಯಿರಿ',              en: 'Download ticket' },
-  menu_download_desc:  { kn: 'QR ಕೋಡ್ ಮತ್ತೆ ಪಡೆಯಿರಿ',        en: 'Get your QR code again' },
+  menu_download_desc:  { kn: 'ಟಿಕೆಟ್ ಮತ್ತೆ ಪಡೆಯಿರಿ',           en: 'Get your ticket again' },
   menu_postpone:       { kn: 'ದಿನಾಂಕ ಬದಲಿಸಿ',               en: 'Change the date' },
   menu_postpone_desc:  { kn: 'ಬೇರೆ ದಿನಕ್ಕೆ ಬದಲಿಸಿ',          en: 'Move to another day' },
   menu_support:        { kn: 'ಸಹಾಯ',                        en: 'Support' },
@@ -51,8 +51,11 @@ const S = {
      the second site. */
   consent_book_here:   { kn: 'ಕರ್ನಾಟಕದ ಪ್ರವಾಸಿ ತಾಣಗಳಿಗೆ ವಾಹನ ಪ್ರವೇಶ ಟಿಕೆಟ್ ಇಲ್ಲಿಯೇ ಬುಕ್ ಮಾಡಿ — ಗೇಟ್‌ನಲ್ಲಿ ಸರತಿ ಇಲ್ಲ.',
                          en: 'Book vehicle entry tickets for Karnataka tourist places here — no queue at the gate.' },
-  consent_qr:          { kn: 'ನಿಮ್ಮ ಟಿಕೆಟ್‌ನಲ್ಲಿ ಸುರಕ್ಷಿತ QR ಕೋಡ್ ಇರುತ್ತದೆ. ಅದನ್ನು ತಿದ್ದಲಾಗದು, ನಕಲಿಸಲಾಗದು.',
-                         en: 'Your ticket carries a secure QR code the checkpost scans. It cannot be edited or copied.' },
+  /* What replaced the QR promise. It says the thing visitors most want to
+     hear — you do not have to produce anything at the gate — and it is also
+     the honest description of how entry now works. */
+  consent_qr:          { kn: 'ಗೇಟ್‌ನಲ್ಲಿ ತೋರಿಸಲು ಏನೂ ಬೇಡ. ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ ಒಳಗೆ ಬಿಡುತ್ತಾರೆ.',
+                         en: 'Nothing to show at the gate. The staff enter your vehicle number and you drive in.' },
   consent_ask:         { kn: 'ಸರಿಯಾದ ಶುಲ್ಕ ವಿಧಿಸಲು ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ಸರ್ಕಾರಿ ದಾಖಲೆಯೊಂದಿಗೆ ಪರಿಶೀಲಿಸುತ್ತೇವೆ. ವಾಹನ ಸಂಖ್ಯೆ, ಪ್ರಕಾರ ಮತ್ತು ನಿಮ್ಮ ಮೊಬೈಲ್ ಸಂಖ್ಯೆ ಮಾತ್ರ ಸಂಗ್ರಹಿಸುತ್ತೇವೆ.',
                          en: 'We check your vehicle number against government records to confirm the vehicle type. We store the vehicle number, type and your mobile number only.' },
 
@@ -152,9 +155,13 @@ const S = {
   /* ── ticket delivery ──────────────────────────────────────────────── */
 
   ticket_word:         { kn: 'ಟಿಕೆಟ್',                       en: 'Ticket' },
-  show_qr_at_gate:     { kn: 'ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ಈ QR ತೋರಿಸಿ.',
-                         en: 'Show this QR at the checkpost.' },
-  ticket_and_receipt:  { kn: 'ನಿಮ್ಮ ಟಿಕೆಟ್ ಮತ್ತು ರಸೀದಿ.',     en: 'Your ticket and receipt.' },
+  gate_instruction:     { kn: 'ಗೇಟ್‌ನಲ್ಲಿ ತೋರಿಸಲು ಏನೂ ಬೇಡ — ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸುತ್ತಾರೆ. ಇದೇ ವಾಹನವನ್ನು ತನ್ನಿ.',
+                         en: 'Nothing to show at the gate — the staff will enter your vehicle number. Please bring this vehicle.' },
+  /* The ticket PDF stopped being the receipt when the invoice became its own
+     document — a caption promising both would have the visitor looking for
+     amounts that are no longer on that page. */
+  ticket_and_receipt:  { kn: 'ನಿಮ್ಮ ಟಿಕೆಟ್ — ಮುದ್ರಿಸಬಹುದಾದ ಪ್ರತಿ.', en: 'Your ticket — printable copy.' },
+  invoice_caption:     { kn: 'ನಿಮ್ಮ ಜಿಎಸ್‌ಟಿ ಬಿಲ್ (ತೆರಿಗೆ ಸರಕುಪಟ್ಟಿ).', en: 'Your GST tax invoice.' },
   safe_journey:        { kn: 'ಶುಭ ಪ್ರಯಾಣ! 🙏',               en: 'Have a good trip! 🙏' },
 
   /* ── feedback ─────────────────────────────────────────────────────── */
@@ -199,6 +206,19 @@ const S = {
                          en: 'We could not work out the vehicle type. Please contact support.' },
   f_err_clash:         { kn: '{reg} ವಾಹನಕ್ಕೆ {date} ದಿನಾಂಕಕ್ಕೆ ಈಗಾಗಲೇ ಟಿಕೆಟ್ ಇದೆ.',
                          en: '{reg} already has a ticket for {date}.' },
+
+  /* An old registration is usually not in the RC database. Said plainly, so
+     the visitor understands nothing is wrong with their vehicle or with what
+     they typed — we simply have no record to read the type from. */
+  f_type_title:        { kn: 'ವಾಹನದ ಪ್ರಕಾರ ಆಯ್ಕೆಮಾಡಿ',        en: 'Choose your vehicle type' },
+  f_type_ask:          { kn: 'ಈ ಹಳೆಯ ನೋಂದಣಿ ಸಂಖ್ಯೆಗೆ ಸರ್ಕಾರಿ ದಾಖಲೆ ಸಿಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ನೀವು ಬರುತ್ತಿರುವ ವಾಹನದ ಪ್ರಕಾರವನ್ನು ಆಯ್ಕೆಮಾಡಿ.',
+                         en: 'We have no government record for this registration number, which is normal for an older vehicle. Please choose the type of vehicle you are bringing.' },
+  f_type_gate:         { kn: 'ಗೇಟ್‌ನಲ್ಲಿ ವಾಹನವನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.',
+                         en: 'The vehicle is checked at the gate against the type chosen here.' },
+  /* A new vehicle on a dealer's temporary number is not a suspicious vehicle,
+     and the message must not read like one. */
+  f_type_temp:         { kn: 'ತಾತ್ಕಾಲಿಕ ನೋಂದಣಿ ಸಂಖ್ಯೆಗಳು ಇನ್ನೂ ಸರ್ಕಾರಿ ದಾಖಲೆಯಲ್ಲಿ ಸೇರಿರುವುದಿಲ್ಲ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ವಾಹನದ ಪ್ರಕಾರವನ್ನು ಆಯ್ಕೆಮಾಡಿ.',
+                         en: 'A temporary registration is not in the government database yet. Please choose your vehicle type.' },
 
   /* SLOT */
   f_title_slot:        { kn: 'ಸಮಯ',                         en: 'Time slot' },

@@ -78,7 +78,7 @@ const REQUIREMENTS = [
     group: 'permission',
     kn: 'ಲಾಂಛನ ಮತ್ತು ಲೋಗೋ ಬಳಕೆಗೆ ಅನುಮತಿ',
     item: 'Written permission to use the department emblem and name',
-    why: 'The state emblem and the Karnataka Tourism wordmark appear on the ticket, the QR card '
+    why: 'The state emblem and the Karnataka Tourism wordmark appear on the ticket card '
        + 'and the reports. Using them without written authority is not a small oversight, and '
        + 'this is the item most often forgotten until it becomes a problem.',
     needed: 'Before go-live',
@@ -199,7 +199,7 @@ const REQUIREMENTS = [
     group: 'practical',
     kn: 'ಗೇಟ್‌ನಲ್ಲಿ ಫಲಕಗಳು',
     item: 'Signage at the gate and on the approach road',
-    why: 'What the boards say, in Kannada and English, and who prints them. A QR poster at the '
+    why: 'What the boards say, in Kannada and English, and who prints them. A poster at the '
        + 'gate lets someone who arrives without a ticket book one on the spot.',
     needed: 'At launch',
   },

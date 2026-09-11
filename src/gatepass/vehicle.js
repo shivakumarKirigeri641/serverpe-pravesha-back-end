@@ -213,4 +213,22 @@ function describe(v) {
   return bits.join(' · ') || null;
 }
 
-module.exports = { resolve, describe, details, upsertBare };
+/**
+ * Did the RC lookup actually tell us what this vehicle IS?
+ *
+ * A row can exist with nothing but a plate — upsertBare() creates one whenever
+ * the lookup fails, which is the normal outcome for a pre-1989 registration
+ * that predates the database. Those rows must not be run through
+ * categoryForVehicle(): it matches on class words, finds none, and falls
+ * through to the catch-all, which charges car rates. A visitor on an old
+ * two-wheeler would pay a hundred rupees instead of fifty and have no way to
+ * say so.
+ *
+ * So the question is asked explicitly, and where the answer is no, the visitor
+ * is asked what they are driving instead of being quietly guessed at.
+ */
+function isClassified(v) {
+  return !!(v && (v.vehicle_class || v.vehicle_category || v.body_type));
+}
+
+module.exports = { resolve, describe, details, upsertBare, isClassified };
