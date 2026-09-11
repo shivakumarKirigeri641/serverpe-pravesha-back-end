@@ -99,13 +99,24 @@ const SHELL = (title, body) => `<!doctype html>
   .fees tr:last-child td{border-bottom:0}
   .fees .ico{font-size:17px;margin-right:7px;vertical-align:-2px}
   .fees .tot{font-weight:700}
+  .fees td.calc{white-space:normal;line-height:1.3}
+  .fees .plus{display:block;font-size:11.5px;color:var(--muted)}
   .fees tr.mine td{background:rgba(0,168,132,.10)}
   .fees tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
-  .fees-note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .rules{margin-top:14px;border:1px solid var(--line);border-left:3px solid var(--warn);
+         border-radius:10px;padding:11px 13px;background:var(--warnbg)}
+  .rules-h{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+           color:var(--warn);margin-bottom:6px}
+  .rules ul{margin:0;padding-left:18px}
+  .rules li{font-size:13px;line-height:1.5;margin:5px 0;color:var(--ink)}
+  .paygrid{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:4px;
+           border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .paygrid td{border:1px solid var(--line);padding:10px 12px}
+  .paygrid td:last-child{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .paygrid tr.total td{font-weight:700;font-size:16px;background:rgba(0,168,132,.10)}
   .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
        color:var(--muted);margin:4px 0 4px}
   .sub.gap{margin-top:16px}
-  .paybox{background:var(--bg);border-radius:10px;padding:4px 12px 8px}
   footer{text-align:center;color:var(--muted);font-size:12px;padding:22px 16px}
 </style></head><body><div class="wrap">
 <header><div class="brand">Pravesha</div>
@@ -143,7 +154,7 @@ function mask(mobile) {
   return '\u2022'.repeat(d.length - 4) + ' ' + d.slice(-4);
 }
 
-function render({ token, customer, places, dates, tariff }) {
+function render({ token, customer, places, dates, tariff, feePercent }) {
   const name = esc((customer && (customer.name || customer.wa_profile_name)) || '');
   const mobile = esc((customer && customer.mobile) || '');
 
@@ -159,9 +170,10 @@ function render({ token, customer, places, dates, tariff }) {
      someone who calls it a Cruiser, while the silhouette does. */
   const ICON = { BIKE: '🏍️', CAR: '🚗', TOOFAN: '🚙', TT: '🚐' };
   const rs = (paise) => '&#8377;' + (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
+  const pct = feePercent === null || feePercent === undefined ? '' : `${feePercent}%`;
   const feeRows = tariff.map((t) => `<tr data-cat="${esc(t.categoryId)}">
         <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(t.label)}</td>
-        <td>${rs(t.entryPaise)}</td><td>${rs(t.platformPaise)}</td>
+        <td class="calc">${rs(t.entryPaise)} <span class="plus">+ ${pct} platform fee</span></td>
         <td class="tot">${rs(t.totalPaise)}</td></tr>`).join('');
   const live = places.find((p) => p.is_active);
   const placeName = esc(live ? live.name : '');
@@ -197,12 +209,18 @@ const BODY = (v) => `
   <div class="card">
     <div class="step"><span class="num">&#8377;</span>Entry fees &middot; ${v.placeName}</div>
     <table class="fees" id="fees">
-      <thead><tr><th>Vehicle</th><th>Entry</th><th>Platform</th><th>Total</th></tr></thead>
+      <thead><tr><th>Vehicle</th><th>Fee</th><th>Total</th></tr></thead>
       <tbody>${v.feeRows}</tbody>
     </table>
-    <div class="fees-note">Per vehicle, per visit. The entry fee goes to the Karnataka Tourism
-    Department; the platform fee covers booking and payment processing.
-    Your fee is set by your vehicle&rsquo;s registration.</div>
+    <div class="rules">
+      <div class="rules-h">Please note</div>
+      <ul>
+        <li>The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.</li>
+        <li>Vehicles without a clear, readable number plate will not be allowed entry.</li>
+        <li>One pass per vehicle for a date and slot. Repeat or duplicate bookings will be cancelled.</li>
+        <li>Editing, copying or reselling a pass is illegal. Such passes will be seized at the checkpost.</li>
+      </ul>
+    </div>
   </div>
 
   <div class="card">

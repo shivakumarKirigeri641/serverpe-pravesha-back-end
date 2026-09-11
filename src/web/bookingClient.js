@@ -170,11 +170,11 @@
       + row('Vehicle', v.regNo)
       + row('Type', v.category.label)
       + '<div class="sub gap">Payment summary</div>'
-      + '<div class="paybox">'
-      + row('Entry fee', '₹' + v.price.entry)
-      + row('Platform fee', '₹' + v.price.platform)
-      + '<div class="row total"><span>Total payable</span><span>₹' + v.price.total + '</span></div>'
-      + '</div>';
+      + '<table class="paygrid"><tbody>'
+      + '<tr><td>Entry fee (' + v.category.label + ')</td><td>₹' + v.price.entry + '</td></tr>'
+      + '<tr><td>Platform fee</td><td>₹' + v.price.platform + '</td></tr>'
+      + '<tr class="total"><td>Total payable</td><td>₹' + v.price.total + '</td></tr>'
+      + '</tbody></table>';
     vis($('revCard'), true);
     $('revCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }

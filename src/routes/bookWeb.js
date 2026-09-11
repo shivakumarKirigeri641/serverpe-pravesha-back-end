@@ -63,6 +63,7 @@ router.get('/book/:token', gate, async (req, res) => {
     places: list,
     dates,
     tariff: tariffRows,
+    feePercent: await pricing.platformPercent(),
   }));
 });
 
