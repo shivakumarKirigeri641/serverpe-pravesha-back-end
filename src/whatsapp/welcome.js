@@ -19,6 +19,7 @@
 
 const send = require('./send');
 const { greetingName } = require('../gatepass/customers');
+const { t, langOf, hasChosen } = require('../i18n');
 
 /** Bump when the wording changes; 022 stores this against each acceptance. */
 const TERMS_VERSION = 'v1';
@@ -50,41 +51,61 @@ function firstTime(customer) {
   ].join('\n');
 }
 
-function returning(customer) {
+/**
+ * The main menu, in the visitor's own language.
+ *
+ * Nothing here is bilingual. Once someone has told us they read Kannada,
+ * continuing to attach an English line to every message says their choice was
+ * not taken seriously -- and it doubles the length of every message on a phone.
+ */
+function menu(customer) {
+  const lang = langOf(customer);
   const name = greetingName(customer);
   return [
-    name ? `Welcome back, ${name}! 🙏` : 'Welcome back! 🙏',
+    name ? t('menuGreet', lang, { name }) : t('menuGreetNoName', lang),
     '',
-    '*Pravesha* — entry passes for Karnataka’s hill destinations.',
-    '',
-    'What would you like to do?',
-    'ನೀವು ಏನು ಮಾಡಲು ಬಯಸುತ್ತೀರಿ?',
+    t('menuBody', lang),
   ].join('\n');
 }
 
+/** Sent once, after consent: the only question asked before a language is known. */
+const askLanguage = (to, customer) =>
+  send.buttons(to, t('chooseLanguage', langOf(customer)), [
+    { id: 'LANG_EN', title: t('btnEnglish', 'en') },
+    { id: 'LANG_KN', title: t('btnKannada', 'kn') },
+  ], 'Pravesha · ಪ್ರವೇಶ');
+
+const sendMenu = (to, customer) => {
+  const lang = langOf(customer);
+  return send.buttons(to, menu(customer), [
+    { id: 'BOOK', title: t('btnBook', lang) },
+    { id: 'MY_PASSES', title: t('btnMyPasses', lang) },
+    { id: 'HELP', title: t('btnHelp', lang) },
+  ], t('menuHeader', lang));
+};
+
 /**
- * Buttons rather than "reply with 1, 2 or 3". A tap cannot be misspelt, and it
- * arrives as a stable id instead of text we would have to interpret.
+ * Where a visitor lands on "hi" depends on how far they have got before, and
+ * the order is fixed: terms, then language, then the menu.
  *
- * Meta allows three, and the consent screen spends one of them on the agreement
- * itself — so the first-time menu deliberately does not offer "My passes". A
- * visitor who has never accepted the terms has no passes to look at.
+ * Terms come first because they gate everything. Language comes second because
+ * the terms message is the one thing that must be readable before anyone has
+ * told us what they read -- so it is bilingual, and every message after it is
+ * not.
  */
 async function send_(to, customer) {
   const accepted = customer?.terms_accepted_at && customer?.terms_version === TERMS_VERSION;
 
   if (!accepted) {
     return send.buttons(to, firstTime(customer), [
-      { id: 'AGREE', title: '✅ Agree & continue' },
-      { id: 'HELP', title: '❓ Help' },
+      { id: 'AGREE', title: t('btnAgree', 'en') },
+      { id: 'HELP', title: t('btnHelp', 'en') },
     ], 'Pravesha · ಪ್ರವೇಶ');
   }
 
-  return send.buttons(to, returning(customer), [
-    { id: 'BOOK', title: '🎟️ Book pass' },
-    { id: 'MY_PASSES', title: '📋 My passes' },
-    { id: 'HELP', title: '❓ Help' },
-  ], 'Pravesha · ಪ್ರವೇಶ');
+  if (!hasChosen(customer)) return askLanguage(to, customer);
+
+  return sendMenu(to, customer);
 }
 
-module.exports = { send: send_, firstTime, returning, TERMS_VERSION, termsUrl, privacyUrl };
+module.exports = { send: send_, firstTime, menu, askLanguage, sendMenu, TERMS_VERSION, termsUrl, privacyUrl };

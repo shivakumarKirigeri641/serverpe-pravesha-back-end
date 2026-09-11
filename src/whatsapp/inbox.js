@@ -10,6 +10,8 @@ const customers = require('../gatepass/customers');
 const session = require('./session');
 const welcome = require('./welcome');
 const phone = require('./phone');
+const send = require('./send');
+const { t, langOf } = require('../i18n');
 
 /* Anything a person might open with. Matched loosely because they will not type
    it the way we expect: "Hi", "hii", "hello sir", "ನಮಸ್ಕಾರ". */
@@ -97,21 +99,41 @@ async function handle(msg, contact) {
     await query(
       `UPDATE customers SET terms_accepted_at = now(), terms_version = $2, modified_at = now()
         WHERE id = $1`, [customer.id, welcome.TERMS_VERSION]);
-    await require('./send').text(to,
-      '✅ Thank you. / ಧನ್ಯವಾದಗಳು.');
-    await welcome.send(to, { ...customer, terms_accepted_at: new Date(), terms_version: welcome.TERMS_VERSION });
+
+    /* Straight on to the language question. A separate thank-you would be the
+       third notification in a row and says nothing the next screen does not. */
+    await welcome.askLanguage(to, { ...customer, terms_accepted_at: new Date(),
+      terms_version: welcome.TERMS_VERSION });
+    return;
+  }
+
+  /* The language choice is stored on the customer, not the session: it is a
+     fact about the person rather than about this conversation, and it has to
+     survive a reset. language_asked_at is what separates "chose Kannada" from
+     "was never asked and the column defaults to Kannada" -- without it every
+     visitor looks as though they had chosen. */
+  if (action === 'LANG_EN' || action === 'LANG_KN') {
+    const lang = action === 'LANG_KN' ? 'kn' : 'en';
+    const r = await query(
+      `UPDATE customers SET language = $2, language_asked_at = now(), modified_at = now()
+        WHERE id = $1 RETURNING *`, [customer.id, lang]);
+    await send.text(to, t('languageSet', lang));
+    await welcome.sendMenu(to, r.rows[0]);
     return;
   }
 
   if (action === 'BOOK') {
-    await require('./send').text(to,
-      'Booking opens next — place, slot, date and vehicle.\nಕಾಯ್ದಿರಿಸುವಿಕೆ ಶೀಘ್ರದಲ್ಲೇ.');
+    await send.text(to, t('bookingSoon', langOf(customer)));
     return;
   }
 
-  if (action === 'HELP' || /^\s*help\b/i.test(body)) {
-    await require('./send').text(to,
-      '*Pravesha help*\n\nSend *hi* at any time to start over.\n\nEntry passes are issued for two-wheelers, cars, Toofans and Tempo Travellers. Autos, buses, trucks, tractors and trailers are not permitted on these routes.');
+  if (action === 'MY_PASSES') {
+    await send.text(to, t('noPasses', langOf(customer)));
+    return;
+  }
+
+  if (action === 'HELP' || /^\s*help/i.test(body)) {
+    await send.text(to, t('help', langOf(customer)));
     return;
   }
 
