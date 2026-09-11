@@ -118,4 +118,25 @@ router.get(`${P}/live`, auth, safe(async (req, res) => {
   res.json({ ok: true, ...(await liveStats.live()) });
 }));
 
+/*
+ * Older pages of the activity feed.
+ *
+ * Cursor-paged rather than offset-paged: checks land while somebody is reading,
+ * and an offset of 25 means something different each time one arrives — page two
+ * would repeat rows page one already showed.
+ */
+router.get(`${P}/live/activity`, auth, safe(async (req, res) => {
+  const out = await liveStats.activity({
+    limit: req.query.limit,
+    /* '<iso time>|<id>', as handed back by the previous page. */
+    before: req.query.before ? String(req.query.before) : null,
+  });
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    rows: out.rows.map(liveStats.shapeActivity),
+    hasMore: out.hasMore,
+    nextCursor: out.nextCursor,
+  });
+}));
+
 module.exports = { router, auth, needs, me };

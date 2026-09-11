@@ -198,20 +198,83 @@ async function hourlyByCategory(today) {
   return [...byHour.values()];
 }
 
-/** The gate's activity, newest first — every check, not only the successful ones. */
-const activity = (limit = 30) => rowsOf(
-  `SELECT s.id, s.verdict, s.scanned_at, s.ticket_no, s.reg_no, s.duration_ms,
-          st.name AS staff_name, cp.name AS checkpost_name,
-          c.label AS category_label, c.code AS category_code,
-          cu.name AS customer_name, cu.wa_profile_name
-     FROM scans s
-     LEFT JOIN staff st ON st.id = s.staff_id
-     LEFT JOIN checkposts cp ON cp.id = s.checkpost_id
-     LEFT JOIN tickets t ON t.id = s.ticket_id
-     LEFT JOIN vehicle_categories c ON c.id = t.category_id
-     LEFT JOIN customers cu ON cu.id = t.customer_id
-    ORDER BY s.scanned_at DESC
-    LIMIT $1`, [limit]);
+/**
+ * The gate's activity, newest first — every check, not only the ones that let
+ * somebody in.
+ *
+ * NEWEST FIRST, BY WHEN THE CHECK HAPPENED. Not by row id: a check made on a
+ * phone that had no signal reaches us later than it happened, so id order and
+ * time order are not the same thing, and a feed that claims to be newest-first
+ * had better be.
+ *
+ * PAGED BY THE ROW ITSELF, NOT BY AN OFFSET. Checks arrive while somebody is
+ * reading: an offset of 25 means something different each time one lands, and
+ * page two would repeat rows page one already showed. The cursor is the time and
+ * id of the last row on the page — the id breaks ties between checks recorded in
+ * the same second — so "older than this one" stays true however much arrives
+ * above it.
+ */
+const cursorOf = (row) => `${new Date(row.scanned_at).toISOString()}|${row.id}`;
+
+function parseCursor(cursor) {
+  const [at, id] = String(cursor || '').split('|');
+  if (!at || !id || Number.isNaN(Date.parse(at)) || !/^\d+$/.test(id)) return null;
+  return { at, id };
+}
+
+async function activity({ limit = 25, before = null } = {}) {
+  const size = Math.max(1, Math.min(100, Number(limit) || 25));
+  const cursor = parseCursor(before);
+
+  const rows = await rowsOf(
+    `SELECT s.id, s.verdict, s.scanned_at, s.ticket_no, s.reg_no, s.duration_ms,
+            st.name AS staff_name, cp.name AS checkpost_name,
+            c.label AS category_label, c.code AS category_code,
+            cu.name AS customer_name, cu.wa_profile_name
+       FROM scans s
+       LEFT JOIN staff st ON st.id = s.staff_id
+       LEFT JOIN checkposts cp ON cp.id = s.checkpost_id
+       LEFT JOIN tickets t ON t.id = s.ticket_id
+       LEFT JOIN vehicle_categories c ON c.id = t.category_id
+       LEFT JOIN customers cu ON cu.id = t.customer_id
+      WHERE ($1::timestamptz IS NULL
+             OR (s.scanned_at, s.id) < ($1::timestamptz, $2::bigint))
+      ORDER BY s.scanned_at DESC, s.id DESC
+      LIMIT $3`, [cursor ? cursor.at : null, cursor ? cursor.id : null, size + 1]);
+
+  /* One row more than asked for, purely to know whether there is another page. */
+  const hasMore = rows.length > size;
+  const page = hasMore ? rows.slice(0, size) : rows;
+
+  return {
+    rows: page,
+    hasMore,
+    nextCursor: hasMore && page.length ? cursorOf(page[page.length - 1]) : null,
+  };
+}
+
+const shapeActivity = (r) => ({
+  id: String(r.id),
+  at: r.scanned_at,
+  verdict: r.verdict,
+  staff: r.staff_name,
+  checkpost: r.checkpost_name,
+  regNo: r.reg_no,
+  ticketNo: r.ticket_no,
+  type: r.category_label,
+  typeCode: r.category_code,
+  visitor: r.customer_name || r.wa_profile_name || null,
+  durationMs: r.duration_ms,
+});
+
+/** How many checks there have been at all, and today — for the pager's footing. */
+async function activityCounts(today) {
+  const [row] = await rowsOf(
+    `SELECT count(*) AS total,
+            count(*) FILTER (WHERE (scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date) AS today
+       FROM scans`, [today]);
+  return { total: n(row.total), today: n(row.today) };
+}
 
 /** Who is on duty, and how each of them is working. */
 async function staff(today) {
@@ -433,16 +496,17 @@ async function live() {
   const yesterday = previousDay(today);
   const nowTime = `${slotTime.hhmm(now.minutes)}:59`;
 
-  const [v, veh, hours, byCat, acts, people, perf, verds, current] = await Promise.all([
+  const [v, veh, hours, byCat, acts, people, perf, verds, current, counts] = await Promise.all([
     visitors(today, yesterday, nowTime, slotTime.hhmm(now.minutes)),
     vehicles(today, yesterday, nowTime),
     hourly(today, yesterday),
     hourlyByCategory(today),
-    activity(),
+    activity({ limit: 25 }),
     staff(today),
     performance(today, now.minutes),
     verdicts(today),
     currentVehicle(),
+    activityCounts(today),
   ]);
 
   return {
@@ -453,19 +517,12 @@ async function live() {
     vehicles: veh,
     traffic: hours,
     trafficByCategory: byCat,
-    activity: acts.map((r) => ({
-      id: String(r.id),
-      at: r.scanned_at,
-      verdict: r.verdict,
-      staff: r.staff_name,
-      checkpost: r.checkpost_name,
-      regNo: r.reg_no,
-      ticketNo: r.ticket_no,
-      type: r.category_label,
-      typeCode: r.category_code,
-      visitor: r.customer_name || r.wa_profile_name || null,
-      durationMs: r.duration_ms,
-    })),
+    activity: {
+      rows: acts.rows.map(shapeActivity),
+      hasMore: acts.hasMore,
+      nextCursor: acts.nextCursor,
+      counts,
+    },
     staff: people,
     performance: perf,
     verdicts: verds,
@@ -473,4 +530,4 @@ async function live() {
   };
 }
 
-module.exports = { live, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle };
+module.exports = { live, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle };

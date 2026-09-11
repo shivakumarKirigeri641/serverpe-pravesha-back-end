@@ -4,6 +4,8 @@
  *
  *   node scripts/seed-test-data.js                    300 vehicles, 7 days of bookings
  *   node scripts/seed-test-data.js --vehicles 1000 --days 14
+ *   node scripts/seed-test-data.js --vehicles 1000 --days 14 --per-day 140
+ *   node scripts/seed-test-data.js --days 30 --future 14     a month back, a fortnight ahead
  *   node scripts/seed-test-data.js --vehicles 500 --no-bookings
  *   node scripts/seed-test-data.js --remove           delete every seeded row
  *
@@ -41,6 +43,14 @@ const opt = (name, fallback) => {
 const VEHICLES = Math.max(1, Math.min(5000, opt('vehicles', 300)));
 const DAYS = Math.max(1, Math.min(60, opt('days', 7)));
 const WITH_BOOKINGS = !flag('no-bookings');
+/* How many passes a day should carry. Without it the volume is derived from the
+   fleet size, which is fine for a smoke test and far too thin for judging a
+   screen: a dashboard with four rows on it cannot be reviewed. */
+const PER_DAY = opt('per-day', 0);
+/* Days ahead to book for. Passes for a future date are paid and waiting — never
+   entered, because that day has not happened — which is what gives the gate app
+   something to check tomorrow morning and the admin panel a forward order book. */
+const FUTURE = Math.max(0, Math.min(30, opt('future', 0)));
 
 /* Districts that actually issue Karnataka plates, with 'ZZ' as the series. */
 const RTO = ['01', '02', '03', '04', '05', '09', '13', '18', '19', '20', '21', '25', '31', '32', '41', '42', '50', '51', '53'];
@@ -204,18 +214,26 @@ async function seedBookings(vehicles, categories) {
     prices[code] = { entry, platform, gst: platform - Math.round((platform * 100) / (100 + gstPct)), total: entry + platform };
   }
 
-  let made = 0; let entered = 0; let skipped = 0; let clashes = 0; const scans = [];
+  let made = 0; let entered = 0; let skipped = 0; let clashes = 0; let upcoming = 0; const scans = [];
   /* One pass per vehicle per date is a real rule with a unique index behind it,
      so the seeder must respect it rather than discover it: a vehicle already
      booked for a date is simply passed over. */
   const taken = new Set();
 
-  for (let d = DAYS - 1; d >= 0; d -= 1) {
-    const travelDate = shiftDay(today, -d);
+  /* Oldest first, then today, then the days ahead. */
+  const dayOffsets = [];
+  for (let d = DAYS - 1; d >= 0; d -= 1) dayOffsets.push(-d);
+  for (let d = 1; d <= FUTURE; d += 1) dayOffsets.push(d);
+
+  for (const offset of dayOffsets) {
+    const travelDate = shiftDay(today, offset);
     const past = travelDate < today;
+    const future = travelDate > today;
     /* Weekends busier; the demo should not look like a flat line. */
-    const base = isWeekend(travelDate) ? 0.5 : 0.28;
-    const wanted = Math.max(1, Math.round(vehicles.length * base * (0.75 + Math.random() * 0.5) / DAYS));
+    const weekendLift = isWeekend(travelDate) ? 1.8 : 1;
+    const wanted = PER_DAY
+      ? Math.max(1, Math.round(PER_DAY * weekendLift * (0.85 + Math.random() * 0.3)))
+      : Math.max(1, Math.round(vehicles.length * (isWeekend(travelDate) ? 0.5 : 0.28) * (0.75 + Math.random() * 0.5) / DAYS));
 
     for (let i = 0; i < wanted; i += 1) {
       const vehicle = pick(vehicles);
@@ -232,13 +250,20 @@ async function seedBookings(vehicles, categories) {
         [mobile, pick(['Anita R', 'Suresh K', 'Nagaraj B', 'Divya S', 'Imran P', 'Lakshmi V', 'Girish M', 'Pooja N']),
           chance(0.35) ? 'kn' : 'en']);
 
-      /* Most people book a few days ahead; some on the morning itself. */
+      /* Most people book a few days ahead; some on the morning itself. A pass
+         for a future date cannot have been bought after today, so the purchase
+         is pulled back to somewhere between a week ago and now. */
       const daysAhead = chance(0.35) ? 0 : crypto.randomInt(1, 8);
-      const boughtOn = shiftDay(travelDate, -daysAhead);
+      const boughtOn = future
+        ? shiftDay(today, -crypto.randomInt(0, 7))
+        : shiftDay(travelDate, -daysAhead);
       const boughtAt = `${boughtOn}T${String(crypto.randomInt(6, 22)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`;
 
-      /* Most arrive; a few do not. A past day's unused pass is a no-show. */
-      const willEnter = past ? chance(0.86) : (chance(0.45) && slot.starts_at < `${slotTime.hhmm(slotTime.nowIST().minutes)}:00`);
+      /* Most arrive; a few do not. A past day's unused pass is a no-show, and a
+         future one cannot have arrived at all. */
+      const willEnter = future ? false
+        : past ? chance(0.86)
+          : (chance(0.45) && slot.starts_at < `${slotTime.hhmm(slotTime.nowIST().minutes)}:00`);
       const enterAt = willEnter
         ? `${travelDate}T${String(Number(String(slot.starts_at).slice(0, 2)) + crypto.randomInt(0, 4)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`
         : null;
@@ -254,6 +279,7 @@ async function seedBookings(vehicles, categories) {
       });
       if (!out) continue;
       made += 1;
+      if (future) upcoming += 1;
       if (willEnter) { entered += 1; scans.push({ ticket: out.ticket, vehicle, at: enterAt, verdict: chance(0.05) ? 'valid_override' : 'valid' }); }
       else if (past) skipped += 1;
     }
@@ -272,7 +298,8 @@ async function seedBookings(vehicles, categories) {
     /* Roughly one in twelve is presented a second time — the duplicate case. */
     if (chance(0.08)) {
       await query(
-        `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, is_test)
+        `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at,
+                            raw_payload, duration_ms, is_test)
          VALUES ($1,$2,$3,$4,$5,'already_used',$6,$7,$8,true)`,
         [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, staff?.id || null,
           s.at, JSON.stringify({ seeded: true }), checkDuration()]);
@@ -291,7 +318,7 @@ async function seedBookings(vehicles, categories) {
         JSON.stringify({ seeded: true }), checkDuration()]);
   }
 
-  return { made, entered, skipped, clashes, scans: scans.length };
+  return { made, entered, skipped, clashes, upcoming, scans: scans.length };
 }
 
 (async () => {
@@ -305,9 +332,11 @@ async function seedBookings(vehicles, categories) {
   console.log(`  ${vehicles.length} vehicles ready`);
 
   if (WITH_BOOKINGS) {
-    console.log(`  seeding bookings across the last ${DAYS} days…`);
+    console.log(`  seeding bookings across the last ${DAYS} days`
+      + (FUTURE ? ` and the next ${FUTURE}…` : '…'));
     const out = await seedBookings(vehicles, cats);
     console.log(`  ${out.made} passes · ${out.entered} entered · ${out.skipped} no-shows · ${out.scans} gate records`
+      + (out.upcoming ? ` · ${out.upcoming} upcoming` : '')
       + (out.clashes ? ` · ${out.clashes} skipped (vehicle already booked that date)` : ''));
   }
 
