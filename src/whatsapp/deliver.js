@@ -160,7 +160,9 @@ async function resendPass(ticketId) {
   });
 
   await logEvent(t, 'pass_resent', { message: msg.ok, pdf: doc.ok });
-  return { ok: msg.ok && doc.ok };
+  /* A test number or a disabled sender answers ok without anything leaving the
+     building; the caller is told, so no screen can claim it was delivered. */
+  return { ok: msg.ok && doc.ok, testRecipient: Boolean(msg.testRecipient || doc.testRecipient), dryRun: Boolean(msg.dryRun || doc.dryRun) };
 }
 
 async function sendInvoice(t, inv, to, s) {

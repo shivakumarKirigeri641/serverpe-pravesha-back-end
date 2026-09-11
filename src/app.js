@@ -40,6 +40,7 @@ app.use('/', require('./routes/adminApi').router);
 app.use('/', require('./routes/adminSettingsApi'));
 app.use('/', require('./routes/adminFinanceApi'));
 app.use('/', require('./routes/adminPaymentsApi'));
+app.use('/', require('./routes/adminBookingsApi'));
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };
