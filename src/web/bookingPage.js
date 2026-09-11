@@ -169,7 +169,7 @@ function mask(mobile) {
   return '\u2022'.repeat(d.length - 4) + ' ' + d.slice(-4);
 }
 
-function render({ token, customer, places, dates, tariff, feePercent }) {
+function render({ token, customer, places, dates, tariff, feePercent, scriptVersion }) {
   const name = esc((customer && (customer.name || customer.wa_profile_name)) || '');
   const mobile = esc((customer && customer.mobile) || '');
 
@@ -195,7 +195,7 @@ function render({ token, customer, places, dates, tariff, feePercent }) {
 
   return SHELL('Book entry pass', BODY({
     token: esc(token), name, maskedMobile: esc(mask(mobile)),
-    placeOpts, dateOpts, feeRows, placeName,
+    placeOpts, dateOpts, feeRows, placeName, scriptVersion: esc(scriptVersion || ''),
   }));
 }
 
@@ -263,6 +263,6 @@ const BODY = (v) => `
     <div style="margin-top:14px"><button type="button" id="pay">Continue to payment</button></div>
   </div>
 </form>
-<script src="/book/app.js"></script>`;
+<script src="/book/app.js?v=${v.scriptVersion}"></script>`;
 
 module.exports = { render, expired };

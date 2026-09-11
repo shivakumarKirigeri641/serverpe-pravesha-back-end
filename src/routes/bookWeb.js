@@ -27,17 +27,64 @@ const page = require('../web/bookingPage');
 
 const router = express.Router();
 
-/* Served as a file rather than inlined into the page: the browser caches it
-   between the form and any later visit, and a syntax error in it fails at
-   `node -c` instead of silently inside a template string. */
+/* The page script, addressed by a hash of its contents.
+
+   It was served at a fixed /book/app.js with a five-minute cache, and that
+   broke a live booking: the page changed the ids of the vehicle card, the
+   browser kept the previous script, and the old script failed against the new
+   page -- reported to the visitor as "Something went wrong" on a lookup the
+   server had answered correctly four times. A hash in the URL means a new page
+   can only ever load the script written for it, and an unchanged script can be
+   cached as long as the browser likes. */
+const fs = require('fs');
+const pathMod = require('path');
+const CLIENT_FILE = pathMod.join(__dirname, '..', 'web', 'bookingClient.js');
+let clientCache = null;
+function client() {
+  const stat = fs.statSync(CLIENT_FILE);
+  if (!clientCache || clientCache.mtime !== stat.mtimeMs) {
+    const body = fs.readFileSync(CLIENT_FILE);
+    const hash = require('crypto').createHash('sha256').update(body).digest('hex').slice(0, 12);
+    clientCache = { body, hash, mtime: stat.mtimeMs };
+  }
+  return clientCache;
+}
+
 router.get('/book/app.js', (req, res) => {
+  const c = client();
+  const current = req.query.v === c.hash;
   res.type('application/javascript')
-     .set('Cache-Control', 'public, max-age=300')
-     .sendFile(require('path').join(__dirname, '..', 'web', 'bookingClient.js'));
+     .set('Cache-Control', current ? 'public, max-age=31536000, immutable' : 'no-cache')
+     .send(c.body);
+});
+
+/* Where the page reports a failure of its own. Without this, a script error on
+   a visitor's phone is invisible to us; with it, the next one is in the log
+   with the step it happened on, instead of being a screenshot from the demo. */
+router.post('/book/client-error', express.json({ limit: '8kb' }), (req, res) => {
+  const b = req.body || {};
+  console.error('[book:client]', String(b.step || '?'), String(b.message || '').slice(0, 300),
+    String(b.stack || '').split('\n').slice(0, 3).join(' | ').slice(0, 500));
+  res.sendStatus(204);
+});
+
+/**
+ * Express 4 does not catch a rejected promise from an async handler: the request
+ * hangs until the proxy gives up, and on Node 22 the unhandled rejection takes
+ * the whole process down with it. Every async route here goes through this, so a
+ * failure is a JSON answer the page knows how to show, and one visitor's bad
+ * lookup cannot end everyone else's booking.
+ */
+const safe = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch((e) => {
+  console.error('[book]', req.method, req.path.replace(/\/book\/[^/]+/, '/book/:token'), e.message);
+  if (res.headersSent) return;
+  if (req.method === 'GET') return res.status(500).type('html').send(page.expired('unknown'));
+  return res.status(500).json({ ok: false, error: 'server_error',
+    message: 'We could not complete that just now. Please try again.' });
 });
 
 /** Every route below needs a live token; refusing early keeps that in one place. */
-async function gate(req, res, next) {
+const gate = safe(async (req, res, next) => {
   const check = await token.verify(req.params.token);
   if (!check.ok) {
     req.tokenError = check.reason;
@@ -46,9 +93,9 @@ async function gate(req, res, next) {
   req.customer = await one('SELECT * FROM customers WHERE id = $1', [check.customerId]);
   req.tokenValue = req.params.token;
   return next();
-}
+});
 
-router.get('/book/:token', gate, async (req, res) => {
+router.get('/book/:token', gate, safe(async (req, res) => {
   if (req.tokenError) return res.status(410).type('html').send(page.expired(req.tokenError));
 
   const list = await places.list();
@@ -58,6 +105,7 @@ router.get('/book/:token', gate, async (req, res) => {
   const tariffRows = live[0] ? await pricing.tariff(live[0].id) : [];
 
   res.type('html').send(page.render({
+    scriptVersion: client().hash,
     token: req.params.token,
     customer: req.customer,
     places: list,
@@ -65,7 +113,7 @@ router.get('/book/:token', gate, async (req, res) => {
     tariff: tariffRows,
     feePercent: await pricing.platformPercent(),
   }));
-});
+}));
 
 /**
  * Identify the vehicle and price it.
@@ -74,7 +122,7 @@ router.get('/book/:token', gate, async (req, res) => {
  * before a slot is chosen and long before money is involved. Refusing at the
  * checkpost instead would mean a refund and an argument at a barrier.
  */
-router.post('/book/:token/vehicle', express.json(), gate, async (req, res) => {
+router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) => {
   if (req.tokenError) return res.status(410).json({ error: req.tokenError });
 
   const regNo = String(req.body.regNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -140,10 +188,10 @@ router.post('/book/:token/vehicle', express.json(), gate, async (req, res) => {
       totalPaise: price.totalPaise,
     },
   });
-});
+}));
 
 /** Remaining capacity in each slot, for the category just determined. */
-router.post('/book/:token/slots', express.json(), gate, async (req, res) => {
+router.post('/book/:token/slots', express.json(), gate, safe(async (req, res) => {
   if (req.tokenError) return res.status(410).json({ error: req.tokenError });
 
   const { placeId, categoryId, travelDate } = req.body;
@@ -152,6 +200,6 @@ router.post('/book/:token/slots', express.json(), gate, async (req, res) => {
   }
   const slots = await inventory.forDate(placeId, categoryId, travelDate);
   res.json({ ok: true, slots });
-});
+}));
 
 module.exports = router;

@@ -47,6 +47,11 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   res.status(500).json({ error: 'server_error' });
 });
 
+/* The last line of defence, not the handling. Routes catch their own failures;
+   this only makes sure one that slips through is logged instead of ending the
+   process for every visitor mid-booking. */
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
+
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
   console.log(`\nPravesha listening on :${PORT}`);

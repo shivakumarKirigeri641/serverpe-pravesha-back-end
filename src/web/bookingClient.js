@@ -7,13 +7,46 @@
   var tok = $('tok').value;
   var state = {};
 
+  /* Two failures that used to share one message, and should not.
+
+     A request that never got a proper answer -- no signal, a timeout, a proxy
+     error page instead of JSON -- is worth retrying, and the visitor is told so.
+     An error in this script is not: retrying runs the same broken code, so it is
+     reported to the server and the visitor is asked to reload. Collapsing both
+     into "Something went wrong" is what made a correct server response look
+     like an outage. */
+  function report(step, err) {
+    try {
+      navigator.sendBeacon('/book/client-error', new Blob([JSON.stringify({
+        step: step, message: String(err && err.message || err), stack: String(err && err.stack || '')
+      })], { type: 'application/json' }));
+    } catch (e) { /* reporting must never become the second failure */ }
+  }
+  window.addEventListener('error', function (e) { report('window', e.error || e.message); });
+
   function api(path, body) {
+    var ctrl = window.AbortController ? new AbortController() : null;
+    /* ULIP has taken five seconds on a first lookup. Twenty is generous for that
+       and still ends before a visitor gives up and closes the page. */
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 20000) : null;
     return fetch('/book/' + tok + '/' + path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); });
+      body: JSON.stringify(body),
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (r) {
+      if (timer) clearTimeout(timer);
+      var type = r.headers.get('content-type') || '';
+      if (type.indexOf('application/json') === -1) {
+        var e = new Error('non-json response ' + r.status); e.network = true; throw e;
+      }
+      return r.json();
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      err.network = true; throw err;
+    });
   }
+
   function show(el, on) { el.classList.toggle('show', !!on); }
   function vis(el, on) { el.classList.toggle('hide', !on); }
 
@@ -102,9 +135,14 @@
       show($('vok'), true);
       highlightFee(r.category.id);
       loadSlots();
-    }).catch(function () {
+    }).catch(function (err) {
       b.disabled = false; b.textContent = 'Check vehicle';
-      $('verr').textContent = 'Something went wrong. Please try again.';
+      if (err && err.network) {
+        $('verr').textContent = 'Could not reach the server. Please check your connection and tap Check vehicle again.';
+      } else {
+        report('vehicle-render', err);
+        $('verr').textContent = 'This page needs refreshing. Please reload it and try again.';
+      }
       show($('verr'), true);
     });
   });
@@ -166,6 +204,12 @@
           review();
         });
       });
+    }).catch(function (err) {
+      if (!(err && err.network)) report('slots-render', err);
+      $('slots').innerHTML = '<div class="msg bad show">'
+        + (err && err.network ? 'Could not load availability. Please check your connection and change the date to retry.'
+                              : 'This page needs refreshing. Please reload it and try again.')
+        + '</div>';
     });
   }
 
