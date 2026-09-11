@@ -18,6 +18,7 @@ const admin = require('../gatepass/admin');
 const stats = require('../gatepass/adminStats');
 const liveStats = require('../gatepass/adminLive');
 const analytics = require('../gatepass/adminAnalytics');
+const conversations = require('../gatepass/adminConversations');
 const slotTime = require('../gatepass/slotTime');
 
 const router = express.Router();
@@ -211,6 +212,31 @@ router.get(`${P}/analytics/compare`, auth, safe(async (req, res) => {
     presets: Object.entries(sets).map(([key, v]) => ({ key, label: v.label })),
     ...(await analytics.compare(aFrom, aTo, bFrom, bTo)),
   });
+}));
+
+/* ──────────────────────────────────────────────────── conversations ── */
+
+router.get(`${P}/conversations`, auth, safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    conversations: await conversations.list({ q: req.query.q || null, limit: req.query.limit, offset: req.query.offset }),
+  });
+}));
+
+/*
+ * One conversation. The technical panel — the full number and WhatsApp and
+ * session identifiers — is included only for a role that may configure the
+ * system, and every time it is, the viewing is written to the audit trail.
+ */
+router.get(`${P}/conversations/:id`, auth, safe(async (req, res) => {
+  const technical = admin.can(req.admin.role, 'configure');
+  const found = await conversations.thread(req.params.id, { technical });
+  if (!found) return res.status(404).json({ error: 'not_found', message: 'No such conversation.' });
+  if (technical) {
+    await admin.audit({ adminId: req.admin.admin_id, action: 'view_conversation_technical',
+      subject: `customer:${req.params.id}`, ip: (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim() });
+  }
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...found });
 }));
 
 module.exports = { router, auth, needs, me };
