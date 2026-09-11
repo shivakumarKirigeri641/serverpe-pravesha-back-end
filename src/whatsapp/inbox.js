@@ -138,8 +138,16 @@ async function handle(msg, contact) {
     return;
   }
 
-  if (action === 'MY_PASSES') {
-    await send.text(to, t('noPasses', langOf(customer)));
+  /* My passes: the list, and a tapped row sends that pass again. Typed words
+     reach it too — people ask for their passes in their own words, not by
+     finding the button. */
+  if (action === 'MY_PASSES' || /^\s*(my\s*)?(passes|pass|bookings?|tickets?)\s*$/i.test(body)) {
+    await require('./myPasses').show(to, customer);
+    return;
+  }
+
+  if (action && action.startsWith('PASS:')) {
+    await require('./myPasses').resend(to, customer, action);
     return;
   }
 

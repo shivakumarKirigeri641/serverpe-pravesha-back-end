@@ -71,6 +71,8 @@ const S = {
     en: '✅ *Payment successful — your entry pass is confirmed*',
     kn: '✅ *ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಿದೆ — ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ದೃಢಪಟ್ಟಿದೆ*',
   },
+  passResent: { en: '🎟️ *Here is your entry pass*', kn: '🎟️ *ಇಲ್ಲಿದೆ ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್*' },
+  passUsedStatus: { en: 'USED', kn: 'ಬಳಸಲಾಗಿದೆ' },
   passTitle: { en: '🎟️ *PRAVESHA ENTRY PASS*', kn: '🎟️ *ಪ್ರವೇಶ ಪಾಸ್*' },
   passNo: { en: 'Pass No', kn: 'ಪಾಸ್ ಸಂಖ್ಯೆ' },
   passStatus: { en: 'Status', kn: 'ಸ್ಥಿತಿ' },
@@ -93,6 +95,31 @@ const S = {
   pdfCaption: {
     en: 'Pravesha entry pass {ticket} · {plate} · {date}',
     kn: 'ಪ್ರವೇಶ ಪಾಸ್ {ticket} · {plate} · {date}',
+  },
+
+  /* ── My passes ── */
+  myHeader: { en: 'My passes', kn: 'ನನ್ನ ಪಾಸ್‌ಗಳು' },
+  myBody: {
+    en: 'You have {up} upcoming pass(es).\n\nTap *View passes* and choose one to get its pass and PDF again.',
+    kn: 'ನಿಮ್ಮ ಬಳಿ {up} ಮುಂಬರುವ ಪಾಸ್(ಗಳು) ಇವೆ.\n\n*ಪಾಸ್‌ಗಳನ್ನು ನೋಡಿ* ಒತ್ತಿ, ಒಂದನ್ನು ಆಯ್ಕೆ ಮಾಡಿದರೆ ಅದರ ಪಾಸ್ ಮತ್ತು PDF ಮತ್ತೆ ಬರುತ್ತದೆ.',
+  },
+  myBodyPastOnly: {
+    en: 'You have no upcoming passes. Your recent passes are listed below.',
+    kn: 'ನಿಮ್ಮ ಬಳಿ ಮುಂಬರುವ ಪಾಸ್‌ಗಳಿಲ್ಲ. ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಪಾಸ್‌ಗಳು ಕೆಳಗಿವೆ.',
+  },
+  myButton: { en: 'View passes', kn: 'ಪಾಸ್‌ಗಳನ್ನು ನೋಡಿ' },
+  mySecUpcoming: { en: 'Upcoming', kn: 'ಮುಂಬರುವ' },
+  mySecPast: { en: 'Past', kn: 'ಹಿಂದಿನ' },
+  myUsed: { en: 'Used', kn: 'ಬಳಸಲಾಗಿದೆ' },
+  myExpired: { en: 'Date passed', kn: 'ದಿನಾಂಕ ಮುಗಿದಿದೆ' },
+  myFooter: { en: 'Pravesha · Karnataka Tourism', kn: 'ಪ್ರವೇಶ · ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ' },
+  myNotYours: {
+    en: 'That pass could not be found in your account. Send *hi* to see your passes again.',
+    kn: 'ಆ ಪಾಸ್ ನಿಮ್ಮ ಖಾತೆಯಲ್ಲಿ ಕಂಡುಬಂದಿಲ್ಲ. ನಿಮ್ಮ ಪಾಸ್‌ಗಳನ್ನು ಮತ್ತೆ ನೋಡಲು *hi* ಕಳುಹಿಸಿ.',
+  },
+  noPassesYet: {
+    en: 'You have no passes yet.\n\nBook your first entry pass below.',
+    kn: 'ನಿಮ್ಮ ಬಳಿ ಇನ್ನೂ ಯಾವುದೇ ಪಾಸ್ ಇಲ್ಲ.\n\nಕೆಳಗೆ ನಿಮ್ಮ ಮೊದಲ ಪ್ರವೇಶ ಪಾಸ್ ಪಡೆಯಿರಿ.',
   },
 
   bookingSoon: {

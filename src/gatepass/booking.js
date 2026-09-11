@@ -17,7 +17,7 @@
  */
 
 const crypto = require('crypto');
-const { one, tx } = require('./db');
+const { one, query, tx } = require('./db');
 const inventory = require('./inventory');
 const pricing = require('./pricing');
 
@@ -185,11 +185,48 @@ function full(where, params) {
       WHERE ${where}`, params);
 }
 
+/**
+ * A visitor's passes, split the way they think about them: the ones still to
+ * use, and the ones behind them.
+ *
+ * "Upcoming" is a paid pass whose date has not passed — today included, since a
+ * pass for this afternoon is exactly the one somebody is looking for at the
+ * gate. Anything used, or dated before today, is "past". Held and expired
+ * bookings are not passes and are not shown: a visitor who abandoned a payment
+ * does not own anything to look at.
+ *
+ * Today is the IST date, not the server's, for the same reason slotTime.js
+ * computes in IST.
+ */
+async function forCustomer(customerId, { upcomingLimit = 7, total = 10 } = {}) {
+  const today = require('./slotTime').nowIST().date;
+  const cols = `t.id, t.ticket_no, t.reg_no, t.travel_date, t.status,
+                p.name AS place_name, p.name_kn AS place_name_kn,
+                regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, s.label_kn AS slot_label_kn`;
+  const from = `FROM tickets t
+                JOIN places p ON p.id = t.place_id
+                JOIN place_slots s ON s.id = t.slot_id`;
+
+  const upcoming = (await query(
+    `SELECT ${cols} ${from}
+      WHERE t.customer_id = $1 AND t.status = 'paid' AND t.travel_date >= $2
+      ORDER BY t.travel_date, s.sort_order LIMIT $3`, [customerId, today, upcomingLimit])).rows;
+
+  const past = (await query(
+    `SELECT ${cols} ${from}
+      WHERE t.customer_id = $1
+        AND (t.status = 'used' OR (t.status = 'paid' AND t.travel_date < $2))
+      ORDER BY t.travel_date DESC, t.created_at DESC LIMIT $3`,
+    [customerId, today, Math.max(0, total - upcoming.length)])).rows;
+
+  return { upcoming, past, today };
+}
+
 const byId = (id) => full('t.id = $1', [id]);
 const byTicketNo = (no) => full('t.ticket_no = $1', [no]);
 const byReference = (ref) => full('t.reference_id = $1', [ref]);
 
 module.exports = {
   ticketNo, referenceId, existingForDate, hold, markPaid, releaseHold,
-  byId, byTicketNo, byReference,
+  byId, byTicketNo, byReference, forCustomer,
 };

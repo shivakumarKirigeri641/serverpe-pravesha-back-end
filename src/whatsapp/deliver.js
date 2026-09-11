@@ -51,7 +51,7 @@ const verifyUrl = (t) =>
   `${(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}${require('../config/paths').PASS_DETAILS_PATH}/${encodeURIComponent(t.ticket_no)}`;
 
 /** The pass written as a WhatsApp message, in the visitor's chosen language. */
-function passMessage(t, lang) {
+function passMessage(t, lang, { resend = false } = {}) {
   const d = vehicle.details(t);
   const type = L.vehicleType(t, lang);
   const last = slotTime.hhmm(slotTime.toMinutes(t.ends_at) - slotTime.LAST_ENTRY_BUFFER_MIN);
@@ -59,13 +59,13 @@ function passMessage(t, lang) {
   const rule = '━━━━━━━━━━━━━━━━━━';
 
   return [
-    tr('passConfirmed', lang),
+    resend ? tr('passResent', lang) : tr('passConfirmed', lang),
     '',
     rule,
     tr('passTitle', lang),
     rule,
     `*${tr('passNo', lang)}:* *${t.ticket_no}*`,
-    `*${tr('passStatus', lang)}:* ${tr('passValid', lang)}`,
+    `*${tr('passStatus', lang)}:* ${t.status === 'used' ? tr('passUsedStatus', lang) : tr('passValid', lang)}`,
     '',
     tr('secVehicle', lang),
     `*${t.reg_no}*${car ? ` · ${car}` : ''}`,
@@ -136,6 +136,33 @@ async function deliverTicket(ticketId) {
   return { ok: msg.ok && doc.ok, message: msg, document: doc };
 }
 
+/**
+ * The same pass again, on request from "My passes".
+ *
+ * Deliberately not deliverTicket(): that one issues the invoice and records the
+ * sale's delivery, and neither should happen twice because a visitor looked
+ * their pass up. This only renders and sends — from the database as it is now,
+ * so a pass that has since been used says so.
+ */
+async function resendPass(ticketId) {
+  const t = await booking.byId(ticketId);
+  if (!t || (t.status !== 'paid' && t.status !== 'used')) return { ok: false, reason: 'not_found' };
+
+  const to = phone.toWa(t.mobile);
+  const lang = langOf((await query('SELECT language FROM customers WHERE id = $1', [t.customer_id])).rows[0]);
+  const s = await docSettings();
+
+  const msg = await send.text(to, passMessage(t, lang, { resend: true }));
+  const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t), lang });
+  const doc = await send.document(to, pdf, {
+    filename: passPdf.filename(t),
+    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: L.longDate(t.travel_date, lang) }),
+  });
+
+  await logEvent(t, 'pass_resent', { message: msg.ok, pdf: doc.ok });
+  return { ok: msg.ok && doc.ok };
+}
+
 async function sendInvoice(t, inv, to, s) {
   const invoicePdf = require('../pdf/invoicePdf');
   const pdf = await invoicePdf.render(t, inv, { settings: s });
@@ -149,4 +176,4 @@ async function logEvent(t, kind, detail) {
   } catch { /* the log is for us; it must not undo a delivered pass */ }
 }
 
-module.exports = { deliverTicket, passMessage, docSettings, verifyUrl };
+module.exports = { deliverTicket, resendPass, passMessage, docSettings, verifyUrl };
