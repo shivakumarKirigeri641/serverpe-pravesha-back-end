@@ -327,6 +327,7 @@ async function dashboard({ date } = {}) {
 
   return {
     date: day,
+    today,
     comparedWith: yesterday,
     isToday: day === today,
     serverTime: slotTime.hhmm(now.minutes),

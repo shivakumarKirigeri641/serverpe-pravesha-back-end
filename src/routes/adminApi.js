@@ -16,6 +16,7 @@
 const express = require('express');
 const admin = require('../gatepass/admin');
 const stats = require('../gatepass/adminStats');
+const slotTime = require('../gatepass/slotTime');
 
 const router = express.Router();
 const json = express.json({ limit: '64kb' });
@@ -85,11 +86,25 @@ router.delete(`${P}/session`, auth, safe(async (req, res) => {
   res.json({ ok: true });
 }));
 
-/* The landing screen. `date` lets somebody look at a past or future day with
-   the same comparison against the day before it. */
+/*
+ * The landing screen. `date` looks back at an earlier day, with the same
+ * comparison against the day before it.
+ *
+ * TOMORROW IS NOT A DAY THAT CAN BE REPORTED ON. A future date has bookings but
+ * no arrivals, no gate activity and no money collected, so every figure but one
+ * would read as zero — which looks like a catastrophe rather than a date that
+ * has not happened. The panel hides the way there; this refuses it outright, so
+ * a typed URL or a stale tab cannot get there either.
+ */
 router.get(`${P}/dashboard`, auth, safe(async (req, res) => {
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
-  res.json({ ok: true, ...(await stats.dashboard({ date })) });
+  const asked = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
+  const today = slotTime.nowIST().date;
+
+  if (asked && asked > today) {
+    return res.status(400).json({ error: 'future_date', today,
+      message: 'The dashboard reports on today and earlier days only.' });
+  }
+  res.json({ ok: true, ...(await stats.dashboard({ date: asked })) });
 }));
 
 module.exports = { router, auth, needs, me };
