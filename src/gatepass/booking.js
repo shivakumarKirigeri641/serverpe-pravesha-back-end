@@ -22,17 +22,35 @@ const inventory = require('./inventory');
 const pricing = require('./pricing');
 
 /**
- * Pass numbers are read aloud at a barrier and typed by tired people, so the
- * alphabet leaves out every character that gets confused: no O or 0, no I, L
- * or 1.
+ * Pass numbers are encrypted, not random: see passCodec.js. PRV + eight
+ * characters that decrypt, with PASS_NUMBER_KEY, to the date of visit and that
+ * date's booking sequence. Unique by construction, so nothing to retry.
  */
-const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const passCodec = require('./passCodec');
 
-function ticketNo() {
-  const b = crypto.randomBytes(8);
-  let s = '';
-  for (const x of b) s += ALPHABET[x % ALPHABET.length];
-  return `PRV-${s.slice(0, 4)}-${s.slice(4)}`;
+/** The next sequence for a date, inside the caller's transaction. */
+async function nextSeq(client, travelDate) {
+  const r = await client.query(
+    `INSERT INTO pass_day_counters (travel_date, last_seq) VALUES ($1, 1)
+     ON CONFLICT (travel_date) DO UPDATE
+       SET last_seq = pass_day_counters.last_seq + 1, modified_at = now()
+     RETURNING last_seq`, [travelDate]);
+  return r.rows[0].last_seq;
+}
+
+/**
+ * The ways a person might write a pass number, all pointing at the stored one.
+ *
+ * Passes issued before hyphens were dropped are stored as PRV-XXXX-XXXX, and
+ * people type what they see — with hyphens, without, with spaces, in lower
+ * case. Every spelling is reduced to its characters and both stored shapes are
+ * tried, so the number on an old pass and a new one both find their row.
+ */
+function passNumberCandidates(input) {
+  const core = String(input || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  if (!/^PRV[0-9A-Z]{8}$/.test(core)) return [String(input || '').trim().toUpperCase()];
+  const body = core.slice(3);
+  return [core, `PRV-${body.slice(0, 4)}-${body.slice(4)}`];
 }
 
 /**
@@ -74,6 +92,9 @@ async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) 
   /* Abandoned holds must not make a slot look full to the next person. */
   await inventory.sweepExpiredHolds();
 
+  /* Retried only for the booking reference, whose tail is random. The pass
+     number cannot collide: it is the encryption of a sequence the database
+     hands out once per date. */
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await tx(async (client) => {
@@ -81,15 +102,18 @@ async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) 
           placeId: place.id, slotId: slot.id, categoryId, travelDate });
         if (!inv) return { ok: false, reason: 'sold_out' };
 
+        /* After the capacity is claimed, so a sold-out attempt uses no number. */
+        const seq = await nextSeq(client, travelDate);
+
         const r = await client.query(
           `INSERT INTO tickets
-             (ticket_no, reference_id, customer_id, vehicle_id, place_id, slot_id,
+             (ticket_no, pass_seq, reference_id, customer_id, vehicle_id, place_id, slot_id,
               category_id, travel_date, reg_no, mobile,
               entry_paise, platform_paise, gst_paise, total_paise, status, held_until)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'held',
-                   now() + ($15 || ' minutes')::interval)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'held',
+                   now() + ($16 || ' minutes')::interval)
            RETURNING *`,
-          [ticketNo(),
+          [passCodec.encode(travelDate, seq), seq,
            referenceId({ placeCode: place.code, mobile: customer.mobile, regNo: vehicle.reg_no,
              travelDate, slotCode: slot.code }),
            customer.id, vehicle.id, place.id, slot.id, categoryId, travelDate,
@@ -101,13 +125,12 @@ async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) 
       if (e.code === '23505' && /one_per_vehicle/.test(e.constraint || '')) {
         return { ok: false, reason: 'already_booked' };
       }
-      /* A pass-number collision: vanishingly rare, and harmless to retry. */
-      if (e.code === '23505' && /ticket_no|reference_id/.test(e.constraint || '')) continue;
+      if (e.code === '23505' && /reference_id/.test(e.constraint || '')) continue;
       if (e.code === '23514') return { ok: false, reason: 'sold_out' };
       throw e;
     }
   }
-  throw new Error('could not allocate a unique pass number');
+  throw new Error('could not allocate a unique booking reference');
 }
 
 /**
@@ -223,10 +246,10 @@ async function forCustomer(customerId, { upcomingLimit = 7, total = 10 } = {}) {
 }
 
 const byId = (id) => full('t.id = $1', [id]);
-const byTicketNo = (no) => full('t.ticket_no = $1', [no]);
+const byTicketNo = (no) => full('t.ticket_no = ANY($1::text[])', [passNumberCandidates(no)]);
 const byReference = (ref) => full('t.reference_id = $1', [ref]);
 
 module.exports = {
-  ticketNo, referenceId, existingForDate, hold, markPaid, releaseHold,
+  passNumberCandidates, referenceId, existingForDate, hold, markPaid, releaseHold,
   byId, byTicketNo, byReference, forCustomer,
 };

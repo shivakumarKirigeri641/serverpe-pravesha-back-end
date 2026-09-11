@@ -87,8 +87,8 @@ async function resend(to, customer, action) {
 
   const owned = await one(
     `SELECT id FROM tickets
-      WHERE ticket_no = $1 AND customer_id = $2 AND status IN ('paid', 'used')`,
-    [ticketNo, customer.id]);
+      WHERE ticket_no = ANY($1::text[]) AND customer_id = $2 AND status IN ('paid', 'used')`,
+    [booking.passNumberCandidates(ticketNo), customer.id]);
   if (!owned) return send.text(to, t('myNotYours', lang));
 
   return require('./deliver').resendPass(owned.id);

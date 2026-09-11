@@ -56,6 +56,18 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
    process for every visitor mid-booking. */
 process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
 
+/* Pass numbers are encrypted with PASS_NUMBER_KEY. Without it every booking
+   would fail at the moment of payment, so the server refuses to start instead:
+   a missing key is found by whoever deploys, not by a visitor. */
+try {
+  require('./gatepass/passCodec').encode('2026-01-01', 1);
+} catch (e) {
+  console.error(`
+[startup] ${e.message}
+`);
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
   require('./jobs/reconcile').start();

@@ -49,7 +49,9 @@ router.get([`${PASS_DETAILS_PATH}/:code`, `${PASS_DETAILS_PATH}/:code/`, '/v/:co
   const code = decodeURIComponent(String(req.params.code || '')).trim().toUpperCase();
   let t = null;
   try {
-    t = /^PRV-[0-9A-Z]{4}-[0-9A-Z]{4}$/.test(code)
+    /* A pass number in any spelling — PRV7K3M9Q2A, PRV-7K3M-9Q2A, lower case —
+       else an old booking-reference link. */
+    t = /^PRV[0-9A-Z]{8}$/.test(code.replace(/[^0-9A-Z]/g, ''))
       ? await booking.byTicketNo(code)
       : await booking.byReference(code);
   } catch { t = null; }
