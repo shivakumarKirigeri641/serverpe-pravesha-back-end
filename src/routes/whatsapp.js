@@ -15,11 +15,18 @@
 const express = require('express');
 const signature = require('../whatsapp/signature');
 const inbox = require('../whatsapp/inbox');
+const { PREFIX } = require('../config/paths');
 
 const router = express.Router();
 
+/* The long, explicit prefix the other ServerPe services use. This URL is pasted
+   into the Meta dashboard and stays there for years, so it says which platform,
+   which product and which version is being addressed rather than claiming a
+   bare "/webhook" that four products would compete for. */
+const WEBHOOK = `${PREFIX}/whatsapp/webhook`;
+
 /* The handshake Meta performs once, when the URL is saved in the dashboard. */
-router.get('/webhook/whatsapp', (req, res) => {
+router.get(WEBHOOK, (req, res) => {
   const challenge = signature.challenge(req.query);
   if (challenge) {
     console.log('[wa] webhook verified');
@@ -36,7 +43,7 @@ router.get('/webhook/whatsapp', (req, res) => {
  * re-serialising to check it produces a different string and a digest that
  * never matches.
  */
-router.post('/webhook/whatsapp',
+router.post(WEBHOOK,
   express.raw({ type: '*/*', limit: '1mb' }),
   async (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body || ''));

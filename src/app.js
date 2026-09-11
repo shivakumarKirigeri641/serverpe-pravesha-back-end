@@ -50,7 +50,7 @@ const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
   console.log(`\nPravesha listening on :${PORT}`);
   console.log(`  public   ${process.env.PUBLIC_BASE_URL || '(PUBLIC_BASE_URL not set)'}`);
-  console.log(`  webhook  ${process.env.PUBLIC_BASE_URL || ''}/webhook/whatsapp`);
+  console.log(`  webhook  ${process.env.PUBLIC_BASE_URL || ''}${require('./config/paths').PREFIX}/whatsapp/webhook`);
   console.log(`  terms    ${process.env.PUBLIC_BASE_URL || ''}/policy/terms`);
   console.log(`  replies  ${String(process.env.WHATSAPP_REPLY_ENABLED) !== 'false' ? 'enabled' : 'disabled'}`
     + `${String(process.env.WHATSAPP_DRY_RUN) === 'true' ? ' (DRY RUN)' : ''}\n`);
