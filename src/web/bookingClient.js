@@ -176,81 +176,120 @@
     });
   });
 
-  /* The slots, directly under the date.
+  /* The slots, directly under the date, as a grid.
 
-     Shown from the start with their times and whether they are still open
-     today, so the visitor picks when to come as part of choosing the date. How
-     many places are LEFT is only shown once the vehicle is known, because
-     capacity is held per vehicle type: the number left for a car is not the
-     number left for a Tempo Traveller on the same road at the same hour. A slot
-     chosen before the vehicle was checked is kept if it is still open for that
-     vehicle, and cleared with a reason if it is not. */
+     One row per slot, one column per vehicle type, each cell the places left
+     for that type as a coloured pill — green with room, amber when running low,
+     red when full. Capacity is held per type (the number left for a car is not
+     the number left for a Tempo Traveller at the same hour), so every type's
+     count is shown from the start. Once the vehicle is checked its column is
+     highlighted and the others fade, and a row is only selectable if that
+     column still has a place. A slot picked before the vehicle was checked is
+     kept if it is still open for it, and cleared with a reason if not. */
+  var COLS = [
+    { code: 'BIKE', icon: '🏍️', name: 'Bike' },
+    { code: 'CAR', icon: '🚗', name: 'Car' },
+    { code: 'TOOFAN', icon: '🚙', name: 'Toofan' },
+    { code: 'TT', icon: '🚐', name: 'TT' }
+  ];
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* "Morning 6:00 AM - 12:00 PM" -> ["Morning", "6:00 AM – 12:00 PM"] */
+  function splitLabel(label) {
+    var m = String(label).match(/^(\S+)\s+(.*)$/);
+    return m ? [m[1], m[2].replace(' - ', ' – ')] : [label, ''];
+  }
+
+  function level(left, cap) {
+    if (left <= 0) return 'full';
+    if (left === 1 || left <= Math.ceil(cap / 3)) return 'low';
+    return 'ok';
+  }
+
+  /* Count up from zero, eased, so a changed number reads as a change. */
+  function countUp(el) {
+    var to = Number(el.getAttribute('data-to')) || 0;
+    if (calm || to <= 0) { el.textContent = String(to); return; }
+    var start = null, dur = 550;
+    function step(ts) {
+      if (start === null) start = ts;
+      var k = Math.min(1, (ts - start) / dur);
+      el.textContent = String(Math.round(to * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) window.requestAnimationFrame(step);
+    }
+    window.requestAnimationFrame(step);
+  }
+
   var loadSeq = 0;
   function loadSlots() {
     var mine = ++loadSeq;
     if (placeIsSoon()) { $('slots').innerHTML = ''; return; }
     var v = state.vehicle;
+    var myCode = v ? v.category.code : null;
     $('slots').innerHTML = '<div class="hint">Loading time slots…</div>';
 
-    api('slots', {
-      placeId: $('place').value,
-      categoryId: v ? v.category.id : null,
-      travelDate: $('date').value
-    }).then(function (r) {
+    api('slots', { placeId: $('place').value, travelDate: $('date').value }).then(function (r) {
       if (mine !== loadSeq) return; // a newer load has started; this answer is stale
       if (!r.ok) { $('slots').innerHTML = '<div class="hint">Could not load time slots.</div>'; return; }
-      /* Why a slot cannot be picked is said plainly, because the reasons mean
-         different things to the visitor: "Full" means try another slot, while
-         "Finished for today" means try another day. */
-      var WHY = { slot_over: 'Finished for today', too_late: 'Closed — last entry was ', date_past: 'This date has passed' };
-      var anyOpen = false;
-      var keep = null, lostSlot = null;
 
-      var html = r.slots.map(function (s) {
-        var left, closed = !s.bookable;
-        if (s.timeClosed) {
-          left = s.timeReason === 'too_late' ? WHY.too_late + s.lastEntry : (WHY[s.timeReason] || 'Closed');
-        } else if (s.isOpen === false) {
-          left = s.closedNote || 'Closed';
-        } else if (v && s.remaining <= 0) {
-          left = 'Full for ' + (TYPE[v.category.code] || 'this vehicle');
-        } else if (v) {
-          left = s.remaining + ' of ' + s.capacity + ' left for ' + (TYPE[v.category.code] || 'your vehicle')
-            + ' · last entry ' + s.lastEntry;
-          anyOpen = true;
-        } else {
-          /* No vehicle yet: every type's count, so "Car 3 left" is visible before
-             a plate is typed. */
-          left = (s.types || []).map(function (x) {
-            return (TYPE[x.code] ? TYPE[x.code].replace(' (TT)', '') : x.label) + ' ' + x.remaining;
-          }).join(' · ') + ' left · last entry ' + s.lastEntry;
-          anyOpen = true;
-        }
-        if (state.slot && state.slot.id === s.slotId) { if (closed) lostSlot = s; else keep = s; }
-        return '<label class="slot' + (closed ? ' full' : '') + (keep === s ? ' sel' : '') + '" data-slot="' + esc(s.slotId) + '">'
-          + '<input type="radio" name="slot" value="' + esc(s.slotId) + '"' + (closed ? ' disabled' : '') + (keep === s ? ' checked' : '') + '>'
-          + '<span class="slot-main"><span class="slot-name">' + esc(s.label) + '</span>'
-          + '<span class="slot-left' + (closed ? ' closed' : '') + '">' + esc(left) + '</span></span></label>';
+      var WHY = { slot_over: 'Finished for today', too_late: 'Closed — last entry was ', date_past: 'This date has passed' };
+      var anyOpen = false, keep = null, lost = null;
+
+      var head = '<div class="sg-row sg-head"><div class="sg-slot">Time slot</div>'
+        + COLS.map(function (col) {
+          return '<div class="sg-type' + (myCode === col.code ? ' mine' : '') + (myCode && myCode !== col.code ? ' dim' : '') + '">'
+            + '<span class="sg-ico">' + col.icon + '</span>' + col.name + '</div>';
+        }).join('') + '</div>';
+
+      var rows = r.slots.map(function (s, ri) {
+        var byCode = {};
+        (s.types || []).forEach(function (x) { byCode[x.code] = x; });
+        var timeShut = s.timeClosed || s.isOpen === false;
+        var mineLeft = myCode && byCode[myCode] ? byCode[myCode].remaining : null;
+        var selectable = !timeShut && (myCode ? mineLeft > 0 : (s.types || []).some(function (x) { return x.remaining > 0; }));
+        if (selectable) anyOpen = true;
+        if (state.slot && state.slot.id === s.slotId) { if (selectable) keep = s; else lost = s; }
+
+        var parts = splitLabel(s.label);
+        var note = timeShut
+          ? (s.timeClosed ? (s.timeReason === 'too_late' ? WHY.too_late + s.lastEntry : (WHY[s.timeReason] || 'Closed')) : (s.closedNote || 'Closed'))
+          : 'Last entry ' + s.lastEntry;
+
+        var cells = timeShut
+          ? '<div class="sg-shut">' + esc(note) + '</div>'
+          : COLS.map(function (col, ci) {
+            var x = byCode[col.code] || { remaining: 0, capacity: 0 };
+            var lv = level(x.remaining, x.capacity);
+            return '<div class="sg-cell' + (myCode === col.code ? ' mine' : '') + (myCode && myCode !== col.code ? ' dim' : '') + '">'
+              + '<span class="pill ' + lv + '" style="animation-delay:' + (calm ? 0 : (ri * 90 + ci * 45)) + 'ms">'
+              + (x.remaining <= 0 ? 'Full' : '<b class="n" data-to="' + x.remaining + '">0</b><small>/' + x.capacity + '</small>')
+              + '</span></div>';
+          }).join('');
+
+        return '<label class="sg-row sg-body' + (selectable ? '' : ' off') + (keep === s ? ' sel' : '') + '" data-slot="' + esc(s.slotId) + '">'
+          + '<div class="sg-slot"><input type="radio" name="slot" value="' + esc(s.slotId) + '"' + (selectable ? '' : ' disabled') + (keep === s ? ' checked' : '') + '>'
+          + '<span><b class="slot-name" data-label="' + esc(s.label) + '">' + esc(parts[0]) + '</b>'
+          + '<span class="sg-time">' + esc(parts[1]) + '</span>'
+          + (timeShut ? '' : '<span class="sg-note">' + esc(note) + '</span>') + '</span></div>'
+          + cells + '</label>';
       }).join('');
 
-      if (!v) html = '<div class="hint" style="margin:0 0 8px">Places left for each vehicle type. After you check your vehicle below, only its count is shown.</div>' + html;
-      if (lostSlot) {
-        html += '<div class="msg warn show"><b class="msg-title">Please choose another slot</b>'
-          + esc(lostSlot.label) + ' is no longer available for your vehicle.</div>';
-      }
-      if (!anyOpen) {
-        html += '<div class="msg warn show"><b class="msg-title">No slots on this date</b>Please choose another date.</div>';
-      }
+      var html = '<div class="sgrid' + (calm ? ' calm' : '') + '">' + head + rows + '</div>'
+        + '<div class="sg-legend"><span class="pill ok">3</span> places left <span class="pill low">1</span> almost full <span class="pill full">Full</span></div>';
+      if (!v) html = '<div class="hint" style="margin:0 0 8px">Places left for each vehicle type. After you check your vehicle below, its column is highlighted.</div>' + html;
+      if (lost) html += '<div class="msg warn show"><b class="msg-title">Please choose another slot</b>' + esc(lost.label) + ' is not available for your vehicle.</div>';
+      if (!anyOpen) html += '<div class="msg warn show"><b class="msg-title">No slots on this date</b>Please choose another date.</div>';
+
       $('slots').innerHTML = html;
       if (!keep) state.slot = null;
+      Array.prototype.forEach.call($('slots').querySelectorAll('.n'), countUp);
 
-      var radios = $('slots').querySelectorAll('input[name=slot]');
-      Array.prototype.forEach.call(radios, function (i) {
+      Array.prototype.forEach.call($('slots').querySelectorAll('input[name=slot]'), function (i) {
         i.addEventListener('change', function () {
-          Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (el) {
+          Array.prototype.forEach.call($('slots').querySelectorAll('.sg-body'), function (el) {
             el.classList.toggle('sel', el.getAttribute('data-slot') === i.value);
           });
-          state.slot = { id: i.value, label: i.parentNode.querySelector('.slot-name').textContent };
+          state.slot = { id: i.value, label: i.parentNode.querySelector('.slot-name').getAttribute('data-label') };
           review();
         });
       });
@@ -300,10 +339,80 @@
     $('revCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  /* Continue to payment. The server re-checks everything the form showed —
-     slot still open, place still free, vehicle still allowed, no pass already
-     held — then holds the place and returns the payment page. Anything it
-     refuses comes back as a sentence, shown above the button. */
+  /* Continue to payment, in two steps.
+
+     1. HOLD. The server re-checks everything the form showed — slot still open,
+        place still free, vehicle still allowed, no pass already held — and holds
+        the place for this vehicle. A held place counts as taken, exactly like a
+        booked one, so nobody else can buy it while this visitor decides.
+     2. CONFIRM. A sheet shows what is held, the amount, and the time left, and
+        only "Confirm & pay" goes on to Razorpay. Cancel gives the place back at
+        once instead of leaving it locked until the hold ages out.
+
+     The countdown runs from the seconds the server said were left, not from the
+     phone's own clock, which may be wrong. */
+  var hold = null;
+
+  function fmt(sec) {
+    var s = Math.max(0, sec);
+    return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+  }
+
+  function closeHold() {
+    if (hold && hold.timer) clearInterval(hold.timer);
+    hold = null;
+    vis($('holdModal'), false);
+    document.body.style.overflow = '';
+  }
+
+  function releaseHold(reason) {
+    api('release', {}).catch(function () { /* the hold ages out on its own */ });
+    closeHold();
+    var b = $('pay');
+    b.disabled = false; b.textContent = 'Continue to payment';
+    if (reason) {
+      $('payerr').innerHTML = reason;
+      show($('payerr'), true);
+    }
+    loadSlots();
+  }
+
+  function openHold(r) {
+    var v = state.vehicle, s = state.slot;
+    var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
+    var dateName = $('date').selectedOptions[0].textContent;
+    var tr = function (k, val, cls) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><th>' + k + '</th><td>' + val + '</td></tr>';
+    };
+    $('holdSummary').innerHTML = '<table class="sum"><tbody>'
+      + tr('Vehicle', esc(v.regNo) + ' · ' + esc(TYPE[v.category.code] || v.category.label))
+      + tr('Destination', esc(placeName))
+      + tr('Date', esc(dateName))
+      + tr('Time slot', esc(s.label))
+      + tr('Total payable', '₹' + esc(r.amount || v.price.total), 'total')
+      + '</tbody></table>';
+    $('holdPay').textContent = 'Confirm & pay ₹' + (r.amount || v.price.total);
+    $('holdPay').disabled = false;
+    show($('holdErr'), false);
+
+    hold = { payUrl: r.payUrl, endsAt: Date.now() + (r.secondsLeft || (r.holdMinutes || 10) * 60) * 1000 };
+    var tick = function () {
+      if (!hold) return;
+      var left = Math.round((hold.endsAt - Date.now()) / 1000);
+      $('holdClock').textContent = fmt(left);
+      $('holdTimer').classList.toggle('low', left <= 120);
+      if (left <= 0) {
+        releaseHold('<b class="msg-title">Hold expired</b>The place was released because payment was not started in time. Please try again.');
+      }
+    };
+    tick();
+    hold.timer = setInterval(tick, 1000);
+
+    vis($('holdModal'), true);
+    document.body.style.overflow = 'hidden';
+    $('holdPay').focus();
+  }
+
   $('pay').addEventListener('click', function () {
     var v = state.vehicle, s = state.slot;
     if (!v || !s) return;
@@ -318,13 +427,13 @@
     }).then(function (r) {
       if (!r.ok) {
         b.disabled = false; b.textContent = 'Continue to payment';
-        err.innerHTML = '<b class="msg-title">Could not continue</b>' + esc(r.message || 'Please try again.');
+        err.innerHTML = '<b class="msg-title">Could not hold your place</b>' + esc(r.message || 'Please try again.');
         show(err, true);
         if (r.error === 'sold_out' || r.error === 'slot_closed') loadSlots();
         return;
       }
-      b.innerHTML = '<span class="spin"></span>Opening secure payment…';
-      window.location.href = r.payUrl;
+      b.innerHTML = '<span class="spin"></span>Place held';
+      openHold(r);
     }).catch(function (e) {
       b.disabled = false; b.textContent = 'Continue to payment';
       if (!(e && e.network)) report('confirm', e);
@@ -333,6 +442,19 @@
         : '<b class="msg-title">Please reload</b>This page needs refreshing. Please reload it and try again.';
       show(err, true);
     });
+  });
+
+  $('holdPay').addEventListener('click', function () {
+    if (!hold) return;
+    var b = $('holdPay');
+    b.disabled = true;
+    b.innerHTML = '<span class="spin"></span>Opening secure payment…';
+    if (hold.timer) clearInterval(hold.timer);
+    window.location.href = hold.payUrl;
+  });
+
+  $('holdCancel').addEventListener('click', function () {
+    releaseHold('<b class="msg-title">Place released</b>Nothing was charged. You can change your choices and continue again.');
   });
 
   onPlace();

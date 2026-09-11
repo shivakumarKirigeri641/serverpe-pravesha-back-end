@@ -338,8 +338,37 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
     [require('crypto').createHash('sha256').update(req.params.token).digest('hex'), held.ticket.id]);
 
   const payUrl = await checkout.linkFor(held.ticket);
-  res.json({ ok: true, ticketNo: held.ticket.ticket_no, payUrl,
-    holdMinutes: await inventory.holdMinutes() });
+  const t = held.ticket;
+  res.json({
+    ok: true, ticketNo: t.ticket_no, payUrl,
+    holdMinutes: await inventory.holdMinutes(),
+    /* The server's clock decides when the hold ends, not the phone's. The page
+       counts down from the seconds remaining at the moment of this answer, so a
+       phone whose clock is wrong still shows the right time left. */
+    heldUntil: t.held_until,
+    secondsLeft: Math.max(0, Math.floor((new Date(t.held_until).getTime() - Date.now()) / 1000)),
+    amount: pricing.rupees(t.total_paise),
+  });
+}));
+
+/**
+ * Cancel from the confirmation popup, or the countdown running out: give the
+ * held place back now rather than when the hold ages out.
+ *
+ * Only the place this link is holding can be released — the ticket is found
+ * through this token, never from an id in the request — so nobody can free
+ * somebody else's place by posting to this.
+ */
+router.post('/book/:token/release', express.json(), gate, safe(async (req, res) => {
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError });
+  const booking = require('../gatepass/booking');
+  const hash = require('crypto').createHash('sha256').update(req.params.token).digest('hex');
+  const held = await one(
+    `SELECT t.id FROM web_tokens w JOIN tickets t ON t.id = w.ticket_id
+      WHERE w.token_hash = $1 AND t.status = 'held'`, [hash]);
+  if (!held) return res.json({ ok: true, released: false });
+  const released = await booking.releaseHold(held.id);
+  res.json({ ok: true, released });
 }));
 
 module.exports = router;

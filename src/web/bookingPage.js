@@ -129,6 +129,77 @@ const SHELL = (title, body) => `<!doctype html>
   .fees .plus{display:block;font-size:11.5px;color:var(--muted)}
   .fees tr.mine td{background:rgba(0,168,132,.10)}
   .fees tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  /* The confirmation sheet shown once a place is held. It slides up from the
+     bottom on a phone, where a thumb reaches it, and dims the form behind so the
+     only decisions left are pay or cancel. */
+  .modal{position:fixed;inset:0;background:rgba(11,20,26,.62);z-index:50;display:flex;
+         align-items:flex-end;justify-content:center;padding:0}
+  .modal.hide{display:none}
+  .sheet{background:var(--card);color:var(--ink);width:100%;max-width:520px;border-radius:18px 18px 0 0;
+         padding:18px 18px 22px;box-shadow:0 -8px 30px rgba(0,0,0,.25);max-height:92vh;overflow:auto;
+         animation:up .22s ease-out}
+  @keyframes up{from{transform:translateY(40px);opacity:.3}to{transform:none;opacity:1}}
+  @media(min-width:560px){.modal{align-items:center}.sheet{border-radius:18px}}
+  .sheet-head{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+  .hold-icon{width:42px;height:42px;border-radius:50%;background:var(--okbg);display:grid;place-items:center;font-size:20px;flex:none}
+  .sheet-title{font-weight:700;font-size:17px}
+  .sheet-sub{font-size:13px;color:var(--muted)}
+  .timer{display:flex;justify-content:space-between;align-items:center;border-radius:10px;padding:10px 14px;
+         margin-bottom:12px;background:var(--okbg);border:1px solid rgba(29,168,81,.35);font-size:14px}
+  .timer b{font-size:22px;font-variant-numeric:tabular-nums;letter-spacing:0}
+  .timer.low{background:#fff4e0;border-color:#f2c26b;color:#6b4200}
+  @media(prefers-color-scheme:dark){.timer.low{background:#3d2c05;border-color:#7a5a12;color:#ffecc2}}
+  .sum{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:6px}
+  .sum th,.sum td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+  .sum th{color:var(--muted);font-weight:500;background:var(--bg);width:40%}
+  .sum td{font-weight:600}
+  .sum tr.total th,.sum tr.total td{font-size:16px;font-weight:700;background:rgba(0,168,132,.12);color:var(--ink)}
+  button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);margin-top:10px}
+  /* The slot grid. Rows are slots, columns are vehicle types, cells are pills
+     that say how many places are left. Colour carries the level (green room,
+     amber low, red full) and the number carries the fact, so it reads for
+     colour-blind visitors too. */
+  .sgrid{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+  .sg-row{display:grid;grid-template-columns:minmax(0,1.55fr) repeat(4,minmax(0,1fr));align-items:stretch}
+  .sg-head{background:var(--bg);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .sg-head>div{padding:8px 4px;text-align:center;border-bottom:1px solid var(--line)}
+  .sg-head .sg-slot{text-align:left;padding-left:12px}
+  .sg-ico{display:block;font-size:17px;line-height:1.1;margin-bottom:2px;text-transform:none}
+  .sg-type.mine{color:var(--accent);background:rgba(0,168,132,.14)}
+  .sg-body{cursor:pointer;border-top:1px solid var(--line);transition:background .25s ease,box-shadow .25s ease}
+  .sg-body:first-of-type{border-top:0}
+  .sg-body.sel{background:rgba(0,168,132,.10);box-shadow:inset 4px 0 0 var(--accent)}
+  .sg-body.off{cursor:not-allowed}
+  .sg-body.off .sg-slot{opacity:.55}
+  .sg-slot{display:flex;gap:9px;align-items:flex-start;padding:10px 6px 10px 12px;min-width:0}
+  .sg-slot input{width:auto;flex:none;margin-top:3px;accent-color:var(--accent)}
+  .sg-slot .slot-name{display:block;font-size:14.5px}
+  .sg-time{display:block;font-size:12px;color:var(--ink);opacity:.8;line-height:1.35}
+  .sg-note{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+  .sg-cell{display:flex;align-items:center;justify-content:center;padding:6px 2px;transition:opacity .3s ease,background .3s ease}
+  .sg-cell.mine{background:rgba(0,168,132,.10)}
+  .sg-cell.dim,.sg-type.dim{opacity:.38}
+  .sg-shut{grid-column:2 / span 4;display:flex;align-items:center;justify-content:center;font-size:12.5px;
+           font-weight:600;color:#9a3412;background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(154,52,18,.06) 8px 16px)}
+  .pill{display:inline-flex;align-items:baseline;justify-content:center;gap:1px;min-width:40px;padding:4px 7px;
+        border-radius:999px;font-size:15px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;
+        animation:pop .42s cubic-bezier(.2,1.4,.4,1) both}
+  .pill small{font-size:10.5px;font-weight:600;opacity:.7}
+  .pill.ok{background:#dcf5e8;color:#0b6b3a}
+  .pill.low{background:#ffefd2;color:#8a4b00;animation:pop .42s cubic-bezier(.2,1.4,.4,1) both,throb 1.8s ease-in-out .6s infinite}
+  .pill.full{background:#fde2e0;color:#a4160c;font-size:12px;padding:5px 8px}
+  .sg-cell.mine .pill{box-shadow:0 0 0 2px var(--accent)}
+  @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+  @keyframes throb{0%,100%{box-shadow:0 0 0 0 rgba(231,154,0,.55)}50%{box-shadow:0 0 0 6px rgba(231,154,0,0)}}
+  @media(prefers-color-scheme:dark){
+    .pill.ok{background:#0f3d27;color:#7ff0b4}
+    .pill.low{background:#4a3208;color:#ffd27a}
+    .pill.full{background:#4a1512;color:#ffb3ab}
+    .sg-shut{color:#fdba74}
+  }
+  @media(prefers-reduced-motion:reduce){.pill,.pill.low{animation:none}.sg-body,.sg-cell{transition:none}}
+  .sg-legend{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
+  .sg-legend .pill{animation:none;min-width:30px;font-size:12px;padding:2px 7px}
   .checkpost{margin-top:14px;border-radius:10px;padding:11px 13px;background:var(--okbg);
              border:1px solid rgba(29,168,81,.35);border-left:3px solid var(--ok)}
   .checkpost-h{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ok);margin-bottom:4px}
@@ -161,7 +232,6 @@ const SHELL = (title, body) => `<!doctype html>
   .inner.pay tr.total th,.inner.pay tr.total td{background:rgba(0,168,132,.12);color:var(--ink);
                                                 font-weight:700;font-size:15.5px}
   .mono{letter-spacing:0}
-           border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
        color:var(--muted);margin:4px 0 4px}
   .sub.gap{margin-top:16px}
@@ -318,6 +388,25 @@ const BODY = (v) => `
     <div class="hint" style="text-align:center">Secure payment by Razorpay &middot; your pass arrives on WhatsApp</div>
   </div>
 </form>
+<div class="modal hide" id="holdModal" role="dialog" aria-modal="true" aria-labelledby="holdTitle">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="hold-icon">&#128274;</div>
+      <div>
+        <div class="sheet-title" id="holdTitle">Your place is held</div>
+        <div class="sheet-sub">Reserved for this vehicle until you pay</div>
+      </div>
+    </div>
+    <div class="timer" id="holdTimer">
+      <span>Time left to pay</span><b id="holdClock">10:00</b>
+    </div>
+    <div id="holdSummary"></div>
+    <div class="msg bad" id="holdErr"></div>
+    <button type="button" id="holdPay">Confirm &amp; pay</button>
+    <button type="button" class="ghost" id="holdCancel">Cancel and release place</button>
+    <div class="hint" style="text-align:center;margin-top:10px">Secure payment by Razorpay</div>
+  </div>
+</div>
 <script src="/book/app.js?v=${v.scriptVersion}"></script>`;
 
 module.exports = { render, expired };
