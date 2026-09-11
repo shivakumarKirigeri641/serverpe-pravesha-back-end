@@ -11,10 +11,9 @@
  *   booked        passes paid for, for this travel date, whenever they were bought
  *   advance       of those, bought on an earlier day
  *   sameDay       of those, bought on the day of travel
- *   cancelled     passes cancelled after payment
- *   expired       holds that were never paid for and lapsed
- *   arrived       passes presented at a gate — looked up, whatever the answer
- *   entered       passes actually recorded as entering: status 'used'
+ *   unpaidHolds   places held while somebody went to pay, and released when
+ *                 they did not: a booking abandoned at the payment screen
+ *   entered       passes recorded as entering at a gate: status 'used'
  *   yetToArrive   paid, not used, and their slot can still be entered
  *   skipped       paid, not used, and the last entry time has passed. A no-show
  *   duplicate     look-ups answered 'already_used' — the same pass twice, which
@@ -334,24 +333,31 @@ async function dashboard({ date } = {}) {
     /* The service fee is configuration, not a constant in a screen. */
     config: { serviceFeePercent: feePercent, gstPercentOnServiceFee: gstPercent },
 
+    /*
+     * Cancellation and rescheduling were reported here until it was pointed out
+     * that neither exists: a visitor cannot cancel or move a pass anywhere in
+     * the product, so both counts could only ever be zero, and a zero is a claim
+     * that it did not happen today rather than that it cannot happen at all.
+     * They come back the day those flows do.
+     */
     bookings: {
       total: compare('booked'),
       advance: compare('advance'),
       sameDay: compare('sameDay'),
-      cancelled: compare('cancelled'),
-      expired: compare('expired'),
-      /* Rescheduling does not exist in the product yet. */
-      rescheduled: null,
+      unpaidHolds: compare('expired'),
     },
 
+    /*
+     * "Arrived" was also removed. It counted passes looked up at a gate, which
+     * for a valid pass is the same action as entering — one event reported as
+     * two figures that differ only by the refusals, which the verification
+     * section already counts properly.
+     */
     visitors: {
       booked: compare('booked'),
-      arrived: compare('arrived'),
       entered: compare('entered'),
       yetToArrive: compare('yetToArrive'),
       skipped: compare('skipped'),
-      cancelled: compare('cancelled'),
-      expired: compare('expired'),
     },
 
     verification: {

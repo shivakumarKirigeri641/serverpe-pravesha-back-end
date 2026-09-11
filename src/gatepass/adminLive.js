@@ -103,8 +103,10 @@ async function visitors(today, yesterday, nowTime, hour) {
 
   return {
     booked: delta(n(t.booked), n(y.booked)),
-    arrived: delta(n(arrived.today), n(arrivedY.yesterday)),
     entered: delta(n(t.entered), n(y.entered)),
+    /* Kept for the checks count, not shown as a separate visitor figure: a pass
+       looked up and a pass entered are the same action for a valid pass. */
+    checkedAtGate: delta(n(arrived.today), n(arrivedY.yesterday)),
     yetToArrive: { value: n(t.yet_to_arrive) },
     skipped: { value: n(t.skipped) },
     /* An estimate, and labelled as one: no exit is recorded anywhere. */
