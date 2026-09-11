@@ -13,6 +13,39 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const dry = () => String(process.env.WHATSAPP_DRY_RUN) === 'true';
 const enabled = () => String(process.env.WHATSAPP_REPLY_ENABLED) !== 'false';
 
+/**
+ * NEVER MESSAGE A NUMBER THAT WAS INVENTED FOR TESTING.
+ *
+ * Seeded test data has visitors with mobile numbers, and some server paths send
+ * to a visitor without them having written first — the check-in template, sent
+ * when a gate records an entry, is one. Recording an entry against a seeded pass
+ * once caused a real send attempt to a made-up number; it failed only because
+ * the template was not yet approved. A made-up number can belong to a real
+ * stranger, so this is refused here, below every caller, where no future path
+ * can forget it:
+ *
+ *   * numbers in the reserved test range (starting 000), which no Indian mobile
+ *     can have and which the seeder now uses exclusively, and
+ *   * any number whose customer row is marked is_test.
+ *
+ * A refused message is still recorded, with the reason, so the transcript shows
+ * what would have been sent.
+ */
+const TEST_RANGE = /^000\d{7}$/;
+
+async function isTestRecipient(to) {
+  const local = phone.toLocal(to);
+  if (TEST_RANGE.test(local)) return true;
+  try {
+    const { rows } = await query('SELECT 1 FROM customers WHERE mobile = $1 AND is_test LIMIT 1', [local]);
+    return rows.length > 0;
+  } catch {
+    /* If we cannot tell, we do not send: a missed message to a real visitor is
+       recoverable, a message to a stranger is not. */
+    return true;
+  }
+}
+
 async function record({ mobile, direction, type, body, payload, waId, error }) {
   try {
     /* Stored in the spelling the rest of the schema uses, whichever spelling the
@@ -33,6 +66,12 @@ async function record({ mobile, direction, type, body, payload, waId, error }) {
 
 async function post(to, message) {
   const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to, ...message };
+
+  if (await isTestRecipient(to)) {
+    await record({ mobile: to, direction: 'out', type: message.type, payload,
+      body: message.text?.body, error: 'test_recipient_not_sent' });
+    return { ok: true, dryRun: true, testRecipient: true };
+  }
 
   if (dry() || !enabled()) {
     await record({ mobile: to, direction: 'out', type: message.type, payload,
@@ -132,6 +171,13 @@ function ctaUrl(to, { body, header, footer, displayText, url }) {
  * collide with another pass issued in the same second.
  */
 async function document(to, buffer, { filename, caption } = {}) {
+  if (await isTestRecipient(to)) {
+    await record({ mobile: to, direction: 'out', type: 'document',
+      payload: { document: { filename, caption, bytes: buffer.length } },
+      body: caption, error: 'test_recipient_not_sent' });
+    return { ok: true, dryRun: true, testRecipient: true };
+  }
+
   if (dry() || !enabled()) {
     await record({ mobile: to, direction: 'out', type: 'document',
       payload: { document: { filename, caption, bytes: buffer.length } },
@@ -184,4 +230,4 @@ async function windowOpen(to) {
   return !!(r.rows[0] && r.rows[0].open);
 }
 
-module.exports = { text, buttons, list, ctaUrl, document, windowOpen, post, record };
+module.exports = { text, buttons, list, ctaUrl, document, windowOpen, post, record, isTestRecipient, TEST_RANGE };

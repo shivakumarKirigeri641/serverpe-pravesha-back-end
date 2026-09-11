@@ -18,6 +18,12 @@
  * EVERY ROW IS MARKED is_test. Invented registration details must never be
  * mistaken for a government record, and --remove deletes exactly these rows.
  *
+ * NO MESSAGE CAN REACH ANYONE. Visitors get mobile numbers in the reserved test
+ * range (000xxxxxxx), which no real phone has, and whatsapp/send.js refuses to
+ * send to that range or to any customer marked is_test — so recording a gate
+ * entry against a seeded pass, or any other path that messages a visitor,
+ * records what it would have sent and sends nothing.
+ *
  * THE PLATES ARE DELIBERATELY IMPROBABLE: series 'ZZ' in each district code
  * (KA01ZZ0001 and so on). A real vehicle could in principle carry one, which is
  * why the flag exists and why --remove is one command.
@@ -218,7 +224,11 @@ async function seedBookings(vehicles, categories) {
   for (let i = 0; i < vehicles.length; i += 1) {
     const shareWithPrevious = i > 0 && i % 5 === 4;
     if (shareWithPrevious) { vehicles[i].owner = vehicles[i - 1].owner; continue; }
-    const mobile = `9${String(crypto.randomInt(100000000, 999999999)).padStart(9, '0')}`;
+    /* The reserved test range: 000 followed by seven digits. No Indian mobile
+       number starts 000, so this can never be a real person's phone, and
+       whatsapp/send.js refuses to message it regardless. Never a random
+       deliverable-looking number. */
+    const mobile = `000${String(crypto.randomInt(0, 10000000)).padStart(7, '0')}`;
     const owner = await one(
       `INSERT INTO customers (mobile, name, language, is_test)
        VALUES ($1,$2,$3,true)
