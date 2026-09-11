@@ -97,6 +97,11 @@ const S = {
     kn: 'ಪ್ರವೇಶ ಪಾಸ್ {ticket} · {plate} · {date}',
   },
 
+  deletionReceived: {
+    en: '🗑️ *Data deletion request received*\n\nReference: *{ref}*\n\nYour data will be deleted or anonymised within {days} days. Records of paid passes must be kept for eight years under Indian tax law and are used for nothing else.\n\nWe will confirm here when it is done. Details: pravesha.in/data-deletion',
+    kn: '🗑️ *ಡೇಟಾ ಅಳಿಸುವಿಕೆ ವಿನಂತಿ ಸ್ವೀಕರಿಸಲಾಗಿದೆ*\n\nಉಲ್ಲೇಖ: *{ref}*\n\n{days} ದಿನಗಳೊಳಗೆ ನಿಮ್ಮ ಡೇಟಾವನ್ನು ಅಳಿಸಲಾಗುತ್ತದೆ ಅಥವಾ ಅನಾಮಧೇಯಗೊಳಿಸಲಾಗುತ್ತದೆ. ಪಾವತಿಸಿದ ಪಾಸ್‌ಗಳ ದಾಖಲೆಗಳನ್ನು ಭಾರತೀಯ ತೆರಿಗೆ ಕಾನೂನಿನಂತೆ ಎಂಟು ವರ್ಷ ಇಡಬೇಕು; ಅವನ್ನು ಬೇರೆ ಯಾವುದಕ್ಕೂ ಬಳಸುವುದಿಲ್ಲ.\n\nಪೂರ್ಣಗೊಂಡಾಗ ಇಲ್ಲಿ ತಿಳಿಸುತ್ತೇವೆ. ವಿವರ: pravesha.in/data-deletion',
+  },
+
   /* ── My passes ── */
   myHeader: { en: 'My passes', kn: 'ನನ್ನ ಪಾಸ್‌ಗಳು' },
   myBody: {

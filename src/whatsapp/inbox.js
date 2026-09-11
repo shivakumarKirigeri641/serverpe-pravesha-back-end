@@ -159,6 +159,31 @@ async function handle(msg, contact) {
     return;
   }
 
+  /* DELETE MY DATA — the deletion request described on the Data Deletion page.
+
+     Accepted only here, from the number itself: WhatsApp has already proven the
+     sender owns it, which a web form asking for a phone number could not. A
+     request is recorded and answered with a reference; asking again while one
+     is open returns the same reference rather than stacking duplicates. */
+  if (/^\s*delete\s+my\s+data\s*$/i.test(body)) {
+    const lang = langOf(customer);
+    const days = Number((await query(
+      "SELECT value FROM app_settings WHERE key = 'data_deletion_days'")).rows[0]?.value || 30);
+    let reqRow = (await query(
+      `SELECT reference FROM data_deletion_requests
+        WHERE mobile = $1 AND status IN ('received', 'in_progress')
+        ORDER BY requested_at DESC LIMIT 1`, [mobile])).rows[0];
+    if (!reqRow) {
+      const ref = `DEL${require('crypto').randomBytes(4).toString('hex').toUpperCase()}`;
+      reqRow = (await query(
+        `INSERT INTO data_deletion_requests (reference, customer_id, mobile, channel)
+         VALUES ($1, $2, $3, 'whatsapp') RETURNING reference`, [ref, customer.id, mobile])).rows[0];
+      console.log('[wa] data deletion requested by %s ref %s', mobile, reqRow.reference);
+    }
+    await send.text(to, t('deletionReceived', lang, { ref: reqRow.reference, days }));
+    return;
+  }
+
   /* My passes: the list, and a tapped row sends that pass again. Typed words
      reach it too — people ask for their passes in their own words, not by
      finding the button. */

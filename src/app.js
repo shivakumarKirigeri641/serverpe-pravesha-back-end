@@ -30,6 +30,7 @@ app.use('/', require('./routes/policy'));
 app.use('/', require('./routes/bookWeb'));
 app.use('/', require('./routes/checkout'));
 app.use('/', require('./routes/verify'));
+app.use('/', require('./routes/legal'));
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };
