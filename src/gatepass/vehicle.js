@@ -61,12 +61,21 @@ const fetchRc = (regNo) => fetchDataset(regNo, 'rc');
  * keeping them now is one row. The cost of not having them later is another
  * round of paid calls.
  *
- * THEY ARE FETCHED IN PARALLEL WITH THE RC, NOT AFTER IT. RC is the slow call --
- * a live VAHAN read has taken three and a half seconds -- and challans and
- * FASTag come back in about half a second each. Run together they finish inside
- * the RC's own window, so the visitor waits exactly as long as they did before.
- * Run in sequence they would add a second to every booking, which is the kind of
- * cost that is invisible in testing and obvious in a queue.
+ * THE BOOKING DOES NOT WAIT FOR THEM. They start alongside the RC and are left
+ * to finish on their own; resolve() returns as soon as the RC is in.
+ *
+ * This began as an awaited Promise.all, on the reasoning that the RC is the slow
+ * call and the other two would finish inside its window. That reasoning was
+ * wrong in the first live test: KA13AA6804 returned its RC in 27ms from the
+ * gateway's own cache while its challan lookup took 3830ms, so the visitor sat
+ * for nearly four seconds waiting on a dataset that decides nothing. Whichever
+ * call happens to be slowest is not something we control, so the booking is not
+ * tied to any of them.
+ *
+ * WHAT THIS COSTS. The write lands after the reply, so a caller that exits
+ * immediately -- a script, not the server -- may end before it does. In the
+ * server, which is the only place this runs in earnest, the process outlives the
+ * request and the row arrives a moment later.
  *
  * A FAILURE HERE IS NOT A FAILURE OF THE BOOKING. Nothing downstream reads these.
  * If the gateway refuses them the outcome is logged and the pass is sold anyway.
@@ -129,6 +138,10 @@ async function resolve(regNo, { customerId, force = false } = {}) {
     }
   }
 
+  /* Everything the gateway has on this plate, asked for at once. The RC is the
+     only answer the booking waits on; the other two ride along in the same
+     window and are stored for their own sake. */
+  const extrasPromise = fetchExtras(regNo).catch(() => null);
   let { body, ms } = await fetchRc(regNo);
 
   /* ONE RETRY, AND ONLY FOR A FAILURE TO REACH THEM.
@@ -147,15 +160,22 @@ async function resolve(regNo, { customerId, force = false } = {}) {
   if (!body || body.success !== true || !body.rc) {
     const reason = body?.error || 'lookup_failed';
     await logCall({ regNo, vehicleId: existing?.id, customerId, ok: false, outcome: reason, ms });
+
+    /* A plate with no registration can still carry a FASTag, and a plate typed
+       by mistake is worth holding so the same mistake tomorrow costs nothing.
+       So a row is created even here, purely to hang the extras off. */
+    const row = existing || await upsertBare(regNo);
+    keepExtras(row.id, regNo, extrasPromise, customerId);
+
     // Stale data beats no data: an RC from last month still says "Motor Car".
     if (existing) return { vehicle: existing, fresh: false, ok: true, stale: true };
-    const bare = await upsertBare(regNo);
-    return { vehicle: bare, fresh: false, ok: false, reason };
+    return { vehicle: row, fresh: false, ok: false, reason };
   }
 
   const v = await upsert(regNo, body.rc);
-  await saveSnapshot(v.id, body.rc, body.source);
-  await logCall({ regNo, vehicleId: v.id, customerId, ok: true, outcome: 'fetched', ms });
+  await saveSnapshot(v.id, body.rc, body.source, 'rc');
+  await logCall({ regNo, vehicleId: v.id, customerId, ok: true, outcome: 'fetched', ms, dataset: 'rc' });
+  keepExtras(v.id, regNo, extrasPromise, customerId);
   return { vehicle: v, fresh: true, ok: true };
 }
 
@@ -229,6 +249,25 @@ async function saveSnapshot(vehicleId, data, source, dataset = 'rc') {
  * FASTag record, and a plate typed by mistake is worth caching precisely once so
  * that the same typo tomorrow costs nothing.
  */
+/**
+ * Wait for the extras in the background and store them. Returns immediately.
+ *
+ * Exposed as a promise on `pending` so a test or a script can await what the
+ * server is content to leave running.
+ */
+function keepExtras(vehicleId, regNo, extrasPromise, customerId) {
+  const p = extrasPromise
+    .then((extras) => saveExtras(vehicleId, regNo, extras, customerId))
+    .catch(() => { /* logged inside saveExtras; never reaches the booking */ });
+  keepExtras.pending.add(p);
+  p.finally(() => keepExtras.pending.delete(p));
+  return p;
+}
+keepExtras.pending = new Set();
+
+/** Settle every background write — for tests and for a clean shutdown. */
+const flushExtras = () => Promise.allSettled([...keepExtras.pending]);
+
 async function saveExtras(vehicleId, regNo, extras, customerId) {
   if (!vehicleId || !extras) return;
   for (const [dataset, res] of Object.entries(extras)) {
@@ -337,4 +376,4 @@ function isClassified(v) {
   return !!(v && (v.vehicle_class || v.vehicle_category || v.body_type));
 }
 
-module.exports = { resolve, describe, details, upsertBare, isClassified, lookupOutcome };
+module.exports = { resolve, describe, details, upsertBare, isClassified, lookupOutcome, flushExtras };

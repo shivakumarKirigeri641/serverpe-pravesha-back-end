@@ -33,7 +33,7 @@ async function rules() {
     query(`SELECT code, pattern, reason_en, reason_kn
              FROM vehicle_deny_rules
             WHERE is_active ORDER BY priority DESC`),
-    query(`SELECT m.category_id, m.pattern, c.code, c.label
+    query(`SELECT m.category_id, m.pattern, m.model_pattern, c.code, c.label
              FROM vehicle_class_map m
              JOIN vehicle_categories c ON c.id = m.category_id
             WHERE c.is_active ORDER BY m.priority DESC`),
@@ -51,9 +51,21 @@ function invalidate() { cache = { at: 0, deny: [], allow: [] }; }
    'Goods Carrier' in the class and the weight band in the category. Matching
    both means one rule covers both spellings. */
 function hits(pattern, v) {
+  if (!pattern) return false;
   let re;
   try { re = new RegExp(pattern, 'i'); } catch { return false; }
   return re.test(v.vehicle_category || '') || re.test(v.vehicle_class || '');
+}
+
+/* The maker and the model are matched as one string, because which of the two
+   carries the identifying word is not consistent: "FORCE MOTORS LIMITED" +
+   "TRAVELLER T1" puts it in the model, while other makers put the range in the
+   maker field. Joining them means a pattern does not have to know which. */
+function hitsModel(pattern, v) {
+  if (!pattern) return false;
+  let re;
+  try { re = new RegExp(pattern, 'i'); } catch { return false; }
+  return re.test(`${v.maker || ''} ${v.model || ''}`);
 }
 
 /**
@@ -91,8 +103,12 @@ async function decide(vehicle) {
     return { allowed: true, unclassified: true, reason: 'no_vehicle_class' };
   }
 
+  /* A row matches on its class pattern or on its model pattern. Model rows are
+     seeded at a higher priority precisely so they are reached first: a Force
+     Cruiser has to be recognised as a Toofan before the broad "Motor Car" row
+     prices it as a car. */
   for (const m of allow) {
-    if (hits(m.pattern, v)) {
+    if (hits(m.pattern, v) || hitsModel(m.model_pattern, v)) {
       return {
         allowed: true,
         categoryId: String(m.category_id),
