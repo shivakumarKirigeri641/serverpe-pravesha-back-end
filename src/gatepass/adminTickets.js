@@ -263,10 +263,19 @@ async function onspotTicket({ body, adminId }) {
     checkpostId: checkpost?.id,
   });
 
+  /* A sale, so a tax invoice — from the same unbroken series as online sales.
+     Not sent anywhere; it is there for the visitor who asks and for the return. */
+  let invoiceNo = null;
+  try {
+    invoiceNo = (await require('./invoices').issue(ticket.id)).invoice_no;
+  } catch (e) {
+    console.error('[adminTickets] invoice not issued for %s: %s', ticket.ticket_no, e.message);
+  }
+
   return {
-    ticket: summary(ticket, { place, slot, category, customer, vehicle }),
+    ticket: { ...summary(ticket, { place, slot, category, customer, vehicle }), invoiceNo },
     audit: { subject: `ticket:${ticket.ticket_no}`, before: null,
-      after: { kind: 'onspot', ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
+      after: { kind: 'onspot', invoiceNo, ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
   };
 }
 

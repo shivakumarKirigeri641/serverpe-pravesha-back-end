@@ -22,6 +22,7 @@ const CAPABILITIES = {
   'analytics.view': 'Use data analytics',
   'reports.view': 'Generate operational reports',
   'finance.view': 'See revenue, GST and the financial split',
+  'finance.expenses': 'Record expenses and input tax credit',
   'conversations.view': 'Read WhatsApp conversations (numbers masked)',
   'conversations.technical': 'See full numbers and technical identifiers',
   'negative.view': 'See negative tracking',
@@ -59,7 +60,7 @@ const ROLES = {
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
-    can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'audit.view'],
+    can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',
