@@ -129,7 +129,7 @@ router.post('/book/:token/vehicle', express.json(), gate, async (req, res) => {
     regNo,
     vehicle: {
       description: vehicles.describe(resolved.vehicle),
-      make: details.make, model: details.model, type: details.type,
+      make: details.make, model: details.model, variant: details.variant, type: details.type,
       fuel: details.fuel, colour: details.colour,
     },
     category: { id: verdict.categoryId, code: verdict.categoryCode, label: verdict.categoryLabel },

@@ -69,8 +69,23 @@ const SHELL = (title, body) => `<!doctype html>
   .vcard{border:1.5px solid var(--ok);background:var(--okbg);border-radius:11px;
          padding:13px 14px;margin-top:13px;display:none}
   .vcard.show{display:block}
-  .vtitle{font-weight:700;font-size:15.5px}
-  .vsub{font-size:13px;color:var(--muted);margin-top:2px}
+  .vhead{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;
+         letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin-bottom:10px}
+  .vcheck{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;
+          display:grid;place-items:center;font-size:11px}
+  .vreg{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        letter-spacing:.08em;color:var(--ink);background:var(--card);border:1px solid var(--line);
+        border-radius:6px;padding:2px 8px;text-transform:none;font-size:12.5px}
+  .vgrid{display:grid;grid-template-columns:auto 1fr;margin:0;background:var(--card);
+         border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .vgrid dt,.vgrid dd{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);font-size:14px}
+  .vgrid dt{color:var(--muted);font-size:13px;white-space:nowrap;border-right:1px solid var(--line)}
+  .vgrid dd{font-weight:600}
+  .vgrid dt:nth-last-of-type(1),.vgrid dd:last-of-type{border-bottom:0}
+  .vtype{display:inline-block;background:var(--accent);color:#fff;border-radius:20px;
+         padding:2px 11px;font-size:12.5px;font-weight:650}
+  .vfee{font-size:13px;color:var(--muted);margin-top:9px}
+  .vfee b{color:var(--ink)}
   .badge{display:inline-block;background:var(--accent);color:#fff;border-radius:20px;
          padding:3px 11px;font-size:12px;font-weight:650;margin-top:9px}
   .slot{display:flex;align-items:center;gap:12px;border:1.5px solid var(--line);
@@ -218,7 +233,7 @@ const BODY = (v) => `
         <li>The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.</li>
         <li>Vehicles without a clear, readable number plate will not be allowed entry.</li>
         <li>One pass per vehicle for a date and slot. Repeat or duplicate bookings will be cancelled.</li>
-        <li>Editing, copying or reselling a pass is illegal. Such passes will be seized at the checkpost.</li>
+        <li>Editing, copying or reselling a pass is illegal. Legal action will be taken against the vehicle and its owner.</li>
       </ul>
     </div>
   </div>
@@ -231,9 +246,9 @@ const BODY = (v) => `
     <div style="margin-top:12px"><button type="button" id="check">Check vehicle</button></div>
     <div class="msg bad" id="verr"></div>
     <div class="vcard" id="vok">
-      <div class="vtitle" id="vtitle"></div>
-      <div class="vsub" id="vsub"></div>
-      <span class="badge" id="vbadge"></span>
+      <div class="vhead"><span class="vcheck">&#10003;</span>Vehicle verified<span class="vreg" id="vreg"></span></div>
+      <dl class="vgrid" id="vgrid"></dl>
+      <div class="vfee" id="vfee"></div>
     </div>
   </div>
 

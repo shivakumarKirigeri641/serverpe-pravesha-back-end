@@ -299,6 +299,8 @@ async function saveExtras(vehicleId, regNo, extras, customerId) {
  * Tokens carrying digits are left in capitals. "D1.5", "6AT" and "XUV700" are
  * codes, not words, and title-casing them produces "6at" and "Xuv700".
  */
+const BODY_WORDS = new Set(['SCOOTER', 'MOTORCYCLE', 'MOTOR', 'CYCLE', 'BIKE', 'CAR', 'SUV', 'VAN']);
+
 const CORPORATE = /\b(INDIA|PRIVATE|PVT|LIMITED|LTD|LLP|COMPANY|CORP|INC)\b/g;
 
 function titleCase(s) {
@@ -326,7 +328,15 @@ function details(v) {
   /* The model field usually holds the model and the variant run together:
      "SELTOS D1.5 6AT HTX PLUS". The first word is the model everyone uses; the
      rest is the trim, which matters to an owner and to nobody else. */
-  const words = String(v.model || '').trim().split(/\s+/).filter(Boolean);
+  /* Two kinds of noise VAHAN puts in the model field, removed before splitting:
+     a maker's abbreviation stuck to the front ("H/H.SPLENDOR PLUS" is Hero
+     Honda's Splendor Plus), and a body word where a variant would be ("PLEASURE
+     SCOOTER" has no variant -- "Scooter" is what it is, not which one). */
+  const cleaned = String(v.model || '')
+    .replace(/^\s*[A-Z]{1,3}\/[A-Z]{1,3}\.?\s*/i, '')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean)
+    .filter((w, i) => i === 0 || !BODY_WORDS.has(w.toUpperCase()));
   const model = words.length ? titleCase(words[0]) : null;
 
   /* Trim codes are acronyms, not words: HTX, VXI, ZXI, LXI, AT, MT. A short

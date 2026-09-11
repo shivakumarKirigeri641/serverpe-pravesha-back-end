@@ -79,9 +79,26 @@
         return;
       }
       state.vehicle = r;
-      $('vtitle').textContent = [r.vehicle.make, r.vehicle.model].filter(Boolean).join(' ') || r.regNo;
-      $('vsub').textContent = [r.vehicle.type, r.vehicle.fuel, r.vehicle.colour].filter(Boolean).join(' · ');
-      $('vbadge').textContent = r.category.label + ' — ₹' + r.price.total;
+      /* Laid out as labelled fields rather than one run-on line, so the visitor
+         can check each part against their own vehicle -- and "Vehicle type" is
+         always one of the four fare categories, since that is what they pay. */
+      var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
+      var dash = '—';
+      var cell = function (k, val) {
+        var d = document.createElement('dd'); d.textContent = val || dash;
+        var t = document.createElement('dt'); t.textContent = k;
+        return [t, d];
+      };
+      var grid = $('vgrid'); grid.innerHTML = '';
+      [['Manufacturer', r.vehicle.make], ['Model', r.vehicle.model], ['Variant', r.vehicle.variant]]
+        .forEach(function (p) { cell(p[0], p[1]).forEach(function (n) { grid.appendChild(n); }); });
+      var tdt = document.createElement('dt'); tdt.textContent = 'Vehicle type';
+      var tdd = document.createElement('dd');
+      var chip = document.createElement('span'); chip.className = 'vtype';
+      chip.textContent = TYPE[r.category.code] || r.category.label;
+      tdd.appendChild(chip); grid.appendChild(tdt); grid.appendChild(tdd);
+      $('vreg').textContent = r.regNo;
+      $('vfee').innerHTML = 'Fee for this vehicle: <b>₹' + r.price.total + '</b>';
       show($('vok'), true);
       highlightFee(r.category.id);
       loadSlots();
