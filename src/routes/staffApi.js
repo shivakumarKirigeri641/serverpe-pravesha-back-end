@@ -96,11 +96,14 @@ router.get(`${P}/pass/:ticketNo`, auth, safe(async (req, res) => {
 
 /* Record the entry. `override: true` is the staff member accepting a warning. */
 router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
-  const { ticketNo, override, typed } = req.body || {};
+  const { ticketNo, override, typed, elapsedMs } = req.body || {};
   if (!ticketNo) return res.status(400).json({ error: 'missing_pass', message: 'Choose a pass first.' });
   const out = await checkin.record({
     session: req.session, checkpost: req.checkpost,
     ticketNo, override: override === true, rawPayload: typed || null,
+    /* How long the staff member spent on this pass, measured by their phone —
+       the only place that knows when the pass was opened. */
+    durationMs: elapsedMs,
   });
   res.json(out);
 }));

@@ -214,18 +214,18 @@ function verdictFor(checkpost, t) {
  * a template that did not send is a message to retry, not a reason to stop a
  * queue.
  */
-async function record({ session, checkpost, ticketNo, regNo, override = false, rawPayload = null }) {
+async function record({ session, checkpost, ticketNo, regNo, override = false, rawPayload = null, durationMs = null }) {
   const t = ticketNo ? await booking.byTicketNo(ticketNo) : null;
 
   if (!t) {
-    await logScan({ session, checkpost, ticket: null, ticketNo, regNo, verdict: 'unknown_ticket', rawPayload });
+    await logScan({ session, checkpost, ticket: null, ticketNo, regNo, verdict: 'unknown_ticket', rawPayload, durationMs });
     return { ok: false, verdict: 'unknown_ticket', message: 'No pass found with that number.' };
   }
 
   const v = verdictFor(checkpost, t);
 
   if (v.blocking) {
-    await logScan({ session, checkpost, ticket: t, verdict: v.verdict, rawPayload });
+    await logScan({ session, checkpost, ticket: t, verdict: v.verdict, rawPayload, durationMs });
     return { ok: false, verdict: v.verdict, message: v.message, usedAt: v.usedAt || null, pass: detail(t) };
   }
   if (v.verdict === 'wrong_slot' && !override) {
@@ -243,17 +243,19 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
     if (!rows.length) return null;
 
     await client.query(
-      `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, device_id, session_id, verdict, raw_payload)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, device_id, session_id, verdict,
+                          raw_payload, duration_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [t.id, t.ticket_no, t.reg_no, checkpost.id, session.staff_id, null, session.session_id,
         override ? 'valid_override' : 'valid',
-        JSON.stringify({ typed: rawPayload, override: override || undefined, slotVerdict: v.verdict })]);
+        JSON.stringify({ typed: rawPayload, override: override || undefined, slotVerdict: v.verdict }),
+        sane(durationMs)]);
     return rows[0].used_at;
   });
 
   if (!claimed) {
     const fresh = await booking.byTicketNo(t.ticket_no);
-    await logScan({ session, checkpost, ticket: t, verdict: 'already_used', rawPayload });
+    await logScan({ session, checkpost, ticket: t, verdict: 'already_used', rawPayload, durationMs });
     return { ok: false, verdict: 'already_used', usedAt: fresh ? fresh.used_at : null,
       message: 'This pass was recorded a moment ago.', pass: detail(fresh || t) };
   }
@@ -273,13 +275,18 @@ async function notify(t, checkpost, recordedAt) {
   await templates.sendEntryRecorded(phone.toWa(t.mobile), t, { checkpost, recordedAt }, lang);
 }
 
-function logScan({ session, checkpost, ticket, ticketNo, regNo, verdict, rawPayload }) {
+/* A phone left open on a pass for an hour is not a one-hour check; it is a
+   phone left open. Anything outside a plausible range is stored as unmeasured
+   rather than allowed to drag every average with it. */
+const sane = (ms) => (Number.isFinite(Number(ms)) && ms >= 0 && ms <= 10 * 60 * 1000 ? Math.round(ms) : null);
+
+function logScan({ session, checkpost, ticket, ticketNo, regNo, verdict, rawPayload, durationMs = null }) {
   return query(
-    `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, session_id, verdict, raw_payload)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, session_id, verdict, raw_payload, duration_ms)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [ticket ? ticket.id : null, ticket ? ticket.ticket_no : (ticketNo || null),
       ticket ? ticket.reg_no : (regNo || null), checkpost.id, session.staff_id, session.session_id,
-      verdict, rawPayload ? JSON.stringify({ typed: rawPayload }) : null]);
+      verdict, rawPayload ? JSON.stringify({ typed: rawPayload }) : null, sane(durationMs)]);
 }
 
 /** The shift's own log — what this phone has recorded, most recent first. */

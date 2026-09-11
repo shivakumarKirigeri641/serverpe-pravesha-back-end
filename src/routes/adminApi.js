@@ -16,6 +16,7 @@
 const express = require('express');
 const admin = require('../gatepass/admin');
 const stats = require('../gatepass/adminStats');
+const liveStats = require('../gatepass/adminLive');
 const slotTime = require('../gatepass/slotTime');
 
 const router = express.Router();
@@ -105,6 +106,16 @@ router.get(`${P}/dashboard`, auth, safe(async (req, res) => {
       message: 'The dashboard reports on today and earlier days only.' });
   }
   res.json({ ok: true, ...(await stats.dashboard({ date: asked })) });
+}));
+
+/*
+ * Live monitoring. Polled every few seconds by a screen somebody is watching, so
+ * it is one call rather than nine, it never caches, and it always reports now —
+ * there is no date parameter, because "live" for a past day is a contradiction.
+ */
+router.get(`${P}/live`, auth, safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, ...(await liveStats.live()) });
 }));
 
 module.exports = { router, auth, needs, me };

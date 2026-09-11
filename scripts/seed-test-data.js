@@ -80,6 +80,10 @@ const shiftDay = (date, days) => {
   return at.toISOString().slice(0, 10);
 };
 
+/* How long a check takes in practice: a few seconds to read a plate and press a
+   button, with the occasional slow one where somebody had to be talked to. */
+const checkDuration = () => (chance(0.12) ? crypto.randomInt(12000, 45000) : crypto.randomInt(1800, 9000));
+
 const isWeekend = (date) => [0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay());
 
 async function removeAll() {
@@ -259,18 +263,19 @@ async function seedBookings(vehicles, categories) {
      duplicate and invalid figures mean something. */
   for (const s of scans) {
     await query(
-      `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, is_test)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)`,
+      `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at,
+                          raw_payload, duration_ms, is_test)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
       [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, staff?.id || null,
-        s.verdict, s.at, JSON.stringify({ seeded: true })]);
+        s.verdict, s.at, JSON.stringify({ seeded: true }), checkDuration()]);
 
     /* Roughly one in twelve is presented a second time — the duplicate case. */
     if (chance(0.08)) {
       await query(
         `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, is_test)
-         VALUES ($1,$2,$3,$4,$5,'already_used',$6,$7,true)`,
+         VALUES ($1,$2,$3,$4,$5,'already_used',$6,$7,$8,true)`,
         [s.ticket.id, s.ticket.ticket_no, s.vehicle.reg_no, checkpost?.id || null, staff?.id || null,
-          s.at, JSON.stringify({ seeded: true })]);
+          s.at, JSON.stringify({ seeded: true }), checkDuration()]);
     }
   }
 
@@ -279,11 +284,11 @@ async function seedBookings(vehicles, categories) {
   for (let i = 0; i < Math.max(2, Math.round(made * 0.03)); i += 1) {
     const v = pick(vehicles);
     await query(
-      `INSERT INTO scans (reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, is_test)
-       VALUES ($1,$2,$3,'unknown_ticket', $4, $5, true)`,
+      `INSERT INTO scans (reg_no, checkpost_id, staff_id, verdict, scanned_at, raw_payload, duration_ms, is_test)
+       VALUES ($1,$2,$3,'unknown_ticket', $4, $5, $6, true)`,
       [v.reg_no, checkpost?.id || null, staff?.id || null,
         `${today0}T${String(crypto.randomInt(7, 17)).padStart(2, '0')}:${String(crypto.randomInt(0, 60)).padStart(2, '0')}:00+05:30`,
-        JSON.stringify({ seeded: true })]);
+        JSON.stringify({ seeded: true }), checkDuration()]);
   }
 
   return { made, entered, skipped, clashes, scans: scans.length };
