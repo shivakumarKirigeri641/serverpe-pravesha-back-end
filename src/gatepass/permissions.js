@@ -23,6 +23,7 @@ const CAPABILITIES = {
   'reports.view': 'Generate operational reports',
   'finance.view': 'See revenue, GST and the financial split',
   'finance.expenses': 'Record expenses and input tax credit',
+  'finance.remit': 'Record remittances to the Tourism Department',
   'conversations.view': 'Read WhatsApp conversations (numbers masked)',
   'conversations.technical': 'See full numbers and technical identifiers',
   'negative.view': 'See negative tracking',
@@ -60,7 +61,7 @@ const ROLES = {
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
-    can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'audit.view'],
+    can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',

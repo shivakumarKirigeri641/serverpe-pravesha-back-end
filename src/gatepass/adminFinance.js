@@ -83,6 +83,16 @@ function periodFor({ preset = 'today', from, to } = {}) {
 
 const IST_DAY = (col) => `(${col} AT TIME ZONE 'Asia/Kolkata')::date`;
 
+/*
+ * A refund is taken from the entry fee first, then from the service fee: a
+ * partial refund is almost always the Department's entry fee being returned
+ * (a closure after booking), while the booking service was still delivered.
+ * GST is reversed only on the part of the service fee that went back.
+ */
+const FEE_REFUNDED = 'LEAST(platform_paise, GREATEST(0, refunded_paise - entry_paise))';
+const GST_REFUNDED = `CASE WHEN platform_paise > 0 THEN round(gst_paise::numeric * ${FEE_REFUNDED} / platform_paise)::bigint ELSE 0 END`;
+const ENTRY_REFUNDED = 'LEAST(entry_paise, refunded_paise)';
+
 /* ───────────────────────────────────────────────────── 8.1 and 8.2 ── */
 
 async function summary(period) {
@@ -102,8 +112,9 @@ async function summary(period) {
       WHERE status <> 'failed' AND paid_at IS NOT NULL AND ${IST_DAY('paid_at')} BETWEEN $1::date AND $2::date`, [from, to]);
 
   const [ref] = await rowsOf(
-    `SELECT count(*) AS refunds, COALESCE(sum(amount_paise), 0) AS amount,
-            COALESCE(sum(platform_paise), 0) AS service, COALESCE(sum(gst_paise), 0) AS gst
+    `SELECT count(*) AS refunds, COALESCE(sum(refunded_paise), 0) AS amount,
+            COALESCE(sum(${FEE_REFUNDED}), 0) AS service,
+            COALESCE(sum(${GST_REFUNDED}), 0) AS gst
        FROM payments
       WHERE refunded_at IS NOT NULL AND ${IST_DAY('refunded_at')} BETWEEN $1::date AND $2::date`, [from, to]);
 
@@ -231,7 +242,7 @@ async function invoices({ q = null, from = null, to = null, status = null, limit
     `SELECT i.id, i.invoice_no, i.issued_at, i.total_paise, i.gst_paise, i.service_paise, i.entry_paise, i.taxable_paise, i.is_test,
             t.id AS ticket_id, t.ticket_no, t.reg_no, t.mobile, t.travel_date, t.status AS ticket_status,
             cu.name AS customer_name, cu.wa_profile_name,
-            p.payment_id, p.order_id, p.refunded_at, p.status AS payment_status,
+            p.payment_id, p.order_id, p.refunded_at, p.refunded_paise, p.status AS payment_status,
             c.label AS vehicle_type,
             count(*) OVER () AS total_rows
        FROM invoices i
@@ -250,13 +261,14 @@ async function invoices({ q = null, from = null, to = null, status = null, limit
              OR cu.name ILIKE '%' || $3 || '%'
              OR cu.wa_profile_name ILIKE '%' || $3 || '%')
         AND ($7::text IS NULL
-             OR ($7 = 'refunded' AND p.refunded_at IS NOT NULL)
-             OR ($7 = 'paid' AND p.refunded_at IS NULL))
+             OR ($7 = 'refunded' AND p.status = 'refunded')
+             OR ($7 = 'partial_refund' AND p.status = 'paid' AND p.refunded_paise > 0)
+             OR ($7 = 'paid' AND p.status = 'paid' AND p.refunded_paise = 0))
       ORDER BY i.issued_at DESC, i.id DESC
       LIMIT $8 OFFSET $9`,
     [DATE.test(String(from || '')) ? from : null, DATE.test(String(to || '')) ? to : null,
       term || null, plate || null, booking.passNumberCandidates(term), digits.length >= 4 ? digits : null,
-      ['paid', 'refunded'].includes(status) ? status : null, size, skip]);
+      ['paid', 'refunded', 'partial_refund'].includes(status) ? status : null, size, skip]);
 
   return {
     total: rows.length ? n(rows[0].total_rows) : 0,
@@ -278,7 +290,8 @@ async function invoices({ q = null, from = null, to = null, status = null, limit
       gst: rupees(r.gst_paise),
       entry: rupees(r.entry_paise),
       paymentId: r.payment_id,
-      status: r.refunded_at ? 'refunded' : 'paid',
+      status: r.payment_status === 'refunded' ? 'refunded' : n(r.refunded_paise) > 0 ? 'partial_refund' : 'paid',
+      refunded: rupees(r.refunded_paise),
       test: r.is_test,
     })),
   };
@@ -373,4 +386,4 @@ async function setGatewayItc({ include, reason }) {
   return { reason: why, audit: { subject: 'settings:itc_include_gateway_gst', before: { includeGatewayGst: before }, after: { includeGatewayGst: include } } };
 }
 
-module.exports = { Refusal, PRESETS, periodFor, summary, invoices, invoice, expenses, addExpense, removeExpense, setGatewayItc };
+module.exports = { Refusal, PRESETS, FEE_REFUNDED, GST_REFUNDED, ENTRY_REFUNDED, IST_DAY, periodFor, summary, invoices, invoice, expenses, addExpense, removeExpense, setGatewayItc };

@@ -115,6 +115,7 @@ async function removeAll() {
                    OR (subject_type = 'vehicle' AND subject_id IN (SELECT reg_no FROM vehicles WHERE is_test))
                    OR (subject_type = 'scan' AND subject_id IN (SELECT id::text FROM scans WHERE is_test))
                    OR (subject_type = 'payment' AND subject_id IN (SELECT id::text FROM payments WHERE is_test))`).catch(() => {});
+  await query('DELETE FROM department_remittances WHERE is_test').catch(() => {});
   for (const table of ['scans', 'invoices', 'tickets', 'payments', 'vehicles', 'customers']) {
     const { rowCount } = await query(`DELETE FROM ${table} WHERE is_test`).catch(async (e) => {
       /* invoices has no flag: remove the ones pointing at test tickets. */
