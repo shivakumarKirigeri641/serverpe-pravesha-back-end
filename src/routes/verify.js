@@ -49,7 +49,7 @@ table{width:100%;border-collapse:collapse;font-size:14.5px}
 th,td{border:1px solid #e9edef;padding:9px 11px;text-align:left}
 th{background:#f3f6f7;color:#667781;font-weight:500;width:42%}
 td{font-weight:600}
-.plate{font-family:ui-monospace,Menlo,monospace;letter-spacing:.12em}
+.plate{letter-spacing:0}
 footer{text-align:center;font-size:12px;color:#667781;padding:10px 16px 24px}
 </style></head><body><div class="wrap">
 <header><b>Pravesha</b><div>Department of Tourism, Government of Karnataka</div></header>

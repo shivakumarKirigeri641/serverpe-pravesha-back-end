@@ -48,13 +48,12 @@ const SHELL = (title, body) => `<!doctype html>
                border-radius:10px;background:var(--card);color:var(--ink);font-family:inherit}
   input:focus,select:focus{outline:none;border-color:var(--accent)}
   input[readonly]{background:var(--bg);color:var(--muted)}
-  input.plate{text-transform:uppercase;letter-spacing:.12em;font-weight:700;font-size:19px;
-              text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  input.plate{text-transform:uppercase;letter-spacing:0;font-weight:700;font-size:19px;text-align:center}
   /* The placeholder was reading as a filled-in value: same weight, same size,
      same spacing as a real entry. Lightened and un-bolded so it is plainly a
      hint and not somebody else's number already in the box. */
-  input.plate::placeholder{color:var(--muted);opacity:.55;font-weight:400;letter-spacing:.06em;font-size:16px}
-  .masked{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
+  input.plate::placeholder{color:var(--muted);opacity:.55;font-weight:400;letter-spacing:0;font-size:16px}
+  .masked{letter-spacing:0}
   .locked{position:relative}
   .locked::after{content:'🔒';position:absolute;right:12px;top:50%;transform:translateY(-50%);
                  font-size:12px;opacity:.45;pointer-events:none}
@@ -73,8 +72,8 @@ const SHELL = (title, body) => `<!doctype html>
          letter-spacing:.06em;text-transform:uppercase;color:var(--ok);margin-bottom:10px}
   .vcheck{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;
           display:grid;place-items:center;font-size:11px}
-  .vreg{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-        letter-spacing:.08em;color:var(--ink);background:var(--card);border:1px solid var(--line);
+  .vreg{margin-left:auto;
+        letter-spacing:0;color:var(--ink);background:var(--card);border:1px solid var(--line);
         border-radius:6px;padding:2px 8px;text-transform:none;font-size:12.5px}
   .vgrid{display:grid;grid-template-columns:auto 1fr;margin:0;background:var(--card);
          border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -135,8 +134,8 @@ const SHELL = (title, body) => `<!doctype html>
        border-radius:12px;overflow:hidden;background:var(--card)}
   .rev>thead>tr>th{background:var(--head);color:var(--head-ink);text-align:left;padding:11px 14px;
                    font-size:13px;font-weight:700;letter-spacing:.04em}
-  .rev>thead>tr>th span{float:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-                        font-weight:600;opacity:.9;letter-spacing:.06em}
+  .rev>thead>tr>th span{float:right;
+                        font-weight:600;opacity:.9;letter-spacing:0}
   .rev>tbody>tr>td{padding:12px}
   .rev>tbody>tr+tr>td{padding-top:0}
   .inner{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--line)}
@@ -149,7 +148,7 @@ const SHELL = (title, body) => `<!doctype html>
   .inner.pay th{width:auto}
   .inner.pay tr.total th,.inner.pay tr.total td{background:rgba(0,168,132,.12);color:var(--ink);
                                                 font-weight:700;font-size:15.5px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
+  .mono{letter-spacing:0}
            border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
        color:var(--muted);margin:4px 0 4px}
@@ -188,7 +187,7 @@ function expired(reason) {
 function mask(mobile) {
   const d = String(mobile || '').replace(/\D/g, '');
   if (d.length <= 4) return d;
-  return '\u2022'.repeat(d.length - 4) + ' ' + d.slice(-4);
+  return '\u2022'.repeat(d.length - 4) + d.slice(-4);
 }
 
 function render({ token, customer, places, dates, tariff, feePercent, scriptVersion }) {

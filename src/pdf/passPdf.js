@@ -75,9 +75,9 @@ async function render(t, { settings, verifyUrl, generatedAt = new Date() }) {
   doc.font('R').fontSize(8.5).fillColor(C.muted).text('VEHICLE NUMBER', M + 14, y + 58, { lineBreak: false });
   doc.font('B').fontSize(15);
   const plate = t.reg_no;
-  const pw = doc.widthOfString(plate, { characterSpacing: 2 }) + 24;
+  const pw = doc.widthOfString(plate) + 24;
   doc.save().roundedRect(M + 14, y + 72, pw, 30, 4).lineWidth(1.6).fillAndStroke('#fffbe6', C.ink).restore();
-  doc.fillColor(C.ink).text(plate, M + 14, y + 77, { width: pw, align: 'center', characterSpacing: 2, lineBreak: false });
+  doc.fillColor(C.ink).text(plate, M + 14, y + 77, { width: pw, align: 'center', lineBreak: false });
 
   const last = slotTime.hhmm(slotTime.toMinutes(t.ends_at) - slotTime.LAST_ENTRY_BUFFER_MIN);
   const midX = M + 14 + Math.max(pw, 180) + 20;
