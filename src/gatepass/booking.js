@@ -168,8 +168,9 @@ function full(where, params) {
   return one(
     `SELECT t.*,
             p.code AS place_code, p.name AS place_name, p.district,
+            p.name_kn AS place_name_kn, p.district_kn, s.label_kn AS slot_label_kn,
             s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, s.starts_at, s.ends_at,
-            c.code AS category_code, c.label AS category_label,
+            c.code AS category_code, c.label AS category_label, c.label_kn AS category_label_kn,
             v.maker, v.model, v.fuel, v.colour, v.vehicle_class, v.vehicle_category, v.body_type,
             cu.name AS customer_name, cu.wa_profile_name,
             pay.status AS payment_status, pay.order_id, pay.payment_id AS gateway_payment_id,

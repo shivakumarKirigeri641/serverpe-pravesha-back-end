@@ -28,6 +28,7 @@ const { longDate, rupee } = require('../pdf/common');
 const send = require('./send');
 const phone = require('./phone');
 const { t: tr, langOf } = require('../i18n');
+const L = require('../localize');
 
 async function docSettings() {
   return {
@@ -51,7 +52,7 @@ const verifyUrl = (t) =>
 /** The pass written as a WhatsApp message, in the visitor's chosen language. */
 function passMessage(t, lang) {
   const d = vehicle.details(t);
-  const type = passPdf.TYPE[t.category_code] || t.category_label;
+  const type = L.vehicleType(t, lang);
   const last = slotTime.hhmm(slotTime.toMinutes(t.ends_at) - slotTime.LAST_ENTRY_BUFFER_MIN);
   const car = [d.make, d.model].filter(Boolean).join(' ');
   const rule = '━━━━━━━━━━━━━━━━━━';
@@ -70,10 +71,10 @@ function passMessage(t, lang) {
     `${tr('vehType', lang)}: ${type}`,
     '',
     tr('secVisit', lang),
-    `${t.place_name}, ${t.district}`,
-    `📅 ${longDate(t.travel_date)}`,
-    `🕐 ${t.slot_label}`,
-    `⏳ ${tr('lastEntry', lang)} ${last}`,
+    L.placeWithDistrict(t, lang),
+    `📅 ${L.longDate(t.travel_date, lang)}`,
+    `🕐 ${L.slotLabel(t, lang)}`,
+    `⏳ ${tr('lastEntry', lang)} ${L.clock(last, lang)}`,
     '',
     tr('secPayment', lang),
     `${tr('entryFee', lang)}: ${rupee(t.entry_paise)}`,
@@ -122,7 +123,7 @@ async function deliverTicket(ticketId) {
   const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t) });
   const doc = await send.document(to, pdf, {
     filename: passPdf.filename(t),
-    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: longDate(t.travel_date) }),
+    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: L.longDate(t.travel_date, lang) }),
   });
 
   if (invoice && String(await settings.str('send_invoice', 'false')) === 'true') {
