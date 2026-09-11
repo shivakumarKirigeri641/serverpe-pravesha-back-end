@@ -36,6 +36,7 @@ const FORCE = process.argv.includes('--force-database');
 const WIPE = [
   'web_tokens',
   'scans',
+  'invoices',
   'tickets',
   'payments',
   'closures',
@@ -100,6 +101,14 @@ const KEEP = [
      than 3,029. */
   await tx(async (c) => {
     await c.query(`TRUNCATE TABLE ${WIPE.join(', ')} RESTART IDENTITY CASCADE`);
+
+    /* RESTART IDENTITY only resets sequences OWNED by a truncated column, and
+       the invoice series is a standalone sequence — it would otherwise survive
+       a wipe and the first invoice of a fresh demo would be numbered 00042.
+       Restarting a GST series is only ever acceptable because this script
+       refuses to run outside a Pravesha database that is being reset for a
+       demo; against real books it would be a serious thing to do. */
+    await c.query('ALTER SEQUENCE IF EXISTS pravesha_invoice_seq RESTART WITH 1');
   });
 
   const after = [];

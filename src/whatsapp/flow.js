@@ -16,7 +16,7 @@
  * The booking path is a tap at every step except the registration number, which
  * only the customer knows:
  *
- *     menu -> plate -> confirm plate -> date -> slot -> pay -> QR + PDF
+ *     menu -> plate -> confirm plate -> date -> slot -> pay -> ticket + invoice
  *
  * WHY CONSENT IS ITS OWN STEP: we look up a vehicle's registration record. That
  * is the customer's data being fetched, and the tap agreeing to it is recorded
@@ -125,7 +125,15 @@ async function handle(msg) {
   if (choice) return onChoice(ctx);
 
   const typed = String(text || '').trim();
-  if (GREETING.test(typed)) return welcome(ctx);
+
+  /* A typed greeting restarts the conversation, and a restart goes through the
+     terms again. Consent is not a box ticked once in March that covers a
+     booking made in September: the fees, the cancellation rule and the data
+     line can all have changed since, and the only version anyone can be held
+     to is the one that was on their screen the moment they agreed. Each tap is
+     logged with its own timestamp, so a dispute about any single booking is
+     answered by the acceptance nearest to it rather than by the first one. */
+  if (GREETING.test(typed)) return welcome({ ...ctx, greeted: true });
 
   // States that are waiting for typed words, not taps.
   switch (session.state) {
@@ -147,7 +155,11 @@ async function welcome(ctx) {
      carries two languages in every bubble reads as one that could not decide. */
   if (!customer.language_asked_at) return askLanguage(ctx);
 
-  if (!await hasConsented(customer.id)) return askConsent(ctx);
+  /* ctx.greeted means they typed "hi" rather than arriving here from a tap, so
+     the terms are put in front of them again even though they have agreed
+     before. Without that first condition a returning visitor would never see
+     the policy a second time. */
+  if (ctx.greeted || !await hasConsented(customer.id)) return askConsent(ctx);
 
   // A closure is the one thing important enough to interrupt the menu with.
   const stuck = await closure.awaitingChoice(customer.id);
@@ -787,7 +799,7 @@ async function onPostponeSlot(ctx, slotCode) {
     `Ticket *${t.ticket_no}* · ${p2(t.reg_no)}\n\n` +
     `From: ${pretty(before.travel_date)}, ${before.slot_label}\n` +
     `To: *${pretty(t.travel_date)}, ${t.slot_label}*\n\n` +
-    'Your old QR code no longer works. The new one is below — please use that one at the gate.');
+    'Your booking now carries the new date. There is nothing to do at the gate — the staff enter your vehicle number.');
 
   // A new date means a new signature, so the code itself has changed.
   await deliver.sendTicket(t.id, { force: true });
@@ -935,7 +947,8 @@ async function onChoice(ctx) {
   /* consent */
   if (choice === 'consent_yes') {
     await customers.logEvent(customer.id, 'consent_given',
-      { channel: 'whatsapp', at: new Date().toISOString() });
+      { channel: 'whatsapp', at: new Date().toISOString(),
+        policy_version: policy.VERSION, language: lang(customer) });
     return menu(ctx, t(lang(customer), 'consent_thanks'));
   }
   if (choice === 'consent_policy') {

@@ -119,7 +119,7 @@ const SECTIONS = [
            + 'ತಾನಾಗಿಯೇ ಅಮಾನ್ಯವಾಗುತ್ತದೆ.',
     body_en: 'A booking cannot be cancelled. It can, however, be moved: you may change the date '
            + 'once, free of charge, before your travel date, subject to places being available '
-           + 'on the new date. When you do, the old QR code stops working immediately. The '
+           + 'on the new date. The booking simply carries the new date from then on. The '
            + 'number of free changes is set by the department and may change.',
   },
   {
@@ -173,7 +173,7 @@ const SECTIONS = [
     body_kn: 'ಟಿಕೆಟ್ ಅಥವಾ ಕ್ಯೂಆರ್ ಕೋಡ್ ತಿದ್ದುವುದು, ನಕಲಿ ಮಾಡುವುದು, ಮಾರಾಟ ಮಾಡುವುದು, ಸುಳ್ಳು ವಾಹನ '
            + 'ಸಂಖ್ಯೆ ನೀಡುವುದು ಅಥವಾ ವ್ಯವಸ್ಥೆಯನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಬಳಸುವುದು ನಿಷೇಧಿಸಲಾಗಿದೆ. ಇಂತಹ '
            + 'ಸಂದರ್ಭದಲ್ಲಿ ಟಿಕೆಟ್ ರದ್ದುಗೊಳಿಸಿ, ಹಣ ಮರುಪಾವತಿ ಮಾಡದೆ, ಅಧಿಕಾರಿಗಳಿಗೆ ವರದಿ ಮಾಡಬಹುದು.',
-    body_en: 'You must not alter, copy, forge or resell a ticket or QR code, give a registration '
+    body_en: 'You must not resell a ticket, give a registration '
            + 'number that is not the vehicle you will bring, book on behalf of others for '
            + 'payment, or use automated means to make bookings or hold places. We may cancel '
            + 'tickets without refund, refuse further bookings from a number, and report the '
@@ -246,4 +246,18 @@ const SHORT_EN = 'We store your mobile number, your vehicle number and your tick
   + 'we never message you unless you message us first. Bookings cannot be cancelled, but the date '
   + 'can be changed once, free.';
 
-module.exports = { SECTIONS, SHORT_KN, SHORT_EN };
+/**
+ * The date this text last changed, stamped on every acceptance.
+ *
+ * The terms above promise that the version published on the day of booking is
+ * the one that governs it. That promise is only keepable if each acceptance
+ * records WHICH version was on the screen — otherwise, once the fee or the
+ * postponement rule is edited, there is no way to show what a visitor actually
+ * agreed to in a dispute, and the department has to take our word for it.
+ *
+ * BUMP THIS whenever SECTIONS, SHORT_KN or SHORT_EN change in substance. A
+ * typo fix does not need it; a changed rule does.
+ */
+const VERSION = '2026-09-10';
+
+module.exports = { SECTIONS, SHORT_KN, SHORT_EN, VERSION };

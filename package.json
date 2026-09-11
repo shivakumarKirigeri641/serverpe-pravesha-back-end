@@ -35,19 +35,16 @@
   "homepage": "https://github.com/shivakumarKirigeri641/serverpe-back-end#readme",
   "dependencies": {
     "@napi-rs/canvas": "^1.0.9",
-    "@noble/ed25519": "^3.2.0",
     "axios": "^1.15.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jsqr": "^1.4.0",
     "nodemailer": "^8.0.5",
     "nodemon": "^3.1.14",
     "pdfkit": "^0.20.2",
     "pg": "^8.20.0",
     "pptxgenjs": "^4.0.1",
-    "qrcode": "^1.5.4",
     "razorpay": "^2.9.8"
   }
 }

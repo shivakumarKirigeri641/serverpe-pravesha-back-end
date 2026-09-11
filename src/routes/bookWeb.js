@@ -41,6 +41,7 @@ const db = require('../gatepass/db');
 const settings = require('../gatepass/settings');
 const { t, prettyDate } = require('../gatepass/i18n');
 const { unsignToken, tokenState, spendToken } = require('./flowEndpoint');
+const { wireJson, clientScript } = require('./wire');
 
 const router = express.Router();
 
@@ -136,6 +137,17 @@ function shell({ title, product, header, sub, body, extraCss = '' }) {
  .tot{display:flex;justify-content:space-between;font-weight:600;font-size:18px;
    border-top:1px solid var(--line);margin-top:8px;padding-top:10px}
  .vcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;background:var(--bg)}
+ /* The vehicle-type choice, shown only when there is no RC record to read it
+    from. Laid out as cards with the price on each, because the price is the
+    thing the choice actually changes and hiding it until later reads as a
+    trick. Wide targets: this is tapped on a phone, often in a car park. */
+ .hint{color:var(--muted);font-size:13.5px;line-height:1.5;margin:8px 0}
+ .types{display:grid;gap:8px;margin:10px 0 4px}
+ .type{display:flex;justify-content:space-between;align-items:center;width:100%;
+   text-align:left;background:var(--bg);color:inherit;border:1px solid var(--line);
+   border-radius:10px;padding:13px;margin:0;font-size:15px;cursor:pointer}
+ .type small{color:var(--muted);font-size:15px;font-weight:600}
+ .type.sel{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal) inset}
  /* The review is a grid, not a list of rows: a light ground, hairline cells
     and a small gap, so a glance separates label from value without reading. */
  .grid{display:grid;grid-template-columns:auto 1fr;gap:1px;background:var(--line);
@@ -219,11 +231,14 @@ router.get('/book/:token', async (req, res) => {
 </form>
 
 <script>
-const T='${esc(req.params.token)}';
 const $=i=>document.getElementById(i);
 let V=null;
-const post=(p,b)=>fetch('/book/'+T+'/'+p,{method:'POST',
-  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+/* Request and response bodies are AES-GCM sealed, so what crosses the wire —
+   and what shows in a network tab — is one opaque string rather than prices,
+   plates and live availability in readable JSON. See routes/wire.js for the
+   format and for what this does and does not protect. */
+${clientScript(req.params.token)}
+const post=wpost;
 
 function reset(){V=null;$('vres').innerHTML='';$('slotv').value='';
   $('slotcard').classList.add('hide');$('pricecard').classList.add('hide');}
@@ -235,7 +250,24 @@ $('check').onclick=async()=>{
     travel_date:$('date').value});
   $('check').disabled=false;
   if(!r.ok){$('vres').innerHTML='<p class="err">'+r.error+'</p>';return;}
-  V=r;$('catv').value=r.category_id;
+
+  /* No RC record — an old registration, usually. Ask instead of guessing:
+     the guess is always the car rate, and it is the visitor who pays it. */
+  if(r.needs_type){
+    $('vres').innerHTML='<div class="vcard"><div class="vhead">'+r.reg_pretty+'</div>'
+      +'<p class="hint">'+(r.why||'')+'</p>'
+      +'<div class="types">'+r.types.map(x=>'<button type="button" class="type" '
+        +'data-id="'+x.id+'" data-e="'+x.entry+'" data-f="'+x.fee+'" data-t="'+x.total+'">'
+        +'<span>'+x.label+'</span><small>\\u20b9'+x.total+'</small></button>').join('')
+      +'</div><p class="hint">${T('f_type_gate')}</p></div>';
+    document.querySelectorAll('.type').forEach(b=>b.onclick=()=>{
+      document.querySelectorAll('.type').forEach(o=>o.classList.remove('sel'));
+      b.classList.add('sel');
+      chosen({category_id:+b.dataset.id,entry:b.dataset.e,fee:b.dataset.f,total:b.dataset.t});
+    });
+    return;
+  }
+
   const d=r.vehicle||{};
   const line=(k,v)=>v?'<div class="line"><span>'+k+'</span><span>'+v+'</span></div>':'';
   $('vres').innerHTML=
@@ -246,7 +278,13 @@ $('check').onclick=async()=>{
     +line('${T('v_type')}',d.type)
     +line('${T('entry_type')}',r.category)
     +'</div>';
+  chosen(r);
+};
 
+/* Everything from "we know what this vehicle is" onwards, shared by both
+   routes into it: the RC told us, or the visitor did. */
+async function chosen(r){
+  V=r;$('catv').value=r.category_id;
   const s=await post('slots',{place_id:$('place').value,travel_date:$('date').value,
     category_id:r.category_id});
   $('slots').innerHTML=s.slots.map(x=>'<div class="slot'+(x.open?'':' off')+
@@ -295,7 +333,17 @@ router.post('/book/:token/review', express.urlencoded({ extended: false }), asyn
     if (!p.ok) throw new Error(t(L, 'f_err_format'));
 
     const vehicle = (await vehicles.resolve(p.reg_no, { customerId: me.customer.id }))?.vehicle;
-    const category = await pricing.categoryForVehicle(vehicle);
+
+    /* Same rule as /confirm: the RC decides the category where it can, and the
+       visitor's own answer is used only where it could not. Deriving it here
+       and choosing it there would show one price on this page and charge
+       another at the gateway. */
+    const category = vehicles.isClassified(vehicle)
+      ? await pricing.categoryForVehicle(vehicle)
+      : await db.one('SELECT * FROM vehicle_categories WHERE id = $1 AND is_active',
+          [Number(req.body.category_id)]);
+    if (!category) throw new Error(t(L, 'f_err_category'));
+
     const price = await pricing.priceFor(place.id, category.id);
     const total = price.entry_paise + price.platform_paise;
 
@@ -332,7 +380,7 @@ router.post('/book/:token/review', express.urlencoded({ extended: false }), asyn
 </div>
 
 <script>
-const T='${esc(req.params.token)}';
+${clientScript(req.params.token)}
 const D=${JSON.stringify({
   place_id: place.id, travel_date: req.body.travel_date,
   slot: slot.code, reg_no: p.reg_no, category_id: category.id })};
@@ -341,9 +389,7 @@ document.getElementById('agree').onchange=e=>{
 document.getElementById('pay').onclick=async()=>{
   const b=document.getElementById('pay');b.disabled=true;
   document.getElementById('perr').innerHTML='';
-  const r=await fetch('/book/'+T+'/confirm',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(Object.assign({agree:true},D))}).then(x=>x.json());
+  const r=await wpost('confirm',Object.assign({agree:true},D));
   if(r.ok&&r.pay){location.href=r.pay;return;}
   b.disabled=false;
   document.getElementById('perr').innerHTML='<p class="err">'+(r.error||'')+'</p>';
@@ -370,7 +416,7 @@ document.getElementById('pay').onclick=async()=>{
 
 /* ───────────────────────────────────────────────────────── the API */
 
-router.post('/book/:token/vehicle', express.json(), async (req, res) => {
+router.post('/book/:token/vehicle', express.json(), wireJson, async (req, res) => {
   const me = await who(req.params.token);
   if (!me || me.spent) return res.status(410).json({ ok: false, spent: me?.spent || 'invalid', error: 'This link is no longer valid. Send hi on WhatsApp to start again.' });
   const L = me.lang;
@@ -390,19 +436,59 @@ router.post('/book/:token/vehicle', express.json(), async (req, res) => {
   }
   if (!v) return res.json({ ok: false, error: t(L, 'f_err_notfound') });
 
-  const category = await pricing.categoryForVehicle(v);
-  if (!category) return res.json({ ok: false, error: t(L, 'f_err_category') });
+  /* An old registration is usually not in the RC database at all, so there is
+     nothing to classify and nothing to show. Rather than guess — the guess is
+     always "car", and always the higher fee — offer the categories with their
+     prices and let the visitor say which one they are driving.
 
+     The choice is honoured only for a vehicle the database could not classify.
+     Where the RC did answer, the category comes from the RC and the client
+     cannot override it; see /confirm, which recomputes it. */
+  /* Checked before anything else is offered, and for both routes below: being
+     told at the payment step that this vehicle already has a ticket for the
+     day is a worse experience than being told now. */
   const date = String(req.body?.travel_date || '');
   if (date) {
     const clash = await booking.existingForDate(v.id, date);
     if (clash) {
       return res.json({ ok: false,
-        error: t(L, 'f_err_clash', { reg: p.pretty || p.reg_no, date: prettyDate(date, L) }) });
+        error: t(L, 'f_err_clash', { reg: p.reg_no, date: prettyDate(date, L) }) });
     }
   }
 
-  const price = await pricing.priceFor(Number(req.body?.place_id), category.id);
+  const placeId = Number(req.body?.place_id);
+
+  /* An old registration is usually not in the RC database at all, so there is
+     nothing to classify and nothing to show. Rather than guess — the guess is
+     always "car", and always the higher fee — offer the categories with their
+     prices and let the visitor say which one they are driving.
+
+     The choice is honoured only for a vehicle the database could not classify.
+     Where the RC did answer, the category comes from the RC and the client
+     cannot override it; /confirm recomputes it and ignores what was sent. */
+  if (!vehicles.isClassified(v)) {
+    const list = await db.query(
+      `SELECT id, code, label FROM vehicle_categories WHERE is_active ORDER BY sort_order, id`);
+    const types = [];
+    for (const c of list.rows) {
+      try {
+        const pr = await pricing.priceFor(placeId, c.id);
+        types.push({
+          id: c.id, label: c.label,
+          entry: rs(pr.entry_paise), fee: rs(pr.platform_paise),
+          total: rs(pr.entry_paise + pr.platform_paise),
+        });
+      } catch { /* a category with no price at this place is simply not on offer */ }
+    }
+    if (!types.length) return res.json({ ok: false, error: t(L, 'f_err_category') });
+    return res.json({ ok: true, needs_type: true, reg_pretty: p.reg_no, types,
+      why: t(L, p.temporary ? 'f_type_temp' : 'f_type_ask') });
+  }
+
+  const category = await pricing.categoryForVehicle(v);
+  if (!category) return res.json({ ok: false, error: t(L, 'f_err_category') });
+
+  const price = await pricing.priceFor(placeId, category.id);
   return res.json({
     ok: true,
     reg_pretty: p.reg_no,
@@ -416,7 +502,7 @@ router.post('/book/:token/vehicle', express.json(), async (req, res) => {
   });
 });
 
-router.post('/book/:token/slots', express.json(), async (req, res) => {
+router.post('/book/:token/slots', express.json(), wireJson, async (req, res) => {
   const me = await who(req.params.token);
   if (!me || me.spent) return res.status(410).json({ ok: false, spent: me?.spent || 'invalid', error: 'This link is no longer valid. Send hi on WhatsApp to start again.' });
   const L = me.lang;
@@ -447,7 +533,7 @@ router.post('/book/:token/slots', express.json(), async (req, res) => {
   });
 });
 
-router.post('/book/:token/confirm', express.json(), async (req, res) => {
+router.post('/book/:token/confirm', express.json(), wireJson, async (req, res) => {
   const me = await who(req.params.token);
   if (!me || me.spent) return res.status(410).json({ ok: false, spent: me?.spent || 'invalid', error: 'This link is no longer valid. Send hi on WhatsApp to start again.' });
   const L = me.lang;
@@ -459,8 +545,38 @@ router.post('/book/:token/confirm', express.json(), async (req, res) => {
       [Number(req.body.place_id)]);
     const slot = await db.one('SELECT * FROM place_slots WHERE place_id = $1 AND code = $2',
       [place.id, String(req.body.slot)]);
-    const category = await db.one('SELECT * FROM vehicle_categories WHERE id = $1',
-      [Number(req.body.category_id)]);
+    const p = plate.parse(String(req.body.reg_no));
+
+    /* The whole result, not just the row. `reason` is the only place that tells
+       "the database has no such vehicle" apart from "our supplier was down",
+       and those are different facts: the first is expected and permanent, the
+       second is temporary and, if it appears in bulk, means every booking that
+       hour was self-priced. Inferring it from rc_fetched_at does not work —
+       both cases leave it null. */
+    const rv = await vehicles.resolve(p.reg_no, { customerId: me.customer.id });
+    const vehicle = rv?.vehicle;
+    if (!vehicle) return res.json({ ok: false, error: t(L, 'f_err_notfound') });
+
+    /* THE PRICE IS DECIDED HERE, NOT BY THE BROWSER.
+       This used to read category_id straight off the request, which meant
+       anyone could post the two-wheeler id with a car's plate and buy a ₹57
+       ticket for a ₹113 vehicle. The category now comes from the RC record,
+       and the number the client sent is ignored outright.
+
+       The one exception is a vehicle the RC database could not classify — an
+       old registration, mostly — where there is nothing to derive from and the
+       visitor was asked. Even then the id is looked up rather than trusted:
+       it must be an active category with a price at this place. */
+    let category;
+    const known = vehicles.isClassified(vehicle);
+    if (known) {
+      category = await pricing.categoryForVehicle(vehicle);
+    } else {
+      category = await db.one(
+        `SELECT * FROM vehicle_categories WHERE id = $1 AND is_active`,
+        [Number(req.body.category_id)]);
+    }
+    if (!category) return res.json({ ok: false, error: t(L, 'f_err_category') });
 
     /* The clock is checked again here, not only when the list was drawn.
        A page can sit open on a phone for an hour, and the slot that was
@@ -470,13 +586,15 @@ router.post('/book/:token/confirm', express.json(), async (req, res) => {
       return res.json({ ok: false, error: t(L, 'slot_not_sellable') });
     }
 
-    const p = plate.parse(String(req.body.reg_no));
-    const vehicle = (await vehicles.resolve(p.reg_no, { customerId: me.customer.id }))?.vehicle;
-    if (!vehicle) return res.json({ ok: false, error: t(L, 'f_err_notfound') });
-
+    /* A ticket whose price the visitor chose is marked as such. The gate is the
+       only place anyone can see that a "two-wheeler" is in fact a Tempo
+       Traveller, and the staff member cannot check what they are not told. */
     const held = await booking.hold({
       customer: me.customer, vehicle, place, slot, category,
       travelDate: String(req.body.travel_date),
+      declared: !known,
+      declaredReason: known ? null
+        : (rv?.reason === 'lookup_failed' ? 'lookup_failed' : 'no_record'),
     });
     if (!held?.ok) return res.json({ ok: false, error: held?.reason || 'could not hold' });
 

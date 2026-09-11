@@ -387,10 +387,10 @@ async function vehicleDetail(placeId, regNo) {
   return { vehicle, visits, scans };
 }
 
-/* ═════════════════════════════════════════════════ every QR ever issued */
+/* ════════════════════════════════════════════ every ticket ever issued */
 
 /**
- * The ticket board: every QR code, what state it is in, and what has been
+ * The ticket board: every ticket, what state it is in, and what has been
  * attempted against it.
  *
  * The scan counts are the reason this page exists. A ticket with one scan is
@@ -426,7 +426,7 @@ async function ticketBoard(placeId, { state, q, limit = 100, offset = 0 } = {}) 
 
   const rows = (await query(
     `SELECT t.id, t.ticket_no, t.reference_id, t.reg_no, t.mobile, t.travel_date,
-            t.status, t.total_paise, t.created_at, t.used_at, t.qr_payload,
+            t.status, t.total_paise, t.created_at, t.used_at,
             t.move_count, t.moved_from_date,
             (SELECT p.checkout_token FROM payments p WHERE (p.raw->>'ticket_id')::bigint = t.id ORDER BY p.id DESC LIMIT 1) AS checkout_token,
             s.label AS slot_label, s.code AS slot_code, s.starts_at,
@@ -492,8 +492,8 @@ async function upcoming(placeId, days = 14) {
 
   const latest = (await query(
     `SELECT t.ticket_no, t.reg_no, t.mobile, t.travel_date, t.total_paise, t.created_at,
+            t.status, t.category_declared,
             (SELECT p.checkout_token FROM payments p WHERE (p.raw->>'ticket_id')::bigint = t.id ORDER BY p.id DESC LIMIT 1) AS checkout_token,
-            t.qr_payload IS NOT NULL AS has_qr,
             (t.travel_date - CURRENT_DATE)::int AS days_to_go,
             s.label AS slot_label, vc.label AS category_label, c.wa_profile_name
        FROM tickets t

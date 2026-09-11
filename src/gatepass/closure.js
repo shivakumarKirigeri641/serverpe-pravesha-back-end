@@ -19,11 +19,10 @@
  * to their money, and a system that refuses that is one complaint away from the
  * DC's office. The refund is one tap behind the offer, not hidden.
  *
- * WHY THE OLD QR NEEDS NO REVOCATION. A postponed ticket is re-signed with its
- * new date. The old code still carries a valid signature — but it says the old
- * date, and the gate compares that against today, so it reads as 'wrong_day'.
- * The old ticket dies of natural causes, with nothing to distribute to the
- * phones.
+ * WHY A POSTPONEMENT NEEDS NO REVOCATION. Nothing was issued for the old date
+ * that could still be presented on it: the gate looks a vehicle up and finds
+ * one booking carrying whatever date it now has. Moving it is a row change and
+ * there is nothing to distribute to the phones.
  */
 
 const { query, one, tx } = require('./db');
@@ -31,7 +30,6 @@ const inventory = require('./inventory');
 const booking = require('./booking');
 const checkout = require('./checkout');
 const settings = require('./settings');
-const sign = require('./sign');
 const Razorpay = require('razorpay');
 
 /* ───────────────────────────────────────────────────────────── the preview */
@@ -238,22 +236,20 @@ async function postpone(ticketId, { travelDate, slotCode }) {
     await inventory.confirm(client, {
       placeId: t.place_id, travelDate, slotId: slot.id, categoryId: t.category_id });
 
-    // Re-signed for the new date. The old QR now reads 'wrong_day' at the gate,
-    // which is exactly the invalidation we want and costs nothing.
-    const qr = sign.signTicket({
-      ticket_no: t.ticket_no, place_code: t.place_code, travel_date: travelDate,
-      slot_code: slot.code, category_code: t.category_code, reg_no: t.reg_no });
-
+    /* Moving the date is now only a row change. Nothing was issued for the old
+       date that could still be presented on it, so there is nothing to
+       invalidate: the gate looks the vehicle up and finds one booking, with
+       whatever date it currently carries. */
     const moved = (await client.query(
       `UPDATE tickets
-          SET travel_date = $2, slot_id = $3, qr_payload = $4,
+          SET travel_date = $2, slot_id = $3,
               moved_from_date = travel_date, moved_from_slot_id = slot_id,
               moved_at = now(), move_count = move_count + 1,
               closure_outcome = CASE WHEN closure_id IS NOT NULL THEN 'postponed'
                                      ELSE closure_outcome END,
               modified_at = now()
         WHERE id = $1
-        RETURNING *`, [t.id, travelDate, slot.id, qr])).rows[0];
+        RETURNING *`, [t.id, travelDate, slot.id])).rows[0];
 
     await client.query(
       `INSERT INTO event_log (customer_id, kind, detail) VALUES ($1, 'ticket_postponed', $2)`,

@@ -178,7 +178,7 @@ router.get('/bookings/:ticketNo', requireAdmin, async (req, res) => {
     scans });
 });
 
-/** Send a customer their QR again — the commonest support request. */
+/** Send a customer their ticket again — the commonest support request. */
 router.post('/bookings/:ticketNo/resend', requireAdmin, requireWrite, async (req, res) => {
   const t = await booking.byTicketNo(req.params.ticketNo);
   if (!t) return res.status(404).json({ ok: false, error: 'not_found' });
@@ -504,7 +504,7 @@ router.get('/messages', requireAdmin, async (req, res) => {
     : rows.map((r) => ({ ...r, mobile: maskMobile(r.mobile) })) });
 });
 
-/* ══════════════════════════════════════════════ the QR / ticket board */
+/* ═════════════════════════════════════════════════════ the ticket board */
 
 router.get('/tickets', requireAdmin, async (req, res) => {
   const p = await place();
@@ -514,18 +514,16 @@ router.get('/tickets', requireAdmin, async (req, res) => {
     offset: Number(req.query.offset) || 0,
   });
 
-  /* Whether the panel may show the code itself.
-     A QR on an admin screen is a working ticket to anyone who photographs that
-     screen. It is on now because there are no gate phones yet and the codes
-     have to be scanned from somewhere — and it is a setting rather than a
-     commented-out block so that turning it off is a decision someone makes,
-     not a deployment step someone forgets. */
+  /* Whether the panel may show a live payment link.
+     A checkout URL on an admin screen is a payable link to anyone who
+     photographs that screen, so it stays behind a setting rather than a
+     commented-out block: turning it off is a decision someone makes, not a
+     deployment step someone forgets. */
   const showQr = await settings.bool('show_qr_in_admin', true);
 
   const rows = r.rows.map((t) => ({
     ...t,
     mobile: admin.canSeePersonal(req.admin.role) ? t.mobile : maskMobile(t.mobile),
-    qr_payload: showQr ? t.qr_payload : null,
     checkout_url: showQr && t.checkout_token
       ? `${(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}/pay/${t.checkout_token}`
       : null,
@@ -536,34 +534,17 @@ router.get('/tickets', requireAdmin, async (req, res) => {
 });
 
 /**
- * The QR image for one ticket.
+ * The ticket card, as the customer received it.
  *
- * Only while show_qr_in_admin is on. Every request is written to the audit
- * trail, because rendering a working ticket onto a screen is exactly the kind
- * of access a privacy policy has to be able to account for.
+ * Kept for support: when somebody rings to say their ticket looks wrong, this
+ * is what they are looking at. It is no longer a credential — the card cannot
+ * be used to enter anything — so the old worry about rendering a working
+ * ticket onto a screen has gone with the QR. The audit line stays, because it
+ * still shows a visitor's plate and travel date.
  */
-router.get('/tickets/:ticketNo/qr.png', requireAdmin, async (req, res) => {
-  if (!await settings.bool('show_qr_in_admin', true)) {
-    return res.status(403).json({ ok: false, error: 'qr_hidden',
-      message: 'QR display is switched off for this panel.' });
-  }
-
-  const t = await booking.byTicketNo(req.params.ticketNo);
-  if (!t?.qr_payload) return res.status(404).json({ ok: false, error: 'no_qr' });
-
-  await admin.audit(req.admin.admin_id, 'view_qr', t.ticket_no, {}, ip(req));
-
-  const png = await deliver.qrPng(t.qr_payload, 8);
-  res.type('image/png').set('Cache-Control', 'no-store').send(png);
-});
-
-/** The whole ticket card, as the customer received it — for testing a scan. */
 router.get('/tickets/:ticketNo/card.png', requireAdmin, async (req, res) => {
-  if (!await settings.bool('show_qr_in_admin', true)) {
-    return res.status(403).json({ ok: false, error: 'qr_hidden' });
-  }
   const t = await booking.byTicketNo(req.params.ticketNo);
-  if (!t?.qr_payload) return res.status(404).json({ ok: false, error: 'no_qr' });
+  if (!t) return res.status(404).json({ ok: false, error: 'no_ticket' });
 
   await admin.audit(req.admin.admin_id, 'view_ticket_card', t.ticket_no, {}, ip(req));
   const png = await ticketCard.render(t, await settings.all());
