@@ -1,26 +1,51 @@
 /**
- * policy.js — the terms and privacy pages the welcome message links to.
+ * policy.js — the policy pages the WhatsApp welcome links to.
  *
- * Served by this app rather than pointed at a document elsewhere, because the
- * link is sent to every visitor before they book and a link that 404s in front
- * of a government department is worse than no link at all.
+ *   GET /policy/terms     GET /policy/privacy     GET /policy/:slug
  *
- * Plain server-rendered HTML: these are read once, on a phone, often on a hill
- * with two bars of signal.
+ * SAME TEXT AS EVERYWHERE ELSE. These used to be hand-written HTML, which meant
+ * the terms a visitor accepted in WhatsApp and the terms published on
+ * pravesha.in were two documents that could drift apart — an unpleasant thing to
+ * discover during a dispute. They now render legal_documents / legal_sections,
+ * the same rows /legal serves to the website, with the same {{placeholders}}
+ * filled from app_settings. One text, three renderings: this page, the website,
+ * and the consent record.
+ *
+ * Served by this app rather than pointed at the website, because the link goes
+ * out in the first message every visitor receives, and a link that 404s in front
+ * of a government department is worse than no link at all. It also keeps working
+ * before pravesha.in is live.
+ *
+ * Plain server-rendered HTML, read once, on a phone, on a hill with two bars of
+ * signal: no scripts, no fonts to fetch, no layout that needs measuring.
  */
 
 const express = require('express');
+const { query } = require('../gatepass/db');
+const settings = require('../gatepass/settings');
+
 const router = express.Router();
 
-const UPDATED = '11 September 2026';
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const page = (title, kn, body) => `<!doctype html>
+const fill = (text, t) => String(text || '').replace(/\{\{(\w+)\}\}/g, (whole, key) =>
+  (t[key] === null || t[key] === undefined || t[key] === '' ? whole : String(t[key])));
+
+const longDate = (d) => {
+  if (!d) return '';
+  const date = d instanceof Date ? d : new Date(`${d}T00:00:00+05:30`);
+  return Number.isNaN(date.getTime()) ? String(d)
+    : date.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+};
+
+const page = ({ title, titleKn, summary, version, effective, sections, business }) => `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} · Pravesha</title>
+<title>${esc(title)} · Pravesha</title>
 <style>
-  :root { color-scheme: light dark; --ink:#1a1a1a; --muted:#666; --line:#e4e4e4; --bg:#fff; --accent:#8B1A1A; }
-  @media (prefers-color-scheme: dark) { :root { --ink:#eee; --muted:#aaa; --line:#333; --bg:#141414; } }
+  :root { color-scheme: light dark; --ink:#12211f; --muted:#5d7169; --line:#e2ebe8; --bg:#fff; --accent:#075e54; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#e9efed; --muted:#9fb0aa; --line:#26332f; --bg:#111817; --accent:#25d366; } }
   * { box-sizing:border-box }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
@@ -29,109 +54,61 @@ const page = (title, kn, body) => `<!doctype html>
   .brand { font-weight:700; font-size:20px; letter-spacing:-.2px }
   .dept { color:var(--muted); font-size:13px; margin-top:2px }
   h1 { font-size:24px; margin:0 0 4px; letter-spacing:-.3px }
-  .kn { color:var(--muted); font-size:15px; margin:0 0 18px }
+  .kn { color:var(--muted); font-size:15px; margin:0 0 10px }
+  .summary { color:var(--ink); margin:0 0 14px }
   .updated { color:var(--muted); font-size:13px; margin-bottom:28px }
   h2 { font-size:17px; margin:30px 0 8px }
-  p, li { color:var(--ink) }
-  ul { padding-left:20px } li { margin:6px 0 }
-  .note { border-left:3px solid var(--accent); padding:10px 14px; margin:20px 0;
-          background:rgba(139,26,26,.05); border-radius:0 6px 6px 0; font-size:15px }
+  h2 .no { color:var(--accent); margin-right:6px }
+  p { color:var(--ink); white-space:pre-wrap }
   footer { margin-top:44px; padding-top:16px; border-top:1px solid var(--line);
            color:var(--muted); font-size:13px }
   a { color:var(--accent) }
 </style></head><body><div class="wrap">
 <header><div class="brand">Pravesha · ಪ್ರವೇಶ</div>
-<div class="dept">Karnataka Tourism Department · ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ</div></header>
-<h1>${title}</h1><p class="kn">${kn}</p>
-<p class="updated">Last updated: ${UPDATED}</p>
-${body}
-<footer>Pravesha is operated for the Karnataka Tourism Department.<br>
-Questions? Reply <strong>help</strong> on WhatsApp.</footer>
+<div class="dept">Vehicle entry passes for Karnataka&rsquo;s hill destinations</div></header>
+<h1>${esc(title)}</h1>
+${titleKn ? `<p class="kn">${esc(titleKn)}</p>` : ''}
+${summary ? `<p class="summary">${esc(summary)}</p>` : ''}
+<p class="updated">Version ${esc(version)} · Effective from ${esc(longDate(effective))}</p>
+${sections.map((s) => `<h2><span class="no">${esc(s.section_no)}.</span>${esc(s.title)}</h2>\n<p>${esc(s.description)}</p>`).join('\n')}
+<footer>${esc(business.legal_name)}${business.address ? `, ${esc(business.address)}` : ''}<br>
+Questions? Write to <a href="mailto:${esc(business.email)}">${esc(business.email)}</a>, or reply <strong>help</strong> on WhatsApp.</footer>
 </div></body></html>`;
 
-router.get('/policy/terms', (req, res) => {
-  res.type('html').send(page('Terms &amp; Conditions', 'ನಿಯಮಗಳು ಮತ್ತು ಷರತ್ತುಗಳು', `
-<h2>1. What this service does</h2>
-<p>Pravesha issues entry passes for vehicles visiting designated hill destinations
-managed by the Karnataka Tourism Department. A pass covers one vehicle, for one
-place, on one date, in one time slot.</p>
+async function render(res, slug) {
+  const doc = (await query(
+    `SELECT id, slug, title, title_kn, summary, version, effective_from
+       FROM legal_documents WHERE (slug = $1 OR doc_code = $1) AND is_active`, [slug])).rows[0];
 
-<h2>2. Which vehicles are eligible</h2>
-<p>Passes are issued only to two-wheelers, cars and jeeps, Toofan-class vehicles
-and Tempo Travellers.</p>
-<div class="note"><strong>Not permitted:</strong> autorickshaws, buses and minibuses,
-trucks and goods vehicles, tractors and trailers. These vehicles will be refused
-entry at the checkpost even if a pass has been issued.</div>
+  if (!doc) return res.status(404).type('html').send('<p>No such policy.</p>');
 
-<h2>3. Vehicle details and pricing</h2>
-<p>The entry fee depends on your vehicle's category, which we determine from its
-registration record. Where that record is unavailable — for a temporary
-registration, a very new vehicle, or an older one — you will be asked to select
-your vehicle type yourself. Passes issued this way are marked for verification,
-and checkpost staff may refuse entry or collect the difference if the vehicle
-does not match what was declared.</p>
+  const { rows: sections } = await query(
+    `SELECT section_no, title, description FROM legal_sections
+      WHERE document_id = $1 AND is_active ORDER BY display_order, id`, [doc.id]);
 
-<h2>4. Capacity and availability</h2>
-<p>Each place, slot and vehicle category has a daily limit. A pass is confirmed
-only once payment succeeds; until then the capacity is held briefly and may be
-released.</p>
+  const t = Object.fromEntries(await settings.all());
 
-<h2>5. Payment</h2>
-<p>Payments are processed by Razorpay. The fee shown before payment includes the
-entry fee and a platform fee, both displayed separately.</p>
+  res.set('Cache-Control', 'public, max-age=300').type('html').send(page({
+    title: fill(doc.title, t),
+    titleKn: doc.title_kn,
+    summary: fill(doc.summary, t),
+    version: doc.version,
+    effective: doc.effective_from,
+    sections: sections.map((s) => ({ ...s, title: fill(s.title, t), description: fill(s.description, t).trim() })),
+    business: { legal_name: t.legal_name || 'ServerPe App Solutions', address: t.business_address, email: t.contact_email },
+  }));
+}
 
-<h2>6. Cancellation and refunds</h2>
-<p>A pass is valid only for the date and slot booked and is not transferable to
-another date, slot or vehicle. Where entry is refused at the checkpost because
-the vehicle is of a category that is not permitted, the entry fee is refundable;
-the platform fee is not.</p>
-
-<h2>7. At the checkpost</h2>
-<p>Present your pass at the checkpost. Staff may verify the vehicle's
-registration number against the pass. Entry may be refused where these do not
-match.</p>
-
-<h2>8. Closures</h2>
-<p>Routes may close at short notice for weather, maintenance or safety. Where a
-closure prevents entry, passes for the affected date and slot are refunded in
-full.</p>`));
-});
-
-router.get('/policy/privacy', (req, res) => {
-  res.type('html').send(page('Privacy Policy', 'ಗೌಪ್ಯತಾ ನೀತಿ', `
-<h2>What we collect</h2>
-<ul>
-  <li>Your WhatsApp number and profile name.</li>
-  <li>The vehicle registration number you enter.</li>
-  <li>Your booking: place, date, slot, category and payment reference.</li>
-</ul>
-
-<h2>Vehicle registration lookups</h2>
-<p>When you enter a registration number we look it up against the national
-vehicle database to determine the vehicle's category, which sets the entry fee.</p>
-<div class="note"><strong>We do not retain the owner's name, address, chassis
-number or engine number.</strong> These are removed before anything is stored,
-so they cannot be displayed or recovered later.</div>
-<p>We keep the vehicle's make, model, class, fuel and colour so that a repeat
-booking for the same vehicle does not require a fresh lookup.</p>
-
-<h2>What we do not do</h2>
-<ul>
-  <li>We do not sell or rent your data.</li>
-  <li>We do not use your number for marketing.</li>
-  <li>We do not share your details except with the Karnataka Tourism Department
-      and checkpost staff verifying your pass, and with our payment processor to
-      take payment.</li>
-</ul>
-
-<h2>How long we keep it</h2>
-<p>Booking and payment records are retained as required for accounting and
-audit. Vehicle registration snapshots are refreshed periodically and expire
-thirty days after they are fetched.</p>
-
-<h2>Your choices</h2>
-<p>Reply <strong>help</strong> on WhatsApp to ask about the data held against
-your number, or to request its deletion where we are not required to retain it.</p>`));
+/* :slug covers every policy, so the data-deletion and refund pages are reachable
+   from WhatsApp too; terms and privacy keep their own routes because those two
+   URLs are already in messages people have received. */
+router.get('/policy/:slug', async (req, res) => {
+  try {
+    await render(res, String(req.params.slug).toLowerCase());
+  } catch (e) {
+    console.error('[policy] %s: %s', req.params.slug, e.message);
+    res.status(500).type('html').send('<p>This page could not be loaded. Please try again shortly.</p>');
+  }
 });
 
 module.exports = router;

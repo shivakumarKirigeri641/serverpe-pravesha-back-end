@@ -33,6 +33,7 @@ app.use('/', require('./routes/verify'));
 app.use('/', require('./routes/legal'));
 app.use('/', require('./routes/contact'));
 app.use('/', require('./routes/media'));
+app.use('/', require('./routes/ogimage'));
 app.use('/', require('./routes/vehicleApi'));
 app.use('/', require('./routes/staffApi'));
 

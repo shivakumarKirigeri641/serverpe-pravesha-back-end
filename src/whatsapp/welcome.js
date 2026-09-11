@@ -21,8 +21,30 @@ const send = require('./send');
 const { greetingName } = require('../gatepass/customers');
 const { t, langOf, hasChosen } = require('../i18n');
 
-/** Bump when the wording changes; 022 stores this against each acceptance. */
-const TERMS_VERSION = 'v1';
+/**
+ * The version recorded against each acceptance (022).
+ *
+ * It is the version of the terms document itself, read from legal_documents, so
+ * the consent record names the text the visitor actually read rather than a
+ * constant that somebody must remember to bump. Cached for a few minutes — a
+ * policy version changes when a policy is edited, not per message — and falls
+ * back to the last known value if the database is briefly unreachable, because a
+ * welcome message must not fail over a version string.
+ */
+let termsVersion = { value: '1.0', at: 0 };
+const TERMS_VERSION_TTL_MS = 5 * 60 * 1000;
+
+async function termsVersionNow() {
+  if (Date.now() - termsVersion.at < TERMS_VERSION_TTL_MS) return termsVersion.value;
+  try {
+    const row = await require('../gatepass/db').one(
+      `SELECT version FROM legal_documents WHERE doc_code = 'terms' AND is_active`);
+    if (row && row.version) termsVersion = { value: String(row.version), at: Date.now() };
+  } catch (e) {
+    console.warn('[welcome] terms version lookup failed: %s', e.message);
+  }
+  return termsVersion.value;
+}
 
 const base = () => (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 const termsUrl = () => `${base()}/policy/terms`;
@@ -93,7 +115,8 @@ const sendMenu = (to, customer) => {
  * not.
  */
 async function send_(to, customer) {
-  const accepted = customer?.terms_accepted_at && customer?.terms_version === TERMS_VERSION;
+  const version = await termsVersionNow();
+  const accepted = customer?.terms_accepted_at && customer?.terms_version === version;
 
   if (!accepted) {
     return send.buttons(to, firstTime(customer), [
@@ -107,4 +130,4 @@ async function send_(to, customer) {
   return sendMenu(to, customer);
 }
 
-module.exports = { send: send_, firstTime, menu, askLanguage, sendMenu, TERMS_VERSION, termsUrl, privacyUrl };
+module.exports = { send: send_, firstTime, menu, askLanguage, sendMenu, termsVersionNow, termsUrl, privacyUrl };

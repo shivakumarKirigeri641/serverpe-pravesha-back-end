@@ -118,14 +118,15 @@ async function handle(msg, contact) {
      before replying means a failure to send the next message cannot leave a
      visitor who did agree looking as though they never did. */
   if (action === 'AGREE') {
+    const termsVersion = await welcome.termsVersionNow();
     await query(
       `UPDATE customers SET terms_accepted_at = now(), terms_version = $2, modified_at = now()
-        WHERE id = $1`, [customer.id, welcome.TERMS_VERSION]);
+        WHERE id = $1`, [customer.id, termsVersion]);
 
     /* Straight on to the language question. A separate thank-you would be the
        third notification in a row and says nothing the next screen does not. */
     await welcome.askLanguage(to, { ...customer, terms_accepted_at: new Date(),
-      terms_version: welcome.TERMS_VERSION });
+      terms_version: termsVersion });
     return;
   }
 
