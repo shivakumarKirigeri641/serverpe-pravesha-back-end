@@ -29,6 +29,14 @@ const WA_LINK = () => `https://wa.me/${String(process.env.WHATSAPP_BUSINESS_PHON
 
 /* ────────────────────────────────────────────────────────────── the page */
 
+/* Where the address bar points once a payment succeeds. The success screen
+   rewrites the URL to this, so the token is no longer in the address bar, the
+   history, or a screenshot; reloading lands here, not on the payment page. */
+router.get('/pay/done', (req, res) => {
+  res.set('Cache-Control', 'no-store').send(page('Payment successful',
+    'Your entry pass has been sent to you on WhatsApp.<br>You can close this page.', WA_LINK()));
+});
+
 router.get('/pay/:token', async (req, res) => {
   const found = await checkout.byToken(req.params.token);
   if (!found?.ticket) return res.status(404).send(page('Link not found',
@@ -36,9 +44,12 @@ router.get('/pay/:token', async (req, res) => {
 
   const { payment, ticket } = found;
 
+  /* A payment link dies with the payment. It used to open an "Already paid"
+     page naming the pass, which made a forwarded or screenshotted link a way
+     to read someone's pass number. Now it says only that the link is used. */
   if (payment.status === 'paid') {
-    return res.send(page('Already paid',
-      `Pass <b>${esc(ticket.ticket_no)}</b> is paid. Check WhatsApp for your pass.`,
+    return res.status(410).send(page('Link already used',
+      'This payment link has already been used and is no longer valid.<br>Your entry pass is in the WhatsApp chat.',
       WA_LINK()));
   }
   if (ticket.status === 'expired' || ticket.status === 'cancelled') {
@@ -241,31 +252,67 @@ var btn = document.getElementById('pay');
  */
 function backToWhatsApp(httpsUrl) {
   var num = String(${JSON.stringify(String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\\D/g, ''))});
-  document.querySelector('.body').innerHTML =
-    '<p style="text-align:center;font-size:15px;margin:8px 0 4px">'
-    + '<b>Payment successful.</b><br>Your entry pass has been sent to you on WhatsApp.</p>'
-    + '<button id="back">Open WhatsApp</button>';
-  var back = document.getElementById('back');
+
+  /* The token goes first. The address bar is rewritten to /pay/done before
+     anything else, so Back, a reload, a screenshot or the browser history no
+     longer carry a payment link — and that link is dead on the server anyway. */
+  try { history.replaceState(null, '', '/pay/done'); } catch (e) { /* older browser */ }
+
+  document.querySelector('.card').innerHTML =
+    '<div style="padding:30px 24px 26px;text-align:center">'
+    + '<div style="width:64px;height:64px;margin:0 auto 12px;border-radius:50%;background:#e7f8ef;'
+    + 'display:grid;place-items:center;font-size:32px;color:#0b7a3f">&#10003;</div>'
+    + '<h1 style="margin:0 0 6px;font-size:20px">Payment successful</h1>'
+    + '<p style="margin:0 0 18px;color:#4b5563">Your entry pass has been sent to you on WhatsApp.<br>'
+    + '<span id="goingMsg">Taking you back to WhatsApp…</span></p>'
+    + '<button id="back">Open WhatsApp</button>'
+    + '<p style="margin:14px 0 0;font-size:12px;color:#9ca3af">If WhatsApp does not open by itself, tap the button. '
+    + 'This page can be closed.</p></div>';
+
+  /* HOW TO GET BACK, PER ENVIRONMENT, AT ONCE — no waiting.
+
+     A page cannot close a tab the visitor opened; no browser permits it. What
+     does work: inside WhatsApp's own browser on a phone, handing control back
+     to WhatsApp closes that browser with it. So the return is the close.
+
+       WhatsApp's in-app browser, iPhone  -> whatsapp:// (the app switches)
+       Android Chrome / Custom Tab        -> an intent:// link with wa.me as its
+                                             fallback, which opens the app
+       Desktop                            -> wa.me, which offers WhatsApp Desktop
+                                             or Web; a desktop browser always
+                                             asks first, so a tap is unavoidable
+
+     The payment completing inside Razorpay's sheet counts as the visitor's own
+     action, which is what lets a browser open the app without another tap.
+     If the page is still visible a moment later the app did not open, and the
+     https link is tried instead; the button stays there regardless. */
+  var ua = navigator.userAgent || '';
+  var inWhatsApp = /WhatsApp/i.test(ua);
+  var android = /Android/i.test(ua);
+  var ios = /iPhone|iPad|iPod/i.test(ua);
+  var appUrl = 'whatsapp://send?phone=' + num;
+  var intentUrl = 'intent://send/?phone=' + num + '#Intent;scheme=whatsapp;package=com.whatsapp;'
+    + 'S.browser_fallback_url=' + encodeURIComponent(httpsUrl) + ';end';
 
   var go = function () {
-    /* Closing the tab outright is the nicest ending, but a page may only close
-       a window that a script opened — a tab the user navigated to is not
-       closeable, and in WhatsApp's in-app browser there is nothing to close
-       anyway. So it is attempted, and everything else follows regardless. */
-    try { window.close(); } catch (e) { /* not permitted here */ }
-
-    /* Then hand control back to the app. Inside WhatsApp's own browser an
-       https://wa.me link often does nothing, because there is nowhere to
-       navigate to; the app scheme is what actually switches. */
-    if (num) { window.location.href = 'whatsapp://send?phone=' + num; }
-
+    try { window.close(); } catch (e) { /* only permitted for script-opened windows */ }
+    if (!num) { window.location.replace(httpsUrl); return; }
+    if (inWhatsApp || ios) window.location.href = appUrl;
+    else if (android) window.location.href = intentUrl;
+    else window.location.replace(httpsUrl);
     setTimeout(function () {
-      try { window.close(); } catch (e) { /* still not permitted */ }
-      window.location.href = httpsUrl;
-    }, 1200);
+      if (document.hidden) return; // the app took over
+      var m = document.getElementById('goingMsg');
+      if (m) m.textContent = 'Tap below to return to WhatsApp.';
+      if (inWhatsApp || ios || android) window.location.replace(httpsUrl);
+    }, 1500);
   };
 
-  back.onclick = go;
+  document.getElementById('back').onclick = function () {
+    if (android && !inWhatsApp) window.location.href = intentUrl;
+    else if (num) window.location.href = appUrl;
+    setTimeout(function () { if (!document.hidden) window.location.href = httpsUrl; }, 900);
+  };
   go();
 }
 
