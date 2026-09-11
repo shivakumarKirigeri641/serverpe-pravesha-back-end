@@ -6,11 +6,12 @@
  * vehicle, for when. Everything else — the payment, the timestamps — is below
  * the fold of the page for the one time somebody needs it.
  *
- * THE QR IS A CONVENIENCE, NOT THE CREDENTIAL. Entry is decided on the number
- * plate: staff read it and record the entry. Migration 016 removed a signed QR
- * for good reasons, so this one carries only a link to the pass's public
- * verification page. Scanning it shows the live status from the database; there
- * is nothing in it to forge, and a pass whose phone has died is still a pass.
+ * THE QR IS INFORMATION ONLY. It plays no part in entry: staff read the number
+ * plate and record the entry, and nobody at the gate scans anything. Migration
+ * 016 removed a signed QR for exactly that reason. This one is a link to the
+ * pass's details page, read live from the database, for a visitor or anyone
+ * they share it with who wants to see the booking. There is nothing in it to
+ * forge, and a pass whose phone has died is still a pass.
  */
 
 const QRCode = require('qrcode');
@@ -91,7 +92,7 @@ async function render(t, { settings, verifyUrl, generatedAt = new Date() }) {
   const qrPng = await QRCode.toBuffer(verifyUrl, { type: 'png', margin: 1, width: 320, errorCorrectionLevel: 'M' });
   const qx = W - M - qrSize - 8;
   doc.image(qrPng, qx, y + 4, { width: qrSize, height: qrSize });
-  doc.font('R').fontSize(7).fillColor(C.muted).text('Scan to verify', qx, y + qrSize + 3, { width: qrSize, align: 'center', lineBreak: false });
+  doc.font('R').fontSize(6.5).fillColor(C.muted).text('Scan for pass details', qx - 10, y + qrSize + 3, { width: qrSize + 20, align: 'center', lineBreak: false });
 
   y += heroH + 14;
 

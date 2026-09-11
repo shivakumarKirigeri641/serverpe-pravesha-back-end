@@ -1,5 +1,6 @@
 /**
- * verify.js — what the QR on a pass opens.
+ * verify.js — what the QR on a pass opens. Information only: entry is decided
+ * at the checkpost by the vehicle number, and nothing here is part of that.
  *
  * Read from the database at the moment of scanning, never from anything printed
  * on the pass. A PDF can be edited; this page cannot, so the only thing a scan
@@ -35,7 +36,7 @@ router.get('/v/:ref', async (req, res) => {
   try { t = await booking.byReference(String(req.params.ref)); } catch { t = null; }
 
   const shell = (inner) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Pass verification · Pravesha</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Pass details · Pravesha</title>
 <style>
 body{margin:0;background:#efeae2;color:#111b21;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:460px;margin:0 auto}
@@ -74,7 +75,9 @@ Pravesha is a product of ServerPe App Solutions</footer></div></body></html>`;
       <tr><th>Destination</th><td>${esc(t.place_name)}</td></tr>
       <tr><th>Date of visit</th><td>${esc(longDate(t.travel_date))}</td></tr>
       <tr><th>Time slot</th><td>${esc(t.slot_label)}</td></tr>
-    </table></div>`));
+    </table>
+    <p class="note" style="margin:14px 0 0;font-size:12.5px">For information only. Entry is by vehicle number &mdash;
+    checkpost staff record your vehicle at the gate.</p></div>`));
 });
 
 module.exports = router;

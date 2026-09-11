@@ -31,6 +31,12 @@ async function touch({ mobile, customerId, waId, profileName }) {
        modified_at    = now()
      RETURNING *`,
     [mobile, customerId || null, waId || null, profileName || null, START]);
+
+  /* The very first message is stored before its session exists (it has to be
+     recorded first, to catch a duplicate delivery). Attach it now, so a
+     session's transcript is complete and deleting a session takes all of it. */
+  await query('UPDATE wa_messages SET session_id = $1 WHERE mobile = $2 AND session_id IS NULL',
+    [r.rows[0].id, mobile]);
   return r.rows[0];
 }
 

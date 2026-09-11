@@ -27,8 +27,8 @@ const GREETING = /^\s*(hi+|hey+|hello+|hallo|namaste|namaskara|start|menu|ನಮ
  */
 async function accept(msg, mobile) {
   const r = await query(
-    `INSERT INTO wa_messages (mobile, direction, message_type, body, payload, wa_message_id)
-     VALUES ($1, 'in', $2, $3, $4, $5)
+    `INSERT INTO wa_messages (session_id, mobile, direction, message_type, body, payload, wa_message_id)
+     VALUES ((SELECT id FROM wa_sessions WHERE mobile = $1), $1, 'in', $2, $3, $4, $5)
      ON CONFLICT DO NOTHING
      RETURNING id`,
     [mobile, msg.type || null, textOf(msg), JSON.stringify(msg), msg.id || null]);

@@ -11,11 +11,11 @@
  * a pass delivers it, and a record in event_log makes a second delivery of the
  * same pass visible rather than silent.
  *
- * THE INVOICE IS BUILT BUT NOT SENT. Whether a GST invoice goes to every visitor
- * is a question for the department, to be raised at the demo. The document and
- * its number series exist (invoices.js, pdf/invoicePdf.js); turning it on is
- * the setting send_invoice = 'true', and nothing is issued or numbered while it
- * is off — a series with numbers nobody received is a series with holes.
+ * THE INVOICE IS CREATED FOR EVERY PASS AND NOT SENT. Each paid pass gets its
+ * GST invoice and its number in the series at once, so the series stays
+ * unbroken and the invoice is ready for the admin panel. Whether visitors also
+ * receive it on WhatsApp is for the department to decide at the demo; turning
+ * that on is the setting send_invoice = 'true'.
  */
 
 const { query } = require('../gatepass/db');
@@ -92,6 +92,17 @@ async function deliverTicket(ticketId) {
   if (!t) return { ok: false, reason: 'not_found' };
   if (t.status !== 'paid' && t.status !== 'used') return { ok: false, reason: `status_${t.status}` };
 
+  /* Issued before anything is sent: the invoice is a record of the sale, not
+     of the delivery, and a pass whose message fails still had a sale. A failure
+     here is logged and must not stop the visitor receiving their pass. */
+  let invoice = null;
+  try {
+    invoice = await require('../gatepass/invoices').issue(t.id);
+  } catch (e) {
+    console.error('[deliver] invoice not issued for %s: %s', t.ticket_no, e.message);
+    await logEvent(t, 'invoice_failed', { error: e.message });
+  }
+
   const to = phone.toWa(t.mobile);
   const lang = langOf((await query('SELECT language FROM customers WHERE id = $1', [t.customer_id])).rows[0]);
 
@@ -113,18 +124,17 @@ async function deliverTicket(ticketId) {
     caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: longDate(t.travel_date) }),
   });
 
-  if (String(await settings.str('send_invoice', 'false')) === 'true') {
-    await sendInvoice(t, to, s);
+  if (invoice && String(await settings.str('send_invoice', 'false')) === 'true') {
+    await sendInvoice(t, invoice, to, s);
   }
 
-  await logEvent(t, 'pass_delivered', { message: msg.ok, pdf: doc.ok, pdf_error: doc.error || null });
+  await logEvent(t, 'pass_delivered', { message: msg.ok, pdf: doc.ok, pdf_error: doc.error || null,
+    invoice_no: invoice ? invoice.invoice_no : null });
   return { ok: msg.ok && doc.ok, message: msg, document: doc };
 }
 
-async function sendInvoice(t, to, s) {
-  const invoices = require('../gatepass/invoices');
+async function sendInvoice(t, inv, to, s) {
   const invoicePdf = require('../pdf/invoicePdf');
-  const inv = await invoices.issue(t.id);
   const pdf = await invoicePdf.render(t, inv, { settings: s });
   return send.document(to, pdf, { filename: invoicePdf.filename(inv), caption: `Tax invoice ${inv.invoice_no}` });
 }

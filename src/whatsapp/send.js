@@ -19,9 +19,9 @@ async function record({ mobile, direction, type, body, payload, waId, error }) {
        caller happened to have. */
     mobile = phone.toLocal(mobile);
     await query(
-      `INSERT INTO wa_messages (mobile, direction, message_type, body, payload,
+      `INSERT INTO wa_messages (session_id, mobile, direction, message_type, body, payload,
                                 wa_message_id, error_message)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       VALUES ((SELECT id FROM wa_sessions WHERE mobile = $1), $1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT DO NOTHING`,
       [mobile, direction, type || null, body || null,
        payload ? JSON.stringify(payload) : null, waId || null, error || null]);
