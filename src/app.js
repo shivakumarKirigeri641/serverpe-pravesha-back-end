@@ -36,6 +36,7 @@ app.use('/', require('./routes/media'));
 app.use('/', require('./routes/ogimage'));
 app.use('/', require('./routes/vehicleApi'));
 app.use('/', require('./routes/staffApi'));
+app.use('/', require('./routes/adminApi').router);
 
 app.get('/health', async (req, res) => {
   const out = { ok: true, service: 'pravesha', time: new Date().toISOString() };
