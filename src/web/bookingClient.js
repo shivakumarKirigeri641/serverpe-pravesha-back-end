@@ -222,19 +222,34 @@
     if (!v || !s) return;
     var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
     var dateName = $('date').selectedOptions[0].textContent;
+    var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
+    var mk = [v.vehicle.make, v.vehicle.model].filter(Boolean).join(' ');
+    var tr = function (k, val, cls) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><th scope="row">' + k + '</th><td>' + val + '</td></tr>';
+    };
+    var esc = function (s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    };
     $('review').innerHTML =
-      '<div class="sub">Visit details</div>'
-      + row('Name', $('name').value || '—')
-      + row('Destination', placeName)
-      + row('Date', dateName)
-      + row('Slot', s.label)
-      + row('Vehicle', v.regNo)
-      + row('Type', v.category.label)
-      + '<div class="sub gap">Payment summary</div>'
-      + '<table class="paygrid"><tbody>'
-      + '<tr><td>Entry fee (' + v.category.label + ')</td><td>₹' + v.price.entry + '</td></tr>'
-      + '<tr><td>Platform fee</td><td>₹' + v.price.platform + '</td></tr>'
-      + '<tr class="total"><td>Total payable</td><td>₹' + v.price.total + '</td></tr>'
+      '<table class="rev">'
+      + '<thead><tr><th>Booking summary<span>' + esc(v.regNo) + '</span></th></tr></thead>'
+      + '<tbody>'
+      + '<tr><td><table class="inner"><caption>Visit details</caption><tbody>'
+      + tr('Name', esc($('name').value || '—'))
+      + tr('Destination', esc(placeName))
+      + tr('Date of visit', esc(dateName))
+      + tr('Time slot', esc(s.label))
+      + tr('Vehicle number', '<span class="mono">' + esc(v.regNo) + '</span>')
+      + tr('Vehicle', esc(mk || '—'))
+      + tr('Vehicle type', esc(TYPE[v.category.code] || v.category.label))
+      + '</tbody></table></td></tr>'
+      + '<tr><td><table class="inner pay"><caption>Payment details</caption><tbody>'
+      + tr('Entry fee', '₹' + esc(v.price.entry))
+      + tr('Platform fee', '₹' + esc(v.price.platform))
+      + tr('Total payable', '₹' + esc(v.price.total), 'total')
+      + '</tbody></table></td></tr>'
       + '</tbody></table>';
     vis($('revCard'), true);
     $('revCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });

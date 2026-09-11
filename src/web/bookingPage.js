@@ -124,11 +124,29 @@ const SHELL = (title, body) => `<!doctype html>
            color:var(--warn);margin-bottom:6px}
   .rules ul{margin:0;padding-left:18px}
   .rules li{font-size:13px;line-height:1.5;margin:5px 0;color:var(--ink)}
-  .paygrid{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:4px;
+  /* The review is one document: an outer summary that holds two tables, the
+     visit and the payment, each with its own heading row. Read top to bottom it
+     is the pass the visitor is about to pay for, laid out the way a receipt is. */
+  .rev{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--line);
+       border-radius:12px;overflow:hidden;background:var(--card)}
+  .rev>thead>tr>th{background:var(--head);color:var(--head-ink);text-align:left;padding:11px 14px;
+                   font-size:13px;font-weight:700;letter-spacing:.04em}
+  .rev>thead>tr>th span{float:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+                        font-weight:600;opacity:.9;letter-spacing:.06em}
+  .rev>tbody>tr>td{padding:12px}
+  .rev>tbody>tr+tr>td{padding-top:0}
+  .inner{width:100%;border-collapse:collapse;font-size:14px;border:1px solid var(--line)}
+  .inner caption{caption-side:top;text-align:left;font-size:11px;font-weight:700;letter-spacing:.07em;
+                 text-transform:uppercase;color:var(--accent);padding:0 0 6px}
+  .inner th,.inner td{border:1px solid var(--line);padding:9px 11px;vertical-align:top}
+  .inner th{width:38%;text-align:left;font-weight:500;color:var(--muted);background:var(--bg);font-size:13px}
+  .inner td{font-weight:600}
+  .inner.pay td{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .inner.pay th{width:auto}
+  .inner.pay tr.total th,.inner.pay tr.total td{background:rgba(0,168,132,.12);color:var(--ink);
+                                                font-weight:700;font-size:15.5px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
            border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .paygrid td{border:1px solid var(--line);padding:10px 12px}
-  .paygrid td:last-child{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .paygrid tr.total td{font-weight:700;font-size:16px;background:rgba(0,168,132,.10)}
   .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
        color:var(--muted);margin:4px 0 4px}
   .sub.gap{margin-top:16px}
