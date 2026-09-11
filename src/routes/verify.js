@@ -43,7 +43,9 @@ const STATE = {
  * Case and stray slashes are forgiven: a code read aloud and typed, or mangled
  * by a messaging app, still finds its pass. Old reference links keep working.
  */
-router.get(['/v/:code', '/v/:code/'], async (req, res) => {
+const { PASS_DETAILS_PATH } = require('../config/paths');
+
+router.get([`${PASS_DETAILS_PATH}/:code`, `${PASS_DETAILS_PATH}/:code/`, '/v/:code', '/v/:code/'], async (req, res) => {
   const code = decodeURIComponent(String(req.params.code || '')).trim().toUpperCase();
   let t = null;
   try {

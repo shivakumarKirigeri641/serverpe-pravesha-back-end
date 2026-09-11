@@ -17,4 +17,12 @@
    The first segment is the company and stays as it is. */
 const PREFIX = '/serverpe/platform/pravesha/v1/public/users';
 
-module.exports = { PREFIX };
+/* The public page for one pass: what the QR on the PDF and the button in the
+   check-in message open. Read as a sentence -- whose service, what it is, what
+   the page does -- because it is printed on a pass and shown to a visitor, and a
+   bare /v/ looks like a shortener nobody should trust with a government pass.
+   The pass number follows it; /v/<pass> is kept as an alias so passes already
+   issued keep working. */
+const PASS_DETAILS_PATH = '/karnataka-tourism/entry-pass/verify';
+
+module.exports = { PREFIX, PASS_DETAILS_PATH };

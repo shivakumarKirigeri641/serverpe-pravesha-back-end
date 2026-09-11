@@ -46,7 +46,7 @@ async function docSettings() {
 
 /* By pass number: nothing personal in a URL that becomes a QR and a button. */
 const verifyUrl = (t) =>
-  `${(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}/v/${encodeURIComponent(t.ticket_no)}`;
+  `${(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}${require('../config/paths').PASS_DETAILS_PATH}/${encodeURIComponent(t.ticket_no)}`;
 
 /** The pass written as a WhatsApp message, in the visitor's chosen language. */
 function passMessage(t, lang) {
