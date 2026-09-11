@@ -8,11 +8,13 @@
  * vehicle turned out to be. Doing that in a page we control removes a review
  * cycle from every change to the form.
  *
- * THE ORDER OF THE QUESTIONS IS NOT ARBITRARY. Place, then date, then vehicle,
- * then slot. The vehicle has to come before the slot because capacity is held
- * per category -- four hundred cars and a hundred Tempo Travellers are
- * different numbers on the same road at the same hour -- so "how many are
- * left?" has no answer until we know what is being driven.
+ * THE SLOT SITS UNDER THE DATE, AND ITS COUNTS FOLLOW THE VEHICLE. Capacity is
+ * held per category -- the number left for a car is not the number left for a
+ * Tempo Traveller on the same road at the same hour -- so before a vehicle is
+ * checked each slot shows every type's count, and afterwards only that
+ * vehicle's. A slot picked first is kept if it is still open for the vehicle,
+ * and cleared with a reason if it is not. The server re-checks all of it at
+ * Continue to payment regardless.
  */
 
 const express = require('express');
@@ -166,6 +168,31 @@ router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) 
       message: 'We could not determine the vehicle type for that number. Please check it and try again.' });
   }
 
+  /* ONE PASS PER VEHICLE PER DAY, told at the vehicle step. Waiting until
+     "Continue to payment" meant choosing a slot and reading the whole review
+     before hearing the vehicle could not be booked at all. The date is the one
+     chosen above; the form asks again if it changes. A place this same link is
+     holding is the visitor's own booking in progress and is not a conflict. */
+  const travelDate = String(req.body.travelDate || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) {
+    const booking = require('../gatepass/booking');
+    const existing = await booking.existingForDate(resolved.vehicle.id, travelDate);
+    if (existing) {
+      const mine = existing.status === 'held' && await one(
+        `SELECT 1 FROM web_tokens WHERE token_hash = $1 AND ticket_id = $2`,
+        [require('crypto').createHash('sha256').update(req.params.token).digest('hex'), existing.id]);
+      if (!mine) {
+        const when = new Date(`${travelDate}T00:00:00Z`)
+          .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+        return res.json(existing.status === 'held'
+          ? { ok: false, error: 'booking_in_progress', title: 'Booking already in progress',
+            message: `A booking for ${regNo} on ${when} is already in progress. Complete it, or try again in a few minutes.` }
+          : { ok: false, error: 'already_booked', title: 'Only one pass per vehicle per day',
+            message: `${regNo} already has an entry pass for ${when} (${existing.slot_label}). Please choose another date.` });
+      }
+    }
+  }
+
   const price = await pricing.forPlaceCategory(place.id, verdict.categoryId);
   if (!price) {
     return res.json({ ok: false, error: 'no_price',
@@ -197,11 +224,38 @@ router.post('/book/:token/slots', express.json(), gate, safe(async (req, res) =>
   if (req.tokenError) return res.status(410).json({ error: req.tokenError });
 
   const { placeId, categoryId, travelDate } = req.body;
-  if (!placeId || !categoryId || !travelDate) {
+  if (!placeId || !/^\d{4}-\d{2}-\d{2}$/.test(String(travelDate || ''))) {
     return res.status(400).json({ error: 'missing_fields' });
   }
-  const slots = await inventory.forDate(placeId, categoryId, travelDate);
-  res.json({ ok: true, slots });
+
+  /* Vehicle known: one type's numbers, the only ones that apply. */
+  if (categoryId) {
+    const slots = await inventory.forDate(placeId, categoryId, travelDate);
+    return res.json({ ok: true, slots });
+  }
+
+  /* Vehicle not checked yet: every type's numbers, under each slot, so the
+     visitor can see "Car 3 left" before typing a plate. A slot is only offered
+     as closed when it is closed for time or shut outright; being full for one
+     type does not close it for the others. */
+  const { query: q } = require('../gatepass/db');
+  const cats = (await q(
+    `SELECT id, code, label FROM vehicle_categories WHERE is_active ORDER BY sort_order`)).rows;
+
+  const byCat = await Promise.all(cats.map((c) => inventory.forDate(placeId, c.id, travelDate)));
+  const slots = byCat[0] ? byCat[0].map((s, i) => {
+    const types = cats.map((c, k) => ({
+      code: c.code, label: c.label,
+      remaining: byCat[k][i].remaining, capacity: byCat[k][i].capacity,
+    }));
+    return {
+      slotId: s.slotId, code: s.code, label: s.label, lastEntry: s.lastEntry,
+      timeClosed: s.timeClosed, timeReason: s.timeReason, isOpen: s.isOpen, closedNote: s.closedNote,
+      types,
+      bookable: s.isOpen && !s.timeClosed && types.some((x) => x.remaining > 0),
+    };
+  }) : [];
+  return res.json({ ok: true, slots });
 }));
 
 /**

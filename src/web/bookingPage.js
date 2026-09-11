@@ -61,10 +61,22 @@ const SHELL = (title, body) => `<!doctype html>
          background:var(--accent);color:#fff;font-family:inherit;cursor:pointer}
   button:disabled{opacity:.45;cursor:not-allowed}
   .hint{font-size:12.5px;color:var(--muted);margin-top:6px}
-  .msg{padding:12px 14px;border-radius:10px;font-size:14px;margin-top:12px;display:none}
+  /* Alerts are boxes with a strong edge and dark text on a light tint (light
+     text on a deep tint in dark mode). Red text on a pale red ground was hard to
+     read, and in dark mode — dark red on near-black red — close to invisible. */
+  .msg{position:relative;padding:12px 14px 12px 44px;border-radius:10px;font-size:14.5px;
+       line-height:1.5;margin-top:12px;display:none;border:1px solid;border-left-width:5px;font-weight:500}
   .msg.show{display:block}
-  .msg.bad{background:var(--badbg);color:var(--bad)}
-  .msg.warn{background:var(--warnbg);color:var(--warn)}
+  .msg::before{position:absolute;left:14px;top:11px;font-size:18px;line-height:1.2}
+  .msg.bad{background:#fff1f0;color:#7a1410;border-color:#f3b5b0;border-left-color:#d92d20}
+  .msg.bad::before{content:'⛔'}
+  .msg.warn{background:#fff8e6;color:#6b4200;border-color:#f2d189;border-left-color:#e79a00}
+  .msg.warn::before{content:'⚠️'}
+  .msg-title{display:block;font-weight:700;font-size:15px;margin-bottom:2px}
+  @media(prefers-color-scheme:dark){
+    .msg.bad{background:#4a1512;color:#ffe1de;border-color:#8c2a22;border-left-color:#ff6b5f}
+    .msg.warn{background:#3d2c05;color:#ffecc2;border-color:#7a5a12;border-left-color:#ffb020}
+  }
   .vcard{border:1.5px solid var(--ok);background:var(--okbg);border-radius:11px;
          padding:13px 14px;margin-top:13px;display:none}
   .vcard.show{display:block}
@@ -251,13 +263,15 @@ const BODY = (v) => `
   </div>
 
   <div class="card">
-    <div class="step"><span class="num">2</span>Where and when</div>
+    <div class="step"><span class="num">2</span>Where, when and time slot</div>
     <label for="place">Destination</label>
     <select id="place">${v.placeOpts}</select>
     <div class="msg warn" id="soon">Bookings for this destination are not open yet. Please choose Mullayanagiri.</div>
     <label for="date">Date of visit</label>
     <select id="date">${v.dateOpts}</select>
     <div class="hint">${v.releaseNote}</div>
+    <label for="slots" style="margin-top:16px">Time slot</label>
+    <div id="slots"></div>
   </div>
 
   <div class="card">
@@ -291,13 +305,8 @@ const BODY = (v) => `
     </div>
   </div>
 
-  <div class="card hide" id="slotCard">
-    <div class="step"><span class="num">4</span>Choose a time slot</div>
-    <div id="slots"></div>
-  </div>
-
   <div class="card hide" id="revCard">
-    <div class="step"><span class="num">5</span>Review</div>
+    <div class="step"><span class="num">4</span>Review</div>
     <div id="review"></div>
     <div class="checkpost">
       <div class="checkpost-h">&#128706; At the checkpost</div>

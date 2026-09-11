@@ -49,20 +49,17 @@
 
   function show(el, on) { el.classList.toggle('show', !!on); }
   function vis(el, on) { el.classList.toggle('hide', !on); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+
+  var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
 
   function placeIsSoon() {
     var o = $('place').selectedOptions[0];
     return !!(o && o.getAttribute('data-soon') === '1');
-  }
-
-  /* A destination that is not open yet stays visible in the list and simply
-     cannot be chosen. Hiding it would make the platform look like it serves one
-     hill; showing it greyed says which ones are coming. */
-  function onPlace() {
-    var soon = placeIsSoon();
-    show($('soon'), soon);
-    $('check').disabled = soon;
-    reset();
   }
 
   /* The visitor's own row in the fee table, once we know what they drive — so
@@ -75,25 +72,52 @@
     });
   }
 
-  function reset() {
+  /* Forget the vehicle, keep the slot. The slot sits under the date and was
+     chosen for its time; a different vehicle only changes how many are left. */
+  function clearVehicle() {
     highlightFee(null);
-    state.vehicle = null; state.slot = null;
+    state.vehicle = null;
     show($('vok'), false); show($('verr'), false);
-    vis($('slotCard'), false); vis($('revCard'), false);
+    vis($('revCard'), false);
+  }
+
+  /* A destination that is not open yet stays visible in the list and simply
+     cannot be chosen. Hiding it would make the platform look like it serves one
+     hill; showing it greyed says which ones are coming. */
+  function onPlace() {
+    var soon = placeIsSoon();
+    show($('soon'), soon);
+    $('check').disabled = soon;
+    clearVehicle();
+    state.slot = null;
+    state.checked = false;
+    loadSlots();
   }
 
   $('place').addEventListener('change', onPlace);
-  $('date').addEventListener('change', function () { if (state.vehicle) loadSlots(); });
+
+  /* A different date can make a checked vehicle unbookable (it may already hold
+     a pass for that day), so a date change re-runs the vehicle check, which
+     reloads the slots; otherwise the slots are reloaded directly. */
+  $('date').addEventListener('change', function () {
+    state.slot = null;
+    vis($('revCard'), false);
+    if (state.vehicle || state.checked) $('check').click();
+    else loadSlots();
+  });
 
   $('reg').addEventListener('input', function () {
     this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    reset();
+    var had = !!state.vehicle;
+    clearVehicle();
+    state.checked = false;
+    if (had) loadSlots(); // the counts were for the old vehicle
   });
 
   $('check').addEventListener('click', function () {
     var reg = $('reg').value.trim();
     if (reg.length < 6) {
-      $('verr').innerHTML = 'Please enter the full registration number.';
+      $('verr').innerHTML = '<b class="msg-title">Vehicle number needed</b>Please enter the full registration number.';
       show($('verr'), true); return;
     }
     var b = $('check');
@@ -101,21 +125,26 @@
     b.innerHTML = '<span class="spin"></span>Checking…';
     show($('verr'), false); show($('vok'), false);
 
-    api('vehicle', { regNo: reg, placeId: $('place').value }).then(function (r) {
+    state.checked = true;
+    api('vehicle', { regNo: reg, placeId: $('place').value, travelDate: $('date').value }).then(function (r) {
       b.disabled = false; b.textContent = 'Check vehicle';
       if (!r.ok) {
-        var m = r.message || 'We could not check that number.';
-        if (r.messageKn) { m += '<br><span style="opacity:.85">' + r.messageKn + '</span>'; }
-        if (r.vehicle) { m += '<br><span style="opacity:.7;font-size:12.5px">' + r.vehicle + '</span>'; }
+        state.vehicle = null;
+        highlightFee(null);
+        var m = (r.title ? '<b class="msg-title">' + esc(r.title) + '</b>' : '')
+          + esc(r.message || 'We could not check that number.');
+        if (r.messageKn) { m += '<br><span style="opacity:.9">' + esc(r.messageKn) + '</span>'; }
+        if (r.vehicle) { m += '<br><span style="opacity:.8;font-size:12.5px">' + esc(r.vehicle) + '</span>'; }
         $('verr').innerHTML = m;
         show($('verr'), true);
+        vis($('revCard'), false);
+        loadSlots();
         return;
       }
       state.vehicle = r;
       /* Laid out as labelled fields rather than one run-on line, so the visitor
          can check each part against their own vehicle -- and "Vehicle type" is
          always one of the four fare categories, since that is what they pay. */
-      var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
       var dash = '—';
       var cell = function (k, val) {
         var d = document.createElement('dd'); d.textContent = val || dash;
@@ -131,105 +160,118 @@
       chip.textContent = TYPE[r.category.code] || r.category.label;
       tdd.appendChild(chip); grid.appendChild(tdt); grid.appendChild(tdd);
       $('vreg').textContent = r.regNo;
-      $('vfee').innerHTML = 'Fee for this vehicle: <b>₹' + r.price.total + '</b>';
+      $('vfee').innerHTML = 'Fee for this vehicle: <b>₹' + esc(r.price.total) + '</b>';
       show($('vok'), true);
       highlightFee(r.category.id);
       loadSlots();
     }).catch(function (err) {
       b.disabled = false; b.textContent = 'Check vehicle';
       if (err && err.network) {
-        $('verr').textContent = 'Could not reach the server. Please check your connection and tap Check vehicle again.';
+        $('verr').innerHTML = '<b class="msg-title">No connection</b>Could not reach the server. Please check your connection and tap Check vehicle again.';
       } else {
         report('vehicle-render', err);
-        $('verr').textContent = 'This page needs refreshing. Please reload it and try again.';
+        $('verr').innerHTML = '<b class="msg-title">Please reload</b>This page needs refreshing. Please reload it and try again.';
       }
       show($('verr'), true);
     });
   });
 
-  /* Availability is asked for only once the vehicle is known, because capacity
-     is held per category: the number left for a car is not the number left for
-     a Tempo Traveller on the same road at the same hour. */
+  /* The slots, directly under the date.
+
+     Shown from the start with their times and whether they are still open
+     today, so the visitor picks when to come as part of choosing the date. How
+     many places are LEFT is only shown once the vehicle is known, because
+     capacity is held per vehicle type: the number left for a car is not the
+     number left for a Tempo Traveller on the same road at the same hour. A slot
+     chosen before the vehicle was checked is kept if it is still open for that
+     vehicle, and cleared with a reason if it is not. */
+  var loadSeq = 0;
   function loadSlots() {
-    if (!state.vehicle) return;
-    $('slots').innerHTML = '<div class="hint">Checking availability…</div>';
-    vis($('slotCard'), true); vis($('revCard'), false);
-    state.slot = null;
+    var mine = ++loadSeq;
+    if (placeIsSoon()) { $('slots').innerHTML = ''; return; }
+    var v = state.vehicle;
+    $('slots').innerHTML = '<div class="hint">Loading time slots…</div>';
 
     api('slots', {
       placeId: $('place').value,
-      categoryId: state.vehicle.category.id,
+      categoryId: v ? v.category.id : null,
       travelDate: $('date').value
     }).then(function (r) {
-      if (!r.ok) { $('slots').innerHTML = '<div class="hint">Could not load availability.</div>'; return; }
+      if (mine !== loadSeq) return; // a newer load has started; this answer is stale
+      if (!r.ok) { $('slots').innerHTML = '<div class="hint">Could not load time slots.</div>'; return; }
       /* Why a slot cannot be picked is said plainly, because the reasons mean
          different things to the visitor: "Full" means try another slot, while
          "Finished for today" means try another day. */
-      var WHY = {
-        slot_over: 'Finished for today',
-        too_late: 'Closed — last entry was ',
-        date_past: 'This date has passed'
-      };
+      var WHY = { slot_over: 'Finished for today', too_late: 'Closed — last entry was ', date_past: 'This date has passed' };
       var anyOpen = false;
-      $('slots').innerHTML = r.slots.map(function (s) {
+      var keep = null, lostSlot = null;
+
+      var html = r.slots.map(function (s) {
         var left, closed = !s.bookable;
         if (s.timeClosed) {
           left = s.timeReason === 'too_late' ? WHY.too_late + s.lastEntry : (WHY[s.timeReason] || 'Closed');
-        } else if (!s.isOpen) {
+        } else if (s.isOpen === false) {
           left = s.closedNote || 'Closed';
-        } else if (s.remaining <= 0) {
-          left = 'Full';
+        } else if (v && s.remaining <= 0) {
+          left = 'Full for ' + (TYPE[v.category.code] || 'this vehicle');
+        } else if (v) {
+          left = s.remaining + ' of ' + s.capacity + ' left for ' + (TYPE[v.category.code] || 'your vehicle')
+            + ' · last entry ' + s.lastEntry;
+          anyOpen = true;
         } else {
-          left = s.remaining + ' of ' + s.capacity + ' left · last entry ' + s.lastEntry;
+          /* No vehicle yet: every type's count, so "Car 3 left" is visible before
+             a plate is typed. */
+          left = (s.types || []).map(function (x) {
+            return (TYPE[x.code] ? TYPE[x.code].replace(' (TT)', '') : x.label) + ' ' + x.remaining;
+          }).join(' · ') + ' left · last entry ' + s.lastEntry;
           anyOpen = true;
         }
-        return '<label class="slot' + (closed ? ' full' : '') + '" data-slot="' + s.slotId + '">'
-          + '<input type="radio" name="slot" value="' + s.slotId + '"' + (closed ? ' disabled' : '') + '>'
-          + '<span class="slot-main"><span class="slot-name">' + s.label + '</span>'
-          + '<span class="slot-left' + (closed ? ' closed' : '') + '">' + left + '</span></span></label>';
+        if (state.slot && state.slot.id === s.slotId) { if (closed) lostSlot = s; else keep = s; }
+        return '<label class="slot' + (closed ? ' full' : '') + (keep === s ? ' sel' : '') + '" data-slot="' + esc(s.slotId) + '">'
+          + '<input type="radio" name="slot" value="' + esc(s.slotId) + '"' + (closed ? ' disabled' : '') + (keep === s ? ' checked' : '') + '>'
+          + '<span class="slot-main"><span class="slot-name">' + esc(s.label) + '</span>'
+          + '<span class="slot-left' + (closed ? ' closed' : '') + '">' + esc(left) + '</span></span></label>';
       }).join('');
-      if (!anyOpen) {
-        $('slots').innerHTML += '<div class="msg warn show">No slots are available on this date. Please choose another date.</div>';
+
+      if (!v) html = '<div class="hint" style="margin:0 0 8px">Places left for each vehicle type. After you check your vehicle below, only its count is shown.</div>' + html;
+      if (lostSlot) {
+        html += '<div class="msg warn show"><b class="msg-title">Please choose another slot</b>'
+          + esc(lostSlot.label) + ' is no longer available for your vehicle.</div>';
       }
+      if (!anyOpen) {
+        html += '<div class="msg warn show"><b class="msg-title">No slots on this date</b>Please choose another date.</div>';
+      }
+      $('slots').innerHTML = html;
+      if (!keep) state.slot = null;
 
       var radios = $('slots').querySelectorAll('input[name=slot]');
       Array.prototype.forEach.call(radios, function (i) {
         i.addEventListener('change', function () {
-          var all = $('slots').querySelectorAll('.slot');
-          Array.prototype.forEach.call(all, function (el) {
+          Array.prototype.forEach.call($('slots').querySelectorAll('.slot'), function (el) {
             el.classList.toggle('sel', el.getAttribute('data-slot') === i.value);
           });
-          var wrap = i.parentNode;
-          state.slot = { id: i.value, label: wrap.querySelector('.slot-name').textContent };
+          state.slot = { id: i.value, label: i.parentNode.querySelector('.slot-name').textContent };
           review();
         });
       });
+      review();
     }).catch(function (err) {
+      if (mine !== loadSeq) return;
       if (!(err && err.network)) report('slots-render', err);
       $('slots').innerHTML = '<div class="msg bad show">'
-        + (err && err.network ? 'Could not load availability. Please check your connection and change the date to retry.'
-                              : 'This page needs refreshing. Please reload it and try again.')
+        + (err && err.network ? '<b class="msg-title">No connection</b>Could not load time slots. Please check your connection and change the date to retry.'
+                              : '<b class="msg-title">Please reload</b>This page needs refreshing. Please reload it and try again.')
         + '</div>';
     });
   }
 
-  function row(k, v) {
-    return '<div class="row"><span style="color:var(--muted)">' + k + '</span><span>' + v + '</span></div>';
-  }
-
   function review() {
     var v = state.vehicle, s = state.slot;
-    if (!v || !s) return;
+    if (!v || !s) { vis($('revCard'), false); return; }
     var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
     var dateName = $('date').selectedOptions[0].textContent;
-    var TYPE = { BIKE: 'Bike', CAR: 'Car', TOOFAN: 'Toofan', TT: 'Tempo Traveller (TT)' };
     var tr = function (k, val, cls) {
       return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><th scope="row">' + k + '</th><td>' + val + '</td></tr>';
-    };
-    var esc = function (s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
-      });
     };
     $('review').innerHTML =
       '<table class="rev">'
@@ -276,7 +318,7 @@
     }).then(function (r) {
       if (!r.ok) {
         b.disabled = false; b.textContent = 'Continue to payment';
-        err.textContent = r.message || 'We could not continue. Please try again.';
+        err.innerHTML = '<b class="msg-title">Could not continue</b>' + esc(r.message || 'Please try again.');
         show(err, true);
         if (r.error === 'sold_out' || r.error === 'slot_closed') loadSlots();
         return;
@@ -286,9 +328,9 @@
     }).catch(function (e) {
       b.disabled = false; b.textContent = 'Continue to payment';
       if (!(e && e.network)) report('confirm', e);
-      err.textContent = e && e.network
-        ? 'Could not reach the server. Please check your connection and try again.'
-        : 'This page needs refreshing. Please reload it and try again.';
+      err.innerHTML = e && e.network
+        ? '<b class="msg-title">No connection</b>Could not reach the server. Please check your connection and try again.'
+        : '<b class="msg-title">Please reload</b>This page needs refreshing. Please reload it and try again.';
       show(err, true);
     });
   });
