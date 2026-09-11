@@ -129,11 +129,15 @@ router.get('/book/:token', gate, safe(async (req, res) => {
 router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) => {
   if (req.tokenError) return res.status(410).json({ error: req.tokenError });
 
-  const regNo = String(req.body.regNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (regNo.length < 6 || regNo.length > 12) {
-    return res.json({ ok: false, error: 'invalid_format',
-      message: 'Please enter a valid registration number, for example KA31N8147.' });
+  /* The same parser the ULIP lookup uses: spaces, dots and hyphens removed,
+     letter O typed for zero repaired, and a state code that does not exist
+     refused here — before a lookup is spent on it. */
+  const parsed = require('../ulip/plate').parse(req.body.regNo);
+  if (!parsed.ok) {
+    return res.json({ ok: false, error: 'invalid_format', title: 'Check the vehicle number',
+      message: String(parsed.error || 'Please enter a valid registration number, for example KA01AB1234.').replace(/\*/g, '') });
   }
+  const regNo = parsed.regNo;
 
   const placeId = req.body.placeId;
   const place = await places.byId(placeId);
@@ -278,7 +282,9 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
   const { query: q } = require('../gatepass/db');
   const fail = (error, message, extra = {}) => res.json({ ok: false, error, message, ...extra });
 
-  const regNo = String(req.body.regNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const parsedPlate = require('../ulip/plate').parse(req.body.regNo);
+  if (!parsedPlate.ok) return res.json({ ok: false, error: 'invalid_format', message: 'Please check the vehicle number.' });
+  const regNo = parsedPlate.regNo;
   const { placeId, slotId, travelDate } = req.body;
 
   const place = await places.byId(placeId);

@@ -1,10 +1,11 @@
 /**
  * vehicle.js — what the registration says, without holding what it should not.
  *
- * ULIP authorises by source IP, so only the deployed GaadiPe server may talk to
- * it. This app therefore asks that server's public API with an API key instead
- * of holding ULIP credentials of its own — one integration, one place where
- * upstream data is fetched and cached.
+ * ULIP authorises by source IP. On the deployed Pravesha server, whitelisted
+ * with ULIP, vehicle data comes straight from ULIP (VEHICLE_SOURCE=ulip, the
+ * modules in src/ulip ported from the GaadiPe gateway). Anywhere else it comes
+ * from the gateway's public API (VEHICLE_SOURCE=gateway), with the same
+ * responses either way.
  *
  * Only the RC dataset is fetched. Challans and FASTag are irrelevant to letting
  * a vehicle up a hill, and every unnecessary upstream call is cost and latency
@@ -26,7 +27,30 @@ const TIMEOUT_MS = 8000;
 /** How long a stored RC is trusted before we ask again. */
 const SNAPSHOT_HOURS = 24 * 30;
 
+/**
+ * One dataset for one plate, from wherever VEHICLE_SOURCE says.
+ *
+ *   ulip     straight from ULIP, in this process (src/ulip) — the deployed
+ *            server, which ULIP has whitelisted
+ *   gateway  over HTTP from GATEWAY_BASE_URL — any machine ULIP does not allow
+ *
+ * Both return the same body, so everything after this line is one code path.
+ * A ULIP failure is answered as 'upstream_unavailable', which is deliberately
+ * not in TRANSIENT: vahan.js has already tried its fallback dataset, and a
+ * second round here would only double the calls to be told the same thing.
+ */
 async function fetchDataset(regNo, dataset) {
+  if (require('../ulip/config').config.source() === 'ulip') {
+    const started = Date.now();
+    try {
+      const body = await require('../ulip/lookup').byDataset[dataset](regNo);
+      return { body, ms: Date.now() - started, status: body.success ? 200 : 0 };
+    } catch (e) {
+      console.error('[vehicle] ulip %s %s: %s', dataset, regNo, e.message);
+      return { body: { success: false, error: 'upstream_unavailable' }, ms: Date.now() - started, status: 0 };
+    }
+  }
+
   const url = `${BASE()}/api/v1/vehicle/${encodeURIComponent(regNo)}/${dataset}`;
   const started = Date.now();
   try {
