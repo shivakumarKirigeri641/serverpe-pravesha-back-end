@@ -26,6 +26,9 @@ const CAPABILITIES = {
   'finance.remit': 'Record remittances to the Tourism Department',
   'conversations.view': 'Read WhatsApp conversations (numbers masked)',
   'conversations.technical': 'See full numbers and technical identifiers',
+  'alerts.view': 'See operational alerts',
+  'alerts.act': 'Acknowledge alerts',
+  'announcements.manage': 'Publish announcements and closures',
   'negative.view': 'See negative tracking',
   'negative.act': 'Review, dismiss and escalate negative activity',
   'visitors.block': 'Block and unblock visitor numbers',
@@ -59,18 +62,18 @@ const ROLES = {
     label: 'Checkpost Manager',
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
-      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff'],
+      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act'],
   },
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
     can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit',
-      'tickets.view', 'audit.view'],
+      'tickets.view', 'alerts.view', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',
     description: 'Reads the dashboard, live monitoring, analytics and reports.',
-    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view'],
+    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view'],
   },
 };
 
