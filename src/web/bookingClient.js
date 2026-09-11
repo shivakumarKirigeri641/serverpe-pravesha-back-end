@@ -32,7 +32,18 @@
     reset();
   }
 
+  /* The visitor's own row in the fee table, once we know what they drive — so
+     the number on the review screen is visibly the one from the table above,
+     not a figure that appeared from nowhere. */
+  function highlightFee(catId) {
+    var rows = document.querySelectorAll('#fees tbody tr');
+    Array.prototype.forEach.call(rows, function (tr) {
+      tr.classList.toggle('mine', !!catId && tr.getAttribute('data-cat') === String(catId));
+    });
+  }
+
   function reset() {
+    highlightFee(null);
     state.vehicle = null; state.slot = null;
     show($('vok'), false); show($('verr'), false);
     vis($('slotCard'), false); vis($('revCard'), false);
@@ -72,6 +83,7 @@
       $('vsub').textContent = [r.vehicle.type, r.vehicle.fuel, r.vehicle.colour].filter(Boolean).join(' · ');
       $('vbadge').textContent = r.category.label + ' — ₹' + r.price.total;
       show($('vok'), true);
+      highlightFee(r.category.id);
       loadSlots();
     }).catch(function () {
       b.disabled = false; b.textContent = 'Check vehicle';
@@ -150,15 +162,19 @@
     var placeName = $('place').selectedOptions[0].textContent.split('—')[0].trim();
     var dateName = $('date').selectedOptions[0].textContent;
     $('review').innerHTML =
-      row('Name', $('name').value || '—')
+      '<div class="sub">Visit details</div>'
+      + row('Name', $('name').value || '—')
       + row('Destination', placeName)
       + row('Date', dateName)
       + row('Slot', s.label)
       + row('Vehicle', v.regNo)
       + row('Type', v.category.label)
+      + '<div class="sub gap">Payment summary</div>'
+      + '<div class="paybox">'
       + row('Entry fee', '₹' + v.price.entry)
       + row('Platform fee', '₹' + v.price.platform)
-      + '<div class="row total"><span>Total</span><span>₹' + v.price.total + '</span></div>';
+      + '<div class="row total"><span>Total payable</span><span>₹' + v.price.total + '</span></div>'
+      + '</div>';
     vis($('revCard'), true);
     $('revCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }

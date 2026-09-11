@@ -90,8 +90,22 @@ const SHELL = (title, body) => `<!doctype html>
         border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;
         vertical-align:-2px;margin-right:7px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .tariff{font-size:12.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:11px}
-  .tariff b{color:var(--ink)}
+  .fees{width:100%;border-collapse:collapse;font-size:14px}
+  .fees th{text-align:right;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+           color:var(--muted);padding:0 4px 8px;border-bottom:1px solid var(--line)}
+  .fees th:first-child{text-align:left}
+  .fees td{padding:11px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  .fees td:first-child{text-align:left;white-space:normal}
+  .fees tr:last-child td{border-bottom:0}
+  .fees .ico{font-size:17px;margin-right:7px;vertical-align:-2px}
+  .fees .tot{font-weight:700}
+  .fees tr.mine td{background:rgba(0,168,132,.10)}
+  .fees tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  .fees-note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+       color:var(--muted);margin:4px 0 4px}
+  .sub.gap{margin-top:16px}
+  .paybox{background:var(--bg);border-radius:10px;padding:4px 12px 8px}
   footer{text-align:center;color:var(--muted);font-size:12px;padding:22px 16px}
 </style></head><body><div class="wrap">
 <header><div class="brand">Pravesha</div>
@@ -140,12 +154,21 @@ function render({ token, customer, places, dates, tariff }) {
   const dateOpts = dates.map((d) =>
     `<option value="${d.value}">${esc(d.label)}${d.isToday ? ' (today)' : ''}</option>`).join('');
 
-  const tariffLine = tariff.map((t) =>
-    `<b>${esc(t.label.split('/')[0].trim())}</b> &#8377;${Number(t.entryPaise) / 100}`).join(' &middot; ');
+  /* A picture of the vehicle beside each fare, because the label alone is not
+     how people recognise themselves: "Toofan / Maxi Cab" means nothing to
+     someone who calls it a Cruiser, while the silhouette does. */
+  const ICON = { BIKE: '🏍️', CAR: '🚗', TOOFAN: '🚙', TT: '🚐' };
+  const rs = (paise) => '&#8377;' + (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
+  const feeRows = tariff.map((t) => `<tr data-cat="${esc(t.categoryId)}">
+        <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(t.label)}</td>
+        <td>${rs(t.entryPaise)}</td><td>${rs(t.platformPaise)}</td>
+        <td class="tot">${rs(t.totalPaise)}</td></tr>`).join('');
+  const live = places.find((p) => p.is_active);
+  const placeName = esc(live ? live.name : '');
 
   return SHELL('Book entry pass', BODY({
     token: esc(token), name, maskedMobile: esc(mask(mobile)),
-    placeOpts, dateOpts, tariffLine,
+    placeOpts, dateOpts, feeRows, placeName,
   }));
 }
 
@@ -169,7 +192,17 @@ const BODY = (v) => `
     <div class="msg warn" id="soon">Bookings for this destination are not open yet. Please choose Mullayanagiri.</div>
     <label for="date">Date of visit</label>
     <select id="date">${v.dateOpts}</select>
-    <div class="tariff">Entry fee &mdash; ${v.tariffLine}. A platform fee is added at checkout.</div>
+  </div>
+
+  <div class="card">
+    <div class="step"><span class="num">&#8377;</span>Entry fees &middot; ${v.placeName}</div>
+    <table class="fees" id="fees">
+      <thead><tr><th>Vehicle</th><th>Entry</th><th>Platform</th><th>Total</th></tr></thead>
+      <tbody>${v.feeRows}</tbody>
+    </table>
+    <div class="fees-note">Per vehicle, per visit. The entry fee goes to the Karnataka Tourism
+    Department; the platform fee covers booking and payment processing.
+    Your fee is set by your vehicle&rsquo;s registration.</div>
   </div>
 
   <div class="card">
