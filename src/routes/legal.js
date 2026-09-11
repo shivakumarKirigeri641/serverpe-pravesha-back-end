@@ -68,8 +68,12 @@ router.get('/legal', async (req, res) => {
         email: t.contact_email, website: t.website, vendor_tagline: t.vendor_tagline,
         product_tagline: t.product_tagline,
       },
+      /* Published by designation, not by personal name: the address is
+         monitored by whoever holds the role, and a public page naming a private
+         individual ages badly. `proprietor_name` stays available for documents
+         that must name the proprietor. */
       grievance_officer: {
-        name: t.proprietor_name, email: t.contact_email,
+        name: t.grievance_officer_name || 'The Grievance Officer', email: t.contact_email,
         acknowledge_hours: Number(t.grievance_ack_hours || 24),
         resolve_days: Number(t.grievance_resolve_days || 15),
       },

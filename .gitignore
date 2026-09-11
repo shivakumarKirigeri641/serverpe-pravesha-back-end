@@ -2,3 +2,5 @@ node_modules
 .env.*
 .env
 docs
+# Rendered marketing image variants (generated on demand)
+src/images/marketingsite/.resized/
