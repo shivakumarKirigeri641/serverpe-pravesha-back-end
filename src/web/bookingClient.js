@@ -473,5 +473,55 @@
     releaseHold('<b class="msg-title">Place released</b>Nothing was charged. You can change your choices and continue again.');
   });
 
+  /* THE KEYBOARD MUST NOT HIDE WHAT IS BEING TYPED.
+
+     On a phone the on-screen keyboard covers the lower half of the page, and the
+     vehicle number field sat underneath it. Three layers, because in-app
+     browsers disagree about which of them they honour:
+
+       1. the viewport meta asks the browser to shrink the page when the
+          keyboard opens (interactive-widget=resizes-content), so it keeps the
+          focused field in view itself;
+       2. a tapped field is scrolled to the middle of what is left visible, once
+          the keyboard has finished opening;
+       3. while the keyboard is up, any resize of the visible area that leaves
+          the field underneath brings it back up — iPhones do not resize the
+          page at all and only report it through visualViewport. */
+  function keepInView(el) {
+    if (!el || !el.getBoundingClientRect) return;
+    var vv = window.visualViewport;
+    var visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    var r = el.getBoundingClientRect();
+    if (r.bottom > visibleBottom - 16 || r.top < 8) {
+      el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
+    }
+  }
+  function isTyping(el) {
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && !el.readOnly;
+  }
+  document.addEventListener('focusin', function (e) {
+    if (!isTyping(e.target)) return;
+    var el = e.target;
+    setTimeout(function () { keepInView(el); }, 300);  // keyboard mid-animation
+    setTimeout(function () { keepInView(el); }, 650);  // keyboard fully open
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function () {
+      if (isTyping(document.activeElement)) keepInView(document.activeElement);
+    });
+  }
+
+  /* "Go" on the keyboard checks the vehicle and puts the keyboard away, so the
+     result is not hidden under it and there is no reaching past it for the
+     button. */
+  $('reg').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      this.blur();
+      $('check').click();
+      setTimeout(function () { keepInView($('vok').classList.contains('show') ? $('vok') : $('verr')); }, 400);
+    }
+  });
+
   onPlace();
 })();

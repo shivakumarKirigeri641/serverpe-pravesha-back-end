@@ -16,7 +16,7 @@ const esc = (s) => String(s === null || s === undefined ? '' : s)
 
 const SHELL = (title, body) => `<!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,interactive-widget=resizes-content">
 <title>${title} · Pravesha</title>
 <style>
   /* WhatsApp's own palette. The form opens inside WhatsApp's browser straight
@@ -33,7 +33,10 @@ const SHELL = (title, body) => `<!doctype html>
   body{margin:0;background:var(--bg);color:var(--ink);
        font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
        -webkit-text-size-adjust:100%}
-  .wrap{max-width:520px;margin:0 auto;padding:0 0 120px}
+  /* Room below the last field, so a field near the bottom can still be scrolled
+     up above an on-screen keyboard instead of being pinned under it. */
+  .wrap{max-width:520px;margin:0 auto;padding:0 0 45vh}
+  input,select{scroll-margin:96px 0}
   header{background:var(--head);color:var(--head-ink);padding:18px 20px 16px}
   .brand{font-weight:700;font-size:19px;letter-spacing:-.2px}
   .dept{opacity:.85;font-size:12.5px;margin-top:1px}
@@ -378,7 +381,7 @@ const BODY = (v) => `
   <div class="card">
     <div class="step"><span class="num">3</span>Your vehicle</div>
     <label for="reg">Enter vehicle number</label>
-    <input id="reg" class="plate" placeholder="KA01AB1234" maxlength="14" autocapitalize="characters" spellcheck="false">
+    <input id="reg" class="plate" placeholder="KA01AB1234" maxlength="14" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
     <div class="hint">We look this up to set the correct entry fee.</div>
     <div style="margin-top:12px"><button type="button" id="check">Check vehicle</button></div>
     <div class="msg bad" id="verr"></div>
