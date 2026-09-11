@@ -101,7 +101,8 @@ router.get('/book/:token', gate, safe(async (req, res) => {
   const list = await places.list();
   const live = list.filter((p) => p.is_active);
   const first = live[0] || list[0];
-  const dates = places.bookableDates(first, first ? first.slots : []);
+  const dates = await places.bookableDates(first, first ? first.slots : []);
+  const releaseInfo = first ? await places.window(first) : null;
   const tariffRows = live[0] ? await pricing.tariff(live[0].id) : [];
 
   res.type('html').send(page.render({
@@ -112,6 +113,7 @@ router.get('/book/:token', gate, safe(async (req, res) => {
     dates,
     tariff: tariffRows,
     feePercent: await pricing.platformPercent(),
+    releaseInfo,
   }));
 }));
 
@@ -231,7 +233,7 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
   const slot = await one('SELECT * FROM place_slots WHERE id = $1 AND place_id = $2 AND is_active', [slotId, place.id]);
   if (!slot) return fail('slot_invalid', 'Please choose a time slot again.');
 
-  const allowedDates = places.bookableDates(place, (await places.list()).find((p) => String(p.id) === String(place.id)).slots)
+  const allowedDates = (await places.bookableDates(place, (await places.list()).find((p) => String(p.id) === String(place.id)).slots))
     .map((d) => d.value);
   if (!allowedDates.includes(String(travelDate))) return fail('date_invalid', 'That date can no longer be booked. Please choose another date.');
 

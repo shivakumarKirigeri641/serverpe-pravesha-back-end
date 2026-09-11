@@ -190,7 +190,23 @@ function mask(mobile) {
   return '\u2022'.repeat(d.length - 4) + d.slice(-4);
 }
 
-function render({ token, customer, places, dates, tariff, feePercent, scriptVersion }) {
+/**
+ * When the next date opens, said under the date list.
+ *
+ * Without it the list simply ends, and somebody looking for a date a fortnight
+ * out cannot tell whether it is sold out, not allowed, or just not open yet.
+ */
+function releaseNote(w) {
+  if (!w) return '';
+  const h = w.releaseHour % 12 === 0 ? 12 : w.releaseHour % 12;
+  const time = `${h}:00 ${w.releaseHour < 12 ? 'AM' : 'PM'}`;
+  const d = new Date(`${w.next.date}T00:00:00Z`)
+    .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return `Bookings open up to 2 weeks ahead. The next date, <b>${esc(d)}</b>, opens `
+    + `${w.next.opensToday ? 'today' : 'tomorrow'} at ${time}.`;
+}
+
+function render({ token, customer, places, dates, tariff, feePercent, scriptVersion, releaseInfo }) {
   const name = esc((customer && (customer.name || customer.wa_profile_name)) || '');
   const mobile = esc((customer && customer.mobile) || '');
 
@@ -217,6 +233,7 @@ function render({ token, customer, places, dates, tariff, feePercent, scriptVers
   return SHELL('Book entry pass', BODY({
     token: esc(token), name, maskedMobile: esc(mask(mobile)),
     placeOpts, dateOpts, feeRows, placeName, scriptVersion: esc(scriptVersion || ''),
+    releaseNote: releaseNote(releaseInfo),
   }));
 }
 
@@ -240,6 +257,7 @@ const BODY = (v) => `
     <div class="msg warn" id="soon">Bookings for this destination are not open yet. Please choose Mullayanagiri.</div>
     <label for="date">Date of visit</label>
     <select id="date">${v.dateOpts}</select>
+    <div class="hint">${v.releaseNote}</div>
   </div>
 
   <div class="card">

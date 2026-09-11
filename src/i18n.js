@@ -107,6 +107,14 @@ const S = {
     en: 'You have no upcoming passes. Your recent passes are listed below.',
     kn: 'ನಿಮ್ಮ ಬಳಿ ಮುಂಬರುವ ಪಾಸ್‌ಗಳಿಲ್ಲ. ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಪಾಸ್‌ಗಳು ಕೆಳಗಿವೆ.',
   },
+  myAutoIntro: {
+    en: '📋 *My passes*\nYou have {up} upcoming pass(es). Sending them to you now:',
+    kn: '📋 *ನನ್ನ ಪಾಸ್‌ಗಳು*\nನಿಮ್ಮ ಬಳಿ {up} ಮುಂಬರುವ ಪಾಸ್(ಗಳು) ಇವೆ. ಈಗ ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ:',
+  },
+  noUpcoming: {
+    en: 'You have no upcoming passes.\n\nBook an entry pass below.',
+    kn: 'ನಿಮ್ಮ ಬಳಿ ಮುಂಬರುವ ಪಾಸ್‌ಗಳಿಲ್ಲ.\n\nಕೆಳಗೆ ಪ್ರವೇಶ ಪಾಸ್ ಪಡೆಯಿರಿ.',
+  },
   myButton: { en: 'View passes', kn: 'ಪಾಸ್‌ಗಳನ್ನು ನೋಡಿ' },
   mySecUpcoming: { en: 'Upcoming', kn: 'ಮುಂಬರುವ' },
   mySecPast: { en: 'Past', kn: 'ಹಿಂದಿನ' },

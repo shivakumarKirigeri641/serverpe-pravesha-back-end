@@ -30,6 +30,13 @@ const connectDB = () => {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
       keepAlive: true,
+      /* Every session runs in IST, whatever the server's own default. Locally
+         PostgreSQL already defaults to Asia/Calcutta; a managed database in the
+         cloud usually defaults to UTC, and then anything read as local time --
+         a report grouped by day, a timestamp printed by psql -- is five and a
+         half hours off, with nothing visibly wrong. Pinned here so the move to
+         production cannot change it. */
+      options: '-c TimeZone=Asia/Kolkata',
     });
 
     /* The database it actually connected to, not a name written here once.

@@ -31,40 +31,76 @@ async function list() {
 const byCode = (code) => one('SELECT * FROM places WHERE code = $1', [code]);
 const byId = (id) => one('SELECT * FROM places WHERE id = $1', [id]);
 
+/** Today plus n days, on the IST calendar, as 'YYYY-MM-DD'. */
+function plusDays(todayIST, n) {
+  const [y, m, d] = todayIST.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 /**
- * The dates a visitor may pick: today through booking_days_ahead.
+ * How far ahead can be booked right now.
+ *
+ * THE WINDOW OPENS AT A FIXED HOUR, NOT AT MIDNIGHT. At the release hour each
+ * evening (booking_release_hour, 18:00) the date exactly booking_days_ahead away
+ * becomes bookable; before that hour the furthest date is one day nearer. So on
+ * 11 September a visitor at 17:59 can book up to 24 September, and at 18:00 the
+ * 25th opens. A release that everyone knows the time of is fair to the people
+ * who plan ahead; one at midnight rewards whoever is awake.
+ *
+ * DERIVED FROM THE CLOCK, NOT SCHEDULED. A nightly job that opens the next date
+ * can fail to fire, fire twice, or miss a restart; computing the window from the
+ * current IST time is right the instant the process starts and after any outage.
+ *
+ * IST, EXPLICITLY. The code this replaces read the server's own hour, which on a
+ * server running UTC would have opened the new date at 23:30 IST instead of 18:00.
+ */
+async function window(place, at = new Date()) {
+  const settings = require('./settings');
+  const days = (place && place.booking_days_ahead) || 14;
+  const releaseHour = await settings.num('booking_release_hour', 18);
+  const now = slotTime.nowIST(at);
+  const released = now.minutes >= releaseHour * 60;
+  return {
+    today: now.date,
+    reach: released ? days : days - 1,
+    releaseHour,
+    released,
+    /* The next date to open, and when — told to the visitor rather than left for
+       them to discover as a list that quietly ends a day short. */
+    next: {
+      date: plusDays(now.date, released ? days + 1 : days),
+      opensOn: released ? plusDays(now.date, 1) : now.date,
+      opensToday: !released,
+    },
+  };
+}
+
+/**
+ * The dates a visitor may pick, from today to the edge of the booking window.
  *
  * Today is dropped once its last slot has closed. Leaving it selectable means
  * choosing it, entering a vehicle, and finding every slot greyed out -- a dead
  * end two steps in, which is worse than an option that was never offered.
- *
- * Dates are built from the IST calendar rather than the server's, so "today"
- * means today on the hill. A server running UTC would otherwise roll the date
- * over five and a half hours late.
  */
-function bookableDates(place, slots = []) {
-  const days = (place && place.booking_days_ahead) || 14;
-  const todayIST = slotTime.nowIST().date;
-  const [ty, tm, td] = todayIST.split('-').map(Number);
+async function bookableDates(place, slots = [], at = new Date()) {
+  const settings = require('./settings');
+  const w = await window(place, at);
+  const sameDay = String(await settings.str('same_day_booking', 'true')) !== 'false';
 
   const out = [];
-  for (let i = 0; i < days; i += 1) {
-    const d = new Date(Date.UTC(ty, tm - 1, td + i));
-    const value = d.toISOString().slice(0, 10);
+  for (let i = sameDay ? 0 : 1; i <= w.reach; i += 1) {
+    const value = plusDays(w.today, i);
     const isToday = i === 0;
-    const stillOpen = !isToday || slotTime.anyBookable(slots, value);
+    if (isToday && !slotTime.anyBookable(slots, value, at)) continue; // finished for the day
 
-    if (isToday && !stillOpen) continue; // finished for the day
-
+    const d = new Date(`${value}T00:00:00Z`);
     out.push({
       value,
-      label: d.toLocaleDateString('en-IN', {
-        weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
-      }),
+      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }),
       isToday,
     });
   }
   return out;
 }
 
-module.exports = { list, byCode, byId, bookableDates };
+module.exports = { list, byCode, byId, bookableDates, window, plusDays };
