@@ -76,6 +76,20 @@ async function dispatch(payload) {
     for (const change of entry.changes || []) {
       const value = change.value || {};
 
+      /* ONLY OUR NUMBER. This WhatsApp Business Account also holds QuizPe's
+         live number, and Meta delivers every number's events to every app
+         subscribed to the account. Without this check a parent messaging QuizPe
+         would be answered by Pravesha, from Pravesha's number. An event with no
+         phone_number_id is not ours to act on either. */
+      const ours = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const target = value.metadata && value.metadata.phone_number_id;
+      if (!ours || String(target) !== String(ours)) {
+        if (value.messages?.length) {
+          console.log('[wa] ignoring event for another number (%s)', target || 'none');
+        }
+        continue;
+      }
+
       /* Delivery and read receipts arrive on the same webhook as messages.
          They are not replies and must not be treated as any. */
       if (value.statuses?.length) continue;
