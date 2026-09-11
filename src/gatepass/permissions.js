@@ -44,6 +44,7 @@ const CAPABILITIES = {
   'settings.staff': 'Manage checkpost staff',
   'settings.users': 'Manage panel users and their roles',
   'settings.gst': 'Change GST and business details',
+  'health.view': 'See system health',
   'audit.view': 'Read the audit log',
 };
 
@@ -64,18 +65,18 @@ const ROLES = {
     label: 'Checkpost Manager',
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
-      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view'],
+      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view', 'health.view'],
   },
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
     can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit',
-      'tickets.view', 'alerts.view', 'destinations.view', 'audit.view'],
+      'tickets.view', 'alerts.view', 'destinations.view', 'health.view', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',
     description: 'Reads the dashboard, live monitoring, analytics and reports.',
-    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view', 'destinations.view'],
+    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view', 'destinations.view', 'health.view'],
   },
 };
 
