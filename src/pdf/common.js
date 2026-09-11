@@ -2,10 +2,14 @@
  * pdf/common.js — what the pass and the invoice share: the letterhead, the
  * footer, the fonts, and a way to draw a labelled table.
  *
- * WHY NOTO SANS KANNADA FOR EVERYTHING. PDFKit's built-in Helvetica has no
- * rupee sign; a pass that prints "₹" as an empty box is a pass that looks forged.
- * The Kannada face ships in assets/, carries full Latin and U+20B9, and keeps
- * the department's own tagline renderable in the same document.
+ * TWO FACES, CHOSEN BY THE TEXT. PDFKit's built-in Helvetica has no rupee sign,
+ * and a pass that prints "₹" as an empty box looks forged. Noto Sans Kannada has
+ * one, and was used for everything at first -- but its digits are drawn at
+ * Kannada stroke weight, so "PRV-7K3M-9Q2A" came out with bold digits between
+ * regular letters, which read as uneven spacing in exactly the numbers a gate
+ * reads. Latin text now uses Noto Sans (same family, has ₹), and any string
+ * containing Kannada switches to the Kannada face. The switch happens inside
+ * text() itself, so no call site can forget it.
  *
  * Rendered to a Buffer, never to disk. Two passes issued in the same second
  * cannot overwrite each other's file if there is no file; the buffer is uploaded
@@ -16,9 +20,13 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
-const FONT = path.join(ASSETS, 'fonts', 'NotoSansKannada-Regular.ttf');
-const FONT_BOLD = path.join(ASSETS, 'fonts', 'NotoSansKannada-Bold.ttf');
-const LOGO = path.join(ASSETS, 'logos', 'pravesha-256.png');
+const FONT = path.join(ASSETS, 'fonts', 'NotoSans-Regular.ttf');
+const FONT_BOLD = path.join(ASSETS, 'fonts', 'NotoSans-Bold.ttf');
+const FONT_KN = path.join(ASSETS, 'fonts', 'NotoSansKannada-Regular.ttf');
+const FONT_KN_BOLD = path.join(ASSETS, 'fonts', 'NotoSansKannada-Bold.ttf');
+/* The square mark, not the wordmark: the wordmark is a 256x51 strip and
+   shrank to an unreadable sliver when fitted into the header's square. */
+const LOGO = path.join(ASSETS, 'logos', 'pravesha-icon-256.png');
 const EMBLEM = path.join(ASSETS, 'logos', 'karnataka-tourism-emblem-256-clear.png');
 
 const C = {
@@ -62,6 +70,8 @@ const maskMobile = (m) => {
   return d.length > 4 ? `${'•'.repeat(d.length - 4)}${d.slice(-4)}` : d;
 };
 
+const KANNADA = /[ಀ-೿]/;
+
 function newDoc(meta) {
   const doc = new PDFDocument({
     size: 'A4', margins: { top: 36, bottom: 36, left: 36, right: 36 },
@@ -71,6 +81,40 @@ function newDoc(meta) {
   });
   doc.registerFont('R', FONT);
   doc.registerFont('B', FONT_BOLD);
+  doc.registerFont('KR', FONT_KN);
+  doc.registerFont('KB', FONT_KN_BOLD);
+
+  /* 'R' and 'B' are logical weights. Whenever a string about to be drawn or
+     measured contains Kannada, the matching Kannada face is used for that call
+     and the Latin face restored after. Measuring and drawing go through the
+     same switch, so a cell's height is computed with the face it is drawn in. */
+  let weight = 'R';
+  const setFont = doc.font.bind(doc);
+  doc.font = (name, ...rest) => {
+    if (name === 'R' || name === 'B') weight = name;
+    return setFont(name, ...rest);
+  };
+  /* RE-ENTRANT ON PURPOSE. text() measures words through widthOfString() while
+     it lays out a line. An earlier version switched and restored on every call,
+     so the inner measurement restored the Latin face halfway through the outer
+     text() — and the rest of the line was drawn in a font with no Kannada
+     glyphs, as a row of empty boxes. Only the outermost call switches now; calls
+     made from inside it inherit whatever face it chose. */
+  let depth = 0;
+  for (const m of ['text', 'heightOfString', 'widthOfString']) {
+    const orig = doc[m].bind(doc);
+    doc[m] = (str, ...args) => {
+      if (depth > 0) return orig(str, ...args);
+      const kn = KANNADA.test(String(str ?? ''));
+      depth += 1;
+      if (kn) setFont(weight === 'B' ? 'KB' : 'KR');
+      try { return orig(str, ...args); } finally {
+        depth -= 1;
+        if (kn) setFont(weight);
+      }
+    };
+  }
+
   doc.font('R');
   return doc;
 }
@@ -90,30 +134,31 @@ function toBuffer(doc) {
  * of Karnataka", with the product mark on the left and the department's emblem
  * on the right, and the document's own title in a band beneath.
  */
-function header(doc, { tagline, title, chip }) {
+function header(doc, { heading, dept, title, chip }) {
   const W = doc.page.width;
   const M = doc.page.margins.left;
 
   doc.save().rect(0, 0, W, 92).fill(C.brand).restore();
-  try { doc.image(LOGO, M, 18, { fit: [56, 56] }); } catch { /* logo missing: header still reads */ }
+  doc.save().roundedRect(M - 2, 16, 60, 60, 12).fill('#ffffff').restore();
+  try { doc.image(LOGO, M + 2, 20, { fit: [52, 52] }); } catch { /* logo missing: header still reads */ }
   try { doc.image(EMBLEM, W - M - 56, 18, { fit: [56, 56] }); } catch { /* same */ }
 
   const tx = M + 68;
   const tw = W - 2 * M - 136;
-  doc.fillColor('#ffffff').font('B').fontSize(20)
-     .text(`Pravesha — ${tagline}`, tx, 24, { width: tw, align: 'center' });
+  doc.fillColor('#ffffff').font('B').fontSize(19)
+     .text(heading, tx, 24, { width: tw, align: 'center', lineBreak: false });
   doc.font('R').fontSize(11).fillColor('#d9fdd3')
-     .text('Department of Tourism, Government of Karnataka', tx, 52, { width: tw, align: 'center' });
+     .text(dept, tx, 53, { width: tw, align: 'center', lineBreak: false });
 
   doc.save().rect(0, 92, W, 30).fill(C.brand2).restore();
   doc.fillColor('#ffffff').font('B').fontSize(12)
-     .text(title, M, 100, { width: W - 2 * M, characterSpacing: 1.5 });
+     .text(title, M, 99, { width: W - 2 * M, characterSpacing: 1.5, lineBreak: false });
   if (chip) {
     doc.font('B').fontSize(10);
     const cw = doc.widthOfString(chip) + 18;
     const cx = W - M - cw;
-    doc.save().roundedRect(cx, 99, cw, 17, 8.5).fill('#ffffff').restore();
-    doc.fillColor(C.brand).text(chip, cx, 101.5, { width: cw, align: 'center' });
+    doc.save().roundedRect(cx, 98, cw, 18, 9).fill('#ffffff').restore();
+    doc.fillColor(C.brand).text(chip, cx, 101, { width: cw, align: 'center', lineBreak: false });
   }
   doc.fillColor(C.ink).font('R');
   return 136;
@@ -124,7 +169,7 @@ function header(doc, { tagline, title, chip }) {
  * is. Drawn after the content, over buffered pages, so a document that runs to
  * a second page carries it on both.
  */
-function footer(doc, { generatedAt, vendorTagline, website }) {
+function footer(doc, { generated, pageOf, productLine }) {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i += 1) {
     doc.switchToPage(i);
@@ -137,12 +182,11 @@ function footer(doc, { generatedAt, vendorTagline, website }) {
     doc.page.margins.bottom = 0;
     doc.save().moveTo(M, y).lineTo(W - M, y).lineWidth(0.6).stroke(C.line).restore();
     doc.font('R').fontSize(8).fillColor(C.muted)
-       .text(`Generated on ${istDateTime(generatedAt)}`, M, y + 7, { width: 200, lineBreak: false });
-    doc.text(`Page ${i - range.start + 1} of ${range.count}`, W - M - 80, y + 7,
-      { width: 80, align: 'right', lineBreak: false });
+       .text(generated, M, y + 7, { width: 300, lineBreak: false });
+    doc.text(pageOf(i - range.start + 1, range.count), W - M - 100, y + 7,
+      { width: 100, align: 'right', lineBreak: false });
     doc.font('B').fontSize(8.5).fillColor(C.brand)
-       .text(`Pravesha is a product of ServerPe App Solutions — ${vendorTagline} (${website})`,
-         M, y + 20, { width: W - 2 * M, align: 'center', lineBreak: false });
+       .text(productLine, M, y + 20, { width: W - 2 * M, align: 'center', lineBreak: false });
     doc.page.margins.bottom = bottom;
   }
 }

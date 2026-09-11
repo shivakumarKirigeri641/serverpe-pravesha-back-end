@@ -53,7 +53,8 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
   const gap = 14;
   const colW = (inner - gap) / 2;
 
-  let y = header(doc, { tagline: settings.productTagline, title: 'TAX INVOICE', chip: 'PAID' });
+  let y = header(doc, { heading: `Pravesha — ${settings.productTagline}`,
+    dept: 'Department of Tourism, Government of Karnataka', title: 'TAX INVOICE', chip: 'PAID' });
 
   const left = kvTable(doc, M, y, colW, 'Supplier', [
     ['Name', settings.legalName],
@@ -145,7 +146,11 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
     + 'The entry fee is remitted in full to the Department of Tourism, Government of Karnataka.',
     M, y, { width: inner });
 
-  footer(doc, { generatedAt, vendorTagline: settings.vendorTagline, website: settings.website });
+  footer(doc, {
+    generated: `Generated on ${istDateTime(generatedAt)}`,
+    pageOf: (i, n) => `Page ${i} of ${n}`,
+    productLine: `Pravesha is a product of ServerPe App Solutions — ${settings.vendorTagline} (${settings.website})`,
+  });
   return toBuffer(doc);
 }
 

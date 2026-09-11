@@ -33,6 +33,7 @@ const L = require('../localize');
 async function docSettings() {
   return {
     productTagline: await settings.str('product_tagline', 'Entry made simple.'),
+    productTaglineKn: await settings.str('product_tagline_kn', null),
     vendorTagline: await settings.str('vendor_tagline', 'Smart Clicks, Smart Taps.'),
     website: await settings.str('website', 'www.serverpe.in'),
     gstPercent: await settings.num('gst_percent_on_platform', 18),
@@ -79,7 +80,7 @@ function passMessage(t, lang) {
     tr('secPayment', lang),
     `${tr('entryFee', lang)}: ${rupee(t.entry_paise)}`,
     `${tr('platformFee', lang)}: ${rupee(t.platform_paise)}`,
-    `*${tr('totalPaid', lang)}: ${rupee(t.total_paise)}* · ${passPdf.paymentMethod(t.payment_raw)}`,
+    `*${tr('totalPaid', lang)}: ${rupee(t.total_paise)}* · ${passPdf.paymentMethod(t.payment_raw, lang)}`,
     `${tr('paymentId', lang)}: ${t.gateway_payment_id || '—'}`,
     '',
     tr('secCheckpost', lang),
@@ -120,7 +121,7 @@ async function deliverTicket(ticketId) {
   const s = await docSettings();
   const msg = await send.text(to, passMessage(t, lang));
 
-  const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t) });
+  const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t), lang });
   const doc = await send.document(to, pdf, {
     filename: passPdf.filename(t),
     caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: L.longDate(t.travel_date, lang) }),
