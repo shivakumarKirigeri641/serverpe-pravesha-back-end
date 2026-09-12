@@ -194,21 +194,19 @@ async function build({ kind = 'daily', anchor = null, placeId = null } = {}) {
  * with the month in the vehicle count.
  *
  *   header  {{1}}  daily | weekly | monthly
- *   body    {{1}}  the period in words     {{5}}  skipped — booked, never came
- *           {{2}}  the place               {{6}}  revenue collected
- *           {{3}}  vehicles booked         {{7}}  slot occupancy
- *           {{4}}  entered the checkpost
+ *   body    {{1}}  the period in words     {{5}}  no show
+ *           {{2}}  the place               {{6}}  department collection
+ *           {{3}}  passes booked           {{7}}  busiest hour
+ *           {{4}}  vehicles entered        {{8}}  slot occupancy
  *
- * FIVE FIGURES, NOT ELEVEN. The longer version carried the busiest hour, the
- * split by vehicle type and the gate takings, and every one of them was a thing
- * somebody would have to read past to reach the number they opened the message
- * for. What survives is what a person answering for the hill is actually asked:
- * how many were sold, how many turned up, how many did not, what was collected,
- * and how full it was. The rest is in the panel for whoever wants it.
+ * THE NUMBERS RUN 1..8 WITH NO GAPS, which is not a stylistic choice: WhatsApp
+ * rejects a template whose variables skip a number, and a body edited down from
+ * a longer draft is exactly how gaps appear.
  *
- * REVENUE CARRIES THE DEPARTMENT'S SHARE INSIDE IT rather than as a sixth line.
- * "Rs 880 (department Rs 800)" answers both the question asked and the question
- * meant, in one variable.
+ * DEPARTMENT COLLECTION IS THE DEPARTMENT'S SHARE ALONE — the entry fees, not
+ * the total with the service fee in it. The person reading this is accountable
+ * for that figure and no other, and quietly adding ten per cent to it would put
+ * a number in a meeting that reconciles with nothing.
  */
 function variables(report) {
   const f = report.figures;
@@ -217,11 +215,12 @@ function variables(report) {
     body: [
       report.period.label,                                                     // 1
       report.place,                                                            // 2
-      inr(f.sold),                                                             // 3  booked
-      f.split ? `${inr(f.entered)} (${f.split})` : inr(f.entered),             // 4  entered
-      `${inr(f.neverCame)} (${f.neverCamePercent}%)`,                          // 5  skipped
-      `${money(f.collected)} (department ${money(f.department)})`,             // 6  revenue
-      f.occupancy.length                                                       // 7  occupancy
+      inr(f.sold),                                                             // 3  passes booked
+      f.split ? `${inr(f.entered)} (${f.split})` : inr(f.entered),             // 4  vehicles entered
+      `${inr(f.neverCame)} (${f.neverCamePercent}%)`,                          // 5  no show
+      money(f.department),                                                     // 6  department collection
+      f.peakHour ? `${f.peakHour} — ${inr(f.peakEntries)} vehicles` : 'no entries', // 7  busiest hour
+      f.occupancy.length                                                       // 8  slot occupancy
         ? f.occupancy.map((s) => `${s.slot} ${s.percent}%`).join(', ')
         : 'no slots configured',
     ],
@@ -240,11 +239,14 @@ function asText(report) {
     '',
     `For ${v.body[0]} at ${v.body[1]}.`,
     '',
-    `Vehicles booked: ${v.body[2]}`,
-    `Entered the checkpost: ${v.body[3]}`,
-    `Skipped (did not arrive): ${v.body[4]}`,
-    `Revenue collected: ${v.body[5]}`,
-    `Slot occupancy: ${v.body[6]}`,
+    `Passes booked: ${v.body[2]}`,
+    `Vehicles entered: ${v.body[3]}`,
+    `No show: ${v.body[4]}`,
+    '',
+    `Department collection: ${v.body[5]}`,
+    '',
+    `Busiest hour: ${v.body[6]}`,
+    `Slot occupancy %age: ${v.body[7]}`,
     '',
     'Figures from the Pravesha entry system.',
   ].join('\n');
