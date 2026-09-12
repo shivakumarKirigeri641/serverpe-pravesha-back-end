@@ -224,9 +224,12 @@ function parseCursor(cursor) {
   return { at, id };
 }
 
-async function activity({ limit = 25, before = null } = {}) {
+async function activity({ limit = 25, before = null, date = null } = {}) {
   const size = Math.max(1, Math.min(100, Number(limit) || 25));
   const cursor = parseCursor(before);
+  /* Live monitoring is today. Paging back walks this morning, not last week —
+     yesterday's checks are history and belong to Reports and Ticket management. */
+  const today = date || slotTime.nowIST().date;
 
   const rows = await rowsOf(
     `SELECT s.id, s.verdict, s.scanned_at, s.ticket_no, s.reg_no, s.duration_ms,
@@ -239,10 +242,11 @@ async function activity({ limit = 25, before = null } = {}) {
        LEFT JOIN tickets t ON t.id = s.ticket_id
        LEFT JOIN vehicle_categories c ON c.id = t.category_id
        LEFT JOIN customers cu ON cu.id = t.customer_id
-      WHERE ($1::timestamptz IS NULL
+      WHERE (s.scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $4::date
+        AND ($1::timestamptz IS NULL
              OR (s.scanned_at, s.id) < ($1::timestamptz, $2::bigint))
       ORDER BY s.scanned_at DESC, s.id DESC
-      LIMIT $3`, [cursor ? cursor.at : null, cursor ? cursor.id : null, size + 1]);
+      LIMIT $3`, [cursor ? cursor.at : null, cursor ? cursor.id : null, size + 1, today]);
 
   /* One row more than asked for, purely to know whether there is another page. */
   const hasMore = rows.length > size;
@@ -272,10 +276,11 @@ const shapeActivity = (r) => ({
 /** How many checks there have been at all, and today — for the pager's footing. */
 async function activityCounts(today) {
   const [row] = await rowsOf(
-    `SELECT count(*) AS total,
-            count(*) FILTER (WHERE (scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date) AS today
-       FROM scans`, [today]);
-  return { total: n(row.total), today: n(row.today) };
+    `SELECT count(*) AS today,
+            count(*) FILTER (WHERE verdict IN ('valid','valid_override')) AS entered,
+            count(*) FILTER (WHERE verdict NOT IN ('valid','valid_override')) AS refused
+       FROM scans WHERE (scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date`, [today]);
+  return { today: n(row.today), entered: n(row.entered), refused: n(row.refused) };
 }
 
 /** Who is on duty, and how each of them is working. */
@@ -411,7 +416,7 @@ async function verdicts(today) {
  * Everything an officer would otherwise have to go and search for, including how
  * many times this vehicle has been here before, so a regular is visible as one.
  */
-async function currentVehicle() {
+async function currentVehicle(today) {
   const [row] = await rowsOf(
     `SELECT s.verdict, s.scanned_at, s.duration_ms, s.ticket_no, s.reg_no,
             t.id AS ticket_id, t.travel_date, t.status, t.created_at AS booked_at, t.mobile,
@@ -429,7 +434,8 @@ async function currentVehicle() {
        LEFT JOIN customers cu ON cu.id = t.customer_id
        LEFT JOIN checkposts cp ON cp.id = s.checkpost_id
        LEFT JOIN staff st ON st.id = s.staff_id
-      ORDER BY s.scanned_at DESC LIMIT 1`);
+      WHERE (s.scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+      ORDER BY s.scanned_at DESC LIMIT 1`, [today]);
 
   if (!row) return null;
 
@@ -503,11 +509,11 @@ async function live() {
     vehicles(today, yesterday, nowTime),
     hourly(today, yesterday),
     hourlyByCategory(today),
-    activity({ limit: 25 }),
+    activity({ limit: 25, date: today }),
     staff(today),
     performance(today, now.minutes),
     verdicts(today),
-    currentVehicle(),
+    currentVehicle(today),
     activityCounts(today),
   ]);
 

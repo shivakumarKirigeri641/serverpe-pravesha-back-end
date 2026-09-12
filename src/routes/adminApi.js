@@ -158,7 +158,7 @@ router.get(`${P}/live`, auth, needs('live.view'), safe(async (req, res) => {
 }));
 
 /*
- * Older pages of the activity feed.
+ * Older pages of today's activity feed.
  *
  * Cursor-paged rather than offset-paged: checks land while somebody is reading,
  * and an offset of 25 means something different each time one arrives — page two

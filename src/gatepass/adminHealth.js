@@ -262,13 +262,22 @@ async function health() {
     database(), whatsapp(), gateway(), lookups(), passes(), delivery(), failures(),
   ]);
   const services = [db, wa, pay, look, pass, deliv, server()];
-  const worst = services.reduce((w, s) => (rank[s.state] > rank[w] ? s.state : w), WORKING);
+  /* The overall state is the worst real problem. A quiet service — nothing has
+     happened, so nothing can be judged — does not drag the whole platform down
+     to "quiet" while everything else is working; it is only the overall state
+     when nothing at all is working yet. */
+  const trouble = services.filter((s) => s.state === FAILING || s.state === DEGRADED);
+  const worst = trouble.length
+    ? trouble.reduce((w, s) => (rank[s.state] > rank[w] ? s.state : w), DEGRADED)
+    : (services.some((s) => s.state === WORKING) ? WORKING : QUIET);
+  const quiet = services.filter((s) => s.state === QUIET).map((s) => s.label);
   const config = configuration();
 
   return {
     at: new Date().toISOString(),
     overall: worst,
     overallLabel: { working: 'Everything is working', degraded: 'Something needs attention', failing: 'Something is failing', quiet: 'Nothing has happened recently' }[worst],
+    quietServices: quiet,
     responseMs: Date.now() - started,
     services,
     failures: fails,
