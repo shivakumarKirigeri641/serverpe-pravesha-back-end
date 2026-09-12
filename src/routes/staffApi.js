@@ -200,6 +200,23 @@ router.get(`${P}/history`, auth, safe(async (req, res) => {
   })) });
 }));
 
+/*
+ * Every pass for a day — expected and entered — with who booked it.
+ *
+ * The gate screen is today's work; this is the record behind it, for the
+ * questions a visitor asks while standing at the barrier. A plate typed here
+ * searches every date rather than the chosen one.
+ */
+router.get(`${P}/passes`, auth, safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await checkin.passes(req.checkpost, {
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? req.query.date : null,
+    status: req.query.status ? String(req.query.status) : null,
+    q: req.query.q ? String(req.query.q) : '',
+    limit: req.query.limit,
+    offset: req.query.offset,
+  })) });
+}));
+
 /* One number plate: every check and every pass this gate has seen of it. */
 router.get(`${P}/vehicle/:regNo`, auth, safe(async (req, res) => {
   const out = await checkin.vehicle(req.checkpost, req.params.regNo);

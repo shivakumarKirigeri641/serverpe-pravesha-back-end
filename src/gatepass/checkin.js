@@ -430,4 +430,118 @@ async function vehicle(checkpost, regNoInput) {
   };
 }
 
-module.exports = { arrivals, search, inspect, record, recent, history, vehicle, verdictFor };
+/**
+ * Every pass for a day at this gate — expected, entered, and who booked it.
+ *
+ * WHY THE GATE NEEDS MORE THAN A PLATE. The shift log answers "did that car go
+ * through?". This answers the questions that come after it, usually with a
+ * visitor standing there: who booked this, when, how, what did they pay, is
+ * this the pass they moved from Saturday, and did somebody at this gate decide
+ * the vehicle type rather than the register. All of it is already in the
+ * booking; it was simply never carried out to the barrier.
+ *
+ * ANY DAY, NOT JUST TODAY. The gate screen deliberately shows today only — that
+ * is the work in front of them. This is the record: pick a date, or search a
+ * plate and see every pass it has ever held here.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. The full mobile number: staff see the last
+ * four digits, enough to confirm against a visitor reading theirs out, and not
+ * enough to be a list of phone numbers walking around on a phone. The same rule
+ * the rest of the gate app follows.
+ */
+async function passes(checkpost, { date = null, status = null, q = '', limit = 50, offset = 0 } = {}) {
+  const size = Math.max(1, Math.min(100, Number(limit) || 50));
+  const skip = Math.max(0, Number(offset) || 0);
+  const term = String(q || '').trim();
+  const cleaned = term.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  /* A plate search ignores the date: "has this vehicle ever been here?" is not
+     a question about one day. Everything else is that day's list. */
+  const day = cleaned.length >= 3 ? null : (date || slotTime.nowIST().date);
+
+  const rows = await rowsOf(
+    `SELECT ${LIST_COLUMNS},
+            t.created_at, t.category_declared, t.declared_reason,
+            t.moved_from_date, t.moved_at, t.entry_paise, t.platform_paise, t.gst_paise,
+            regexp_replace(msl.label, '[[:space:]]+', ' ', 'g') AS moved_from_slot,
+            cu.wa_id, cu.language,
+            v.identified_by, v.identity_kind, v.identity_note, v.colour,
+            pay.gateway, pay.payment_id, pay.paid_at, pay.status AS payment_status,
+            g.kind AS grant_kind, g.payment_method, g.payment_reference, g.reason AS grant_reason,
+            gs.name AS sold_by_staff, gu.name AS sold_by_admin,
+            ent.staff_name AS entered_by, ent.checkpost_name AS entered_at_gate,
+            (SELECT count(*) FROM scans sc WHERE sc.ticket_id = t.id) AS checks,
+            count(*) OVER () AS total_rows
+       ${LIST_FROM}
+       LEFT JOIN place_slots msl ON msl.id = t.moved_from_slot_id
+       LEFT JOIN payments pay ON pay.id = t.payment_id
+       LEFT JOIN ticket_grants g ON g.ticket_id = t.id
+       LEFT JOIN staff gs ON gs.id = g.issued_by_staff
+       LEFT JOIN admin_users gu ON gu.id = g.issued_by
+       LEFT JOIN LATERAL (
+         SELECT st.name AS staff_name, cp.name AS checkpost_name
+           FROM scans sc
+           LEFT JOIN staff st ON st.id = sc.staff_id
+           LEFT JOIN checkposts cp ON cp.id = sc.checkpost_id
+          WHERE sc.ticket_id = t.id AND sc.verdict IN ('valid','valid_override')
+          ORDER BY sc.scanned_at LIMIT 1
+       ) ent ON true
+      WHERE t.place_id = $1
+        AND t.status IN ('paid', 'used')
+        AND ($2::date IS NULL OR t.travel_date = $2::date)
+        AND ($3::text IS NULL
+             OR (t.reg_no = $3 OR t.reg_no LIKE '%' || $3)
+             OR t.ticket_no = ANY($4::text[])
+             OR cu.name ILIKE '%' || $5 || '%')
+        AND ($6::text IS NULL
+             OR ($6 = 'entered' AND t.status = 'used')
+             OR ($6 = 'expected' AND t.status <> 'used'))
+      ORDER BY (t.status = 'used'), s.starts_at, t.travel_date DESC, t.ticket_no
+      LIMIT $7 OFFSET $8`,
+    [checkpost.place_id, day, cleaned || null, booking.passNumberCandidates(term),
+      term || null, ['entered', 'expected'].includes(status) ? status : null, size, skip]);
+
+  /* How a pass came to exist, in the words a staff member would use. */
+  const how = (r) => {
+    if (r.grant_kind === 'free') return 'Complimentary pass';
+    if (r.grant_kind === 'onspot') return r.sold_by_staff ? `Sold at the gate by ${r.sold_by_staff}` : 'Sold on the spot';
+    if (r.wa_id) return 'Booked on WhatsApp';
+    return 'Booked online';
+  };
+
+  return {
+    date: day,
+    searched: cleaned.length >= 3 ? term : null,
+    total: rows.length ? Number(rows[0].total_rows) : 0,
+    passes: rows.map((r) => ({
+      ...shape(r),
+      colour: r.colour || null,
+      booked: {
+        at: r.created_at,
+        how: how(r),
+        by: r.customer_name || r.wa_profile_name || null,
+        language: r.language || null,
+        declared: r.category_declared === true,
+        declaredReason: r.declared_reason || null,
+        identifiedBy: r.identified_by,
+        identity: r.identity_note ? { kind: r.identity_kind, value: r.identity_note } : null,
+      },
+      paid: {
+        total: Math.round(Number(r.total_paise || 0) / 100),
+        entry: Math.round(Number(r.entry_paise || 0) / 100),
+        fee: Math.round((Number(r.platform_paise || 0) + Number(r.gst_paise || 0)) / 100),
+        method: r.payment_method || r.gateway || null,
+        reference: r.payment_reference || r.payment_id || null,
+        at: r.paid_at || null,
+        status: r.payment_status || (r.grant_kind ? 'collected' : null),
+      },
+      entered: r.used_at ? { at: r.used_at, by: r.entered_by || null, gate: r.entered_at_gate || null } : null,
+      moved: r.moved_from_date
+        ? { fromDate: String(r.moved_from_date instanceof Date ? r.moved_from_date.toISOString() : r.moved_from_date).slice(0, 10),
+            fromSlot: r.moved_from_slot || null, at: r.moved_at }
+        : null,
+      checks: Number(r.checks || 0),
+    })),
+  };
+}
+
+module.exports = { arrivals, search, inspect, record, recent, history, passes, vehicle, verdictFor };
