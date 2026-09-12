@@ -264,10 +264,24 @@ async function detail(id) {
        where somebody checking a payment or an unverified vehicle will look. */
     photos: await require('./photos').forTicket(t.id),
     entry: {
-      status: entered ? (entered.verdict === 'valid_override' ? 'Admitted after a warning' : 'Entered') : t.state === 'skipped' ? 'Never arrived' : 'Not yet',
+      status: entered
+        ? (entered.verdict === 'valid_override' ? 'Admitted after a warning'
+          : t.entry_source === 'self' ? 'Entered — recorded by the visitor' : 'Entered')
+        : t.state === 'skipped' ? 'Never arrived' : 'Not yet',
       at: entered?.scanned_at || t.used_at || null,
       checkpost: entered?.checkpost || null,
       staff: entered?.staff || null,
+      /*
+       * Who says this vehicle came in.
+       *
+       * 'gate' is a staff member who looked at it. 'self' is the visitor, who
+       * ticked "I am already at the checkpost" while paying and whose phone
+       * agreed they were standing there — checked, but unwitnessed. The two are
+       * not the same evidence, and anybody auditing a day's entries has to be
+       * able to tell them apart without reading scan payloads.
+       */
+      source: t.entry_source || null,
+      metresFromGate: t.self_checkin_m === null || t.self_checkin_m === undefined ? null : Number(t.self_checkin_m),
       attempts: scans.map((s) => ({ verdict: s.verdict, label: VERDICTS[s.verdict] || s.verdict, at: s.scanned_at, checkpost: s.checkpost, staff: s.staff })),
     },
     timeline,

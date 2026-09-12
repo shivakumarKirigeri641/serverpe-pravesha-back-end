@@ -189,6 +189,28 @@ async function settle(payment, ticket, rzpPaymentId, raw) {
     return issued;
   }
 
+  /*
+   * "I am already at the checkpost", ticked on the payment sheet and checked
+   * against where the phone said it was. The entry is recorded here, with the
+   * money, because that is the moment the pass becomes real — and before the
+   * pass is sent, so what the visitor receives already says they are in.
+   *
+   * It is allowed to fail. A slot that closed during the payment, or a pass
+   * already checked at the barrier, simply means no entry is recorded; the pass
+   * is untouched and good, and the staff member checks them in as usual.
+   */
+  if (!issued.already) {
+    try {
+      const marked = await require('../gatepass/selfCheckin').recordIfAsked(issued.ticket);
+      if (marked.recorded) issued.ticket.status = 'used';
+      else if (issued.ticket.self_checkin_asked) {
+        console.log('[checkout] %s asked to check itself in but could not: %s', ticket.ticket_no, marked.reason);
+      }
+    } catch (e) {
+      console.error('[checkout] self check-in failed for %s: %s', ticket.ticket_no, e.message);
+    }
+  }
+
   /* Only the call that turned the hold into a pass sends it. The other two
      confirmation paths find it already issued and stop here, so the visitor
      gets one pass, not three. */

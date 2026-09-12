@@ -358,7 +358,57 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
     heldUntil: t.held_until,
     secondsLeft: Math.max(0, Math.floor((new Date(t.held_until).getTime() - Date.now()) / 1000)),
     amount: pricing.rupees(t.total_paise),
+    /* Whether to offer "I am already at the checkpost" on the payment sheet.
+       Only for a pass that could be driven through the barrier this minute, at
+       a gate whose position somebody has recorded. */
+    selfCheckin: await require('../gatepass/selfCheckin').offered({ placeId: place.id, slotId: slot.id, travelDate }),
   });
+}));
+
+/**
+ * "I am already at the checkpost" — ticked, and checked.
+ *
+ * The phone reports where it is; this decides whether that is the gate. The
+ * answer is written against the held pass rather than kept on the page, because
+ * the entry is recorded when the payment lands, which may be minutes later and
+ * in a different browser tab entirely.
+ *
+ * Unticking is always allowed and never questioned. Ticking is only honoured
+ * when the position agrees, and a refusal is not an error: the visitor simply
+ * gets checked in at the barrier like everybody else, which is what would have
+ * happened anyway.
+ */
+router.post('/book/:token/atgate', express.json(), gate, safe(async (req, res) => {
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError, message: 'This booking link has expired.' });
+
+  const selfCheckin = require('../gatepass/selfCheckin');
+  const { query: q2 } = require('../gatepass/db');
+  const hash = require('crypto').createHash('sha256').update(req.params.token).digest('hex');
+
+  const held = await one(
+    `SELECT t.* FROM web_tokens w JOIN tickets t ON t.id = w.ticket_id
+      WHERE w.token_hash = $1 AND t.status = 'held'`, [hash]);
+  if (!held) return res.json({ ok: false, error: 'no_hold', message: 'Please choose your slot again.' });
+
+  if (req.body?.on !== true) {
+    await q2(`UPDATE tickets SET self_checkin_asked = false, self_checkin_m = NULL WHERE id = $1`, [held.id]);
+    return res.json({ ok: true, on: false });
+  }
+
+  const verdict = await selfCheckin.verify({
+    placeId: held.place_id,
+    latitude: req.body.latitude,
+    longitude: req.body.longitude,
+    accuracy: req.body.accuracy,
+  });
+
+  if (!verdict.ok) {
+    await q2(`UPDATE tickets SET self_checkin_asked = false, self_checkin_m = NULL WHERE id = $1`, [held.id]);
+    return res.json({ ok: true, on: false, refused: verdict.reason, message: verdict.message, distance: verdict.distance || null });
+  }
+
+  await q2(`UPDATE tickets SET self_checkin_asked = true, self_checkin_m = $2 WHERE id = $1`, [held.id, verdict.distance]);
+  res.json({ ok: true, on: true, message: verdict.message, distance: verdict.distance });
 }));
 
 /**

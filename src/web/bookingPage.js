@@ -143,6 +143,17 @@ const SHELL = (title, body) => `<!doctype html>
          animation:up .22s ease-out}
   @keyframes up{from{transform:translateY(40px);opacity:.3}to{transform:none;opacity:1}}
   @media(min-width:560px){.modal{align-items:center}.sheet{border-radius:18px}}
+  .atgate{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;padding:12px 14px;
+    border:1px solid var(--line);border-radius:12px;cursor:pointer}
+  .atgate input{width:20px;height:20px;margin:1px 0 0;accent-color:#0b7a3f;flex:0 0 auto}
+  .atgate b{display:block;font-size:15px}
+  .atgate small{display:block;margin-top:2px;color:var(--muted);font-size:12.5px;line-height:1.35}
+  .atgate.on{border-color:#0b7a3f;background:rgba(11,122,63,.06)}
+  .atgate.busy{opacity:.6;pointer-events:none}
+  .atgate.hide{display:none}
+  #atGateMsg{margin-top:8px}
+  #atGateMsg.good{display:block;border:1px solid rgba(11,122,63,.25);background:rgba(11,122,63,.06);
+    color:#0b7a3f;padding:10px 12px;border-radius:10px;font-size:13.5px}
   .sheet-head{display:flex;gap:12px;align-items:center;margin-bottom:12px}
   .hold-icon{width:42px;height:42px;border-radius:50%;background:var(--okbg);display:grid;place-items:center;font-size:20px;flex:none}
   .sheet-title{font-weight:700;font-size:17px}
@@ -422,6 +433,25 @@ const BODY = (v) => `
       <span>Time left to pay</span><b id="holdClock">10:00</b>
     </div>
     <div id="holdSummary"></div>
+
+    <!--
+      "I am already at the checkpost."
+
+      Hidden unless the server says this pass could be driven through the barrier
+      this minute, at a gate whose position is on file. Ticking it asks the phone
+      where it is; the server decides whether that is the gate. It starts
+      unticked every time, because the expensive mistake here is a tick nobody
+      meant — a pass marked entered while its owner is still at home.
+    -->
+    <label class="atgate hide" id="atGateRow">
+      <input type="checkbox" id="atGate">
+      <span>
+        <b>I am already at the checkpost</b>
+        <small id="atGateHint">Your entry will be recorded now, so you can drive through without waiting.</small>
+      </span>
+    </label>
+    <div class="msg" id="atGateMsg"></div>
+
     <div class="msg bad" id="holdErr"></div>
     <button type="button" id="holdPay">Confirm &amp; pay</button>
     <button type="button" class="ghost" id="holdCancel">Cancel and release place</button>

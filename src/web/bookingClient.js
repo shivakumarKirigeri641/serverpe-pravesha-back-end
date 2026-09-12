@@ -417,6 +417,9 @@
     hold = null;
     vis($('holdModal'), false);
     document.body.style.overflow = '';
+    /* The tick belonged to that hold. A new one starts unticked. */
+    var box = $('atGate');
+    if (box) { box.checked = false; $('atGateRow').classList.remove('on'); $('atGateMsg').className = 'msg'; }
   }
 
   function releaseHold(reason) {
@@ -462,10 +465,108 @@
     tick();
     hold.timer = setInterval(tick, 1000);
 
+    /*
+     * "I am already at the checkpost", offered only when the server says this
+     * pass could be used the moment it is paid for. Always unticked: the costly
+     * mistake is a tick nobody meant, and a remembered one would be exactly
+     * that.
+     */
+    atGate.reset(r.selfCheckin);
+
     vis($('holdModal'), true);
     document.body.style.overflow = 'hidden';
     $('holdPay').focus();
   }
+
+  /*
+   * The tick box, and the check behind it.
+   *
+   * TICKING ASKS THE PHONE WHERE IT IS. The claim on its own is worth little —
+   * not because visitors lie, but because a box can be tapped by mistake, and
+   * the cost of that mistake is a pass the barrier reads as already entered
+   * while its owner is still hours away. The position turns the claim into
+   * something checkable, and from home it fails by kilometres.
+   *
+   * THE PHONE DOES NOT DECIDE. It reports coordinates; the server compares them
+   * with the gate's and answers. Everything here is presentation.
+   *
+   * A REFUSAL IS NOT A FAILURE. Location switched off, a fix too vague to mean
+   * anything, or simply being somewhere else: the box unticks itself, says why
+   * in a sentence, and the visitor pays exactly as before and is checked in at
+   * the barrier — which is what would have happened anyway.
+   */
+  var atGate = (function () {
+    var row = $('atGateRow'), box = $('atGate'), msg = $('atGateMsg'), hint = $('atGateHint');
+
+    function say(text, good) {
+      msg.textContent = text || '';
+      msg.className = 'msg' + (text ? (good ? ' good show' : ' warn show') : '');
+    }
+
+    function tell(on, extra) {
+      return api('atgate', Object.assign({ on: on }, extra || {}));
+    }
+
+    function reset(offer) {
+      box.checked = false;
+      row.classList.remove('on', 'busy');
+      say('');
+      var show = !!(offer && offer.offered);
+      vis(row, show);
+      if (show && offer.gate) hint.textContent = 'Your entry at ' + offer.gate + ' will be recorded now, so you can drive through without waiting.';
+      /* Anything left over from a previous hold is cleared on the server too. */
+      if (!show) tell(false).catch(function () {});
+    }
+
+    box.addEventListener('change', function () {
+      if (!box.checked) {
+        row.classList.remove('on');
+        say('');
+        tell(false).catch(function () {});
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        box.checked = false;
+        say('This browser cannot share your location, so we cannot confirm you are at the gate. The staff member will check you in.');
+        return;
+      }
+
+      row.classList.add('busy');
+      say('Checking that you are at the gate…');
+
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        tell(true, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        }).then(function (r) {
+          row.classList.remove('busy');
+          if (r.ok && r.on) {
+            box.checked = true;
+            row.classList.add('on');
+            say(r.message || 'You are at the gate. Your entry will be recorded when you pay.', true);
+          } else {
+            box.checked = false;
+            row.classList.remove('on');
+            say(r.message || 'We could not confirm you are at the gate. The staff member will check you in.');
+          }
+        }).catch(function () {
+          row.classList.remove('busy');
+          box.checked = false;
+          say('We could not check just now. The staff member will check you in.');
+        });
+      }, function (err) {
+        row.classList.remove('busy');
+        box.checked = false;
+        say(err && err.code === 1
+          ? 'Location is switched off for this page, so we cannot confirm you are at the gate. The staff member will check you in.'
+          : 'We could not read your location. The staff member will check you in.');
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    });
+
+    return { reset: reset };
+  }());
 
   $('pay').addEventListener('click', function () {
     var v = state.vehicle, s = state.slot;

@@ -36,7 +36,7 @@ const rowsOf = async (text, params) => (await query(text, params)).rows;
 /* The gate is only ever interested in a pass that was paid for. */
 const LIST_COLUMNS = `
   t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.mobile,
-  t.total_paise, t.place_id,
+  t.total_paise, t.place_id, t.entry_source,
   s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label,
   s.label_kn AS slot_label_kn, s.starts_at, s.ends_at,
   c.code AS category_code, c.label AS category_label, c.label_kn AS category_label_kn,
@@ -56,6 +56,10 @@ const shape = (r) => ({
   travelDate: r.travel_date instanceof Date ? r.travel_date.toISOString().slice(0, 10) : String(r.travel_date),
   status: r.status,
   usedAt: r.used_at,
+  /* 'gate' when a staff member checked it, 'self' when the visitor recorded it
+     themselves at the payment sheet — the screens say which, because they are
+     not the same fact. */
+  entrySource: r.entry_source || null,
   slot: { code: r.slot_code, label: r.slot_label, startsAt: r.starts_at, endsAt: r.ends_at },
   category: { code: r.category_code, label: r.category_label },
   vehicle: [r.maker, r.model].filter(Boolean).join(' ') || null,
@@ -175,6 +179,23 @@ function verdictFor(checkpost, t) {
 
   if (t.status === 'cancelled') return block('cancelled', 'This pass was cancelled.');
   if (t.status === 'used') {
+    /*
+     * Unless the visitor recorded it themselves when paying.
+     *
+     * They ticked "I am already at the checkpost" and their phone agreed they
+     * were — but nobody at the gate has seen the vehicle. Refusing them here
+     * would be the system disbelieving its own feature, and would punish a
+     * visitor for using it. So it is not blocking: the staff member is told what
+     * happened and can check the vehicle and confirm, which replaces an
+     * unwitnessed entry with a witnessed one.
+     *
+     * A pass a staff member already checked is still refused, exactly as before.
+     * One pass is one entry.
+     */
+    if (t.entry_source === 'self') {
+      return { verdict: 'self_declared', blocking: false, selfDeclared: true, usedAt: t.used_at,
+        message: 'The visitor recorded this entry themselves when paying. Check the vehicle and confirm.' };
+    }
     return { verdict: 'already_used', blocking: true, usedAt: t.used_at,
       message: 'This pass has already been used for entry.' };
   }
@@ -234,12 +255,23 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
     return { ok: false, verdict: 'wrong_slot', needsOverride: true, message: v.message, pass: detail(t) };
   }
 
-  /* Only 'paid' becomes 'used', so a second tap loses and is told so. */
+  /*
+   * Only 'paid' becomes 'used', so a second tap loses and is told so — with one
+   * exception: a pass the visitor checked in themselves is already 'used', and
+   * confirming it at the barrier is not a second entry but the first witnessed
+   * one. That writes 'gate' over 'self': the stronger fact replaces the weaker,
+   * and the pass can never be confirmed twice because it is no longer 'self'.
+   */
+  const selfDeclared = t.status === 'used' && t.entry_source === 'self';
   const claimed = await tx(async (client) => {
     const { rows } = await client.query(
-      `UPDATE tickets SET status = 'used', used_at = now(), modified_at = now()
-        WHERE id = $1 AND status = 'paid'
-        RETURNING used_at`, [t.id]);
+      selfDeclared
+        ? `UPDATE tickets SET entry_source = 'gate', modified_at = now()
+            WHERE id = $1 AND status = 'used' AND entry_source = 'self'
+            RETURNING used_at`
+        : `UPDATE tickets SET status = 'used', used_at = now(), entry_source = 'gate', modified_at = now()
+            WHERE id = $1 AND status = 'paid'
+            RETURNING used_at`, [t.id]);
     if (!rows.length) return null;
 
     await client.query(
@@ -248,7 +280,8 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [t.id, t.ticket_no, t.reg_no, checkpost.id, session.staff_id, null, session.session_id,
         override ? 'valid_override' : 'valid',
-        JSON.stringify({ typed: rawPayload, override: override || undefined, slotVerdict: v.verdict }),
+        JSON.stringify({ typed: rawPayload, override: override || undefined, slotVerdict: v.verdict,
+          confirmedSelfCheckin: selfDeclared || undefined }),
         sane(durationMs)]);
     return rows[0].used_at;
   });
@@ -267,7 +300,8 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
   notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
 
   return { ok: true, verdict: override ? 'valid_override' : 'valid', usedAt: claimed,
-    message: 'Entry recorded.', pass: { ...detail(t), status: 'used', usedAt: claimed } };
+    message: selfDeclared ? 'Checked. Their own entry is now confirmed by you.' : 'Entry recorded.',
+    pass: { ...detail(t), status: 'used', usedAt: claimed } };
 }
 
 /** The visitor's copy: the approved template, in the language they chose. */
