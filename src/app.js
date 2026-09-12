@@ -55,6 +55,7 @@ app.use('/', require('./routes/adminBookingsApi'));
 app.use('/', require('./routes/adminAlertsApi'));
 app.use('/', require('./routes/adminPlacesApi'));
 app.use('/', require('./routes/adminHealthApi'));
+app.use('/', require('./routes/adminVehiclesApi'));
 /* Temporary, for demonstrations before launch. Delete with src/demo and src/simulation. */
 app.use('/', require('./routes/adminUnverifiedApi'));
 app.use('/', require('./routes/adminDemoApi'));
