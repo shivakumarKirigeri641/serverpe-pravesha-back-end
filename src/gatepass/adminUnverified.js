@@ -114,6 +114,8 @@ async function list({ q = null, kind = null, from = null, to = null, limit = 25,
             g.payment_method, g.payment_reference, g.created_at AS sold_at,
             s.name AS staff_name, u.name AS admin_name, cp.name AS checkpost_name,
             i.invoice_no,
+            (SELECT COALESCE(json_agg(json_build_object('id', ph.id, 'kind', ph.kind) ORDER BY ph.id), '[]')
+               FROM gate_photos ph WHERE ph.ticket_id = t.id) AS photos,
             count(*) OVER () AS total_rows
        FROM tickets t
        JOIN vehicles v ON v.id = t.vehicle_id
@@ -168,6 +170,9 @@ async function list({ q = null, kind = null, from = null, to = null, limit = 25,
       paymentMethod: r.payment_method,
       paymentReference: r.payment_reference,
       invoiceNo: r.invoice_no,
+      /* For a vehicle with no number plate this is the only description of it
+         that nobody typed, so it belongs on the row, not two clicks away. */
+      photos: (r.photos || []).map((ph) => ({ id: String(ph.id), kind: ph.kind })),
     })),
   };
 }

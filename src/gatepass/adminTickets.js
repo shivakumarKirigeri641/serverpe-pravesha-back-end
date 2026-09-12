@@ -353,6 +353,22 @@ async function onspotTicket({ body, adminId = null, staff = null, checkpost = nu
   const reference = String(body.paymentReference || '').trim();
   if (method !== 'cash' && reference.length < 4) refuse('Enter the UPI or card transaction reference.', { code: 'payment_reference' });
 
+  /*
+   * A vehicle with no number plate must be photographed.
+   *
+   * Everything else recorded about such a vehicle was typed by a person and can
+   * be mistyped: a chassis number read off a plate in bad light, a driver's
+   * name. The photograph is the one description of it that cannot be. It is
+   * required only at a gate, where there is a camera in the staff member's hand
+   * and the vehicle is in front of them — the desk in the panel is issuing a
+   * pass for something it cannot see.
+   */
+  const photoIds = Array.isArray(body.photoIds) ? body.photoIds.filter(Boolean) : [];
+  if (body.noPlate === true && staff && !photoIds.length) {
+    refuse('Take a photograph of the vehicle. With no number plate it is the only record of what came through.',
+      { code: 'photo_required' });
+  }
+
   /* On-spot means now: today, in a slot that can still be entered. */
   const travelDate = slotTime.nowIST().date;
   const { place, slot } = await slotAndPlace(body.placeId, body.slotId, travelDate, { mustBeEnterable: true });
@@ -378,6 +394,18 @@ async function onspotTicket({ body, adminId = null, staff = null, checkpost = nu
     checkpostId: gate?.id,
   });
 
+  /* The photographs were uploaded while the sale was open; now they belong to a
+     pass. A picture that cannot be claimed never fails a completed sale. */
+  let photosKept = 0;
+  if (photoIds.length) {
+    try {
+      photosKept = await require('./photos').claim(ticket.id, photoIds,
+        { staffId: staff ? staff.staff_id : null, checkpostId: gate?.id || null });
+    } catch (e) {
+      console.error('[adminTickets] photographs not attached to %s: %s', ticket.ticket_no, e.message);
+    }
+  }
+
   /* A sale, so a tax invoice — from the same unbroken series as online sales.
      Not sent anywhere; it is there for the visitor who asks and for the return. */
   let invoiceNo = null;
@@ -388,9 +416,9 @@ async function onspotTicket({ body, adminId = null, staff = null, checkpost = nu
   }
 
   return {
-    ticket: { ...summary(ticket, { place, slot, category, customer, vehicle }), invoiceNo, declared: Boolean(declared), noPlate: Boolean(noPlate) },
+    ticket: { ...summary(ticket, { place, slot, category, customer, vehicle }), invoiceNo, declared: Boolean(declared), noPlate: Boolean(noPlate), photos: photosKept },
     audit: { subject: `ticket:${ticket.ticket_no}`, before: null,
-      after: { kind: 'onspot', invoiceNo, declaredType: declared ? category.code : null, noPlate: Boolean(noPlate), ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
+      after: { kind: 'onspot', invoiceNo, declaredType: declared ? category.code : null, noPlate: Boolean(noPlate), photographs: photosKept, ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
   };
 }
 

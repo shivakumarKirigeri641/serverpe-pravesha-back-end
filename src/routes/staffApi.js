@@ -175,6 +175,45 @@ router.post(`${P}/onspot/lookup`, json, auth, safe(async (req, res) => {
   }
 }));
 
+/*
+ * A photograph, taken and sent while the sale is still open.
+ *
+ * The UPI screen the visitor is holding up, or the vehicle itself when it has no
+ * number plate. It is uploaded the moment it is taken rather than with the sale,
+ * for two reasons: a picture that fails to send must not take a completed sale
+ * down with it, and a staff member should see "sent" before the visitor puts
+ * their phone away. The sale then quotes the ids it was given.
+ */
+router.post(`${P}/photo`, auth, safe(async (req, res) => {
+  const photos = require('../gatepass/photos');
+  try {
+    const out = await photos.keep({
+      dataUrl: req.body?.image,
+      kind: req.body?.kind,
+      note: req.body?.note,
+      width: req.body?.width,
+      height: req.body?.height,
+      staffId: req.session.staff_id,
+      checkpostId: req.checkpost.id,
+    });
+    require('../log').event('gate', 'photo', `${out.kind} · ${Math.round(out.size / 1024)}KB · ${req.session.staff_name || 'staff'}`);
+    res.json({ ok: true, photo: out });
+  } catch (e) {
+    if (e instanceof photos.PhotoRefusal) return res.status(e.status).json({ error: e.code, message: e.message });
+    throw e;
+  }
+}));
+
+/* Look at one again — the thumbnail in the sheet, or a photograph on a pass. */
+router.get(`${P}/photo/:id`, auth, safe(async (req, res) => {
+  const photos = require('../gatepass/photos');
+  const row = await photos.bytesOf(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found', message: 'No such photograph.' });
+  res.set('Content-Type', row.mime)
+    .set('Cache-Control', 'private, max-age=3600')
+    .send(row.bytes);
+}));
+
 /* Take the money, issue the pass, and record the entry if the vehicle is here. */
 router.post(`${P}/onspot`, json, auth, safe(async (req, res) => {
   const tickets = require('../gatepass/adminTickets');

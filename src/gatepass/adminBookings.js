@@ -259,6 +259,10 @@ async function detail(id) {
       kind: grant.kind, reasonCode: grant.reason_code, reason: grant.reason,
       approvedBy: grant.approved_by_name, issuedBy: grant.issued_by_name, at: grant.created_at,
     } : null,
+    /* Photographs taken at the barrier: the UPI screen behind a counter payment,
+       and the vehicle itself when it had no number plate to record. The panel is
+       where somebody checking a payment or an unverified vehicle will look. */
+    photos: await require('./photos').forTicket(t.id),
     entry: {
       status: entered ? (entered.verdict === 'valid_override' ? 'Admitted after a warning' : 'Entered') : t.state === 'skipped' ? 'Never arrived' : 'Not yet',
       at: entered?.scanned_at || t.used_at || null,

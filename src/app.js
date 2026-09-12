@@ -24,6 +24,14 @@ app.use(require('./log').middleware);
 /* Mounted first, and with no body parser above it. See the note in the route. */
 app.use('/', require('./routes/whatsapp'));
 
+/*
+ * A photograph from a gate is bigger than any other body this server takes, so
+ * it gets its own parser mounted above the global one — a limit raised for
+ * everything would mean every other route accepting four megabytes of anything.
+ * The phone shrinks the image first; this is headroom, not an invitation.
+ */
+app.use(['/staff/api/photo', '/admin/api/photo'], express.json({ limit: '4mb' }));
+
 /* rawBody is kept because the Razorpay webhook signs the exact bytes it sent,
    and verifying against a re-serialised object never matches. */
 app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));

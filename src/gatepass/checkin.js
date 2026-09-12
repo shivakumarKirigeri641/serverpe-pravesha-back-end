@@ -470,6 +470,8 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
             gs.name AS sold_by_staff, gu.name AS sold_by_admin,
             ent.staff_name AS entered_by, ent.checkpost_name AS entered_at_gate,
             (SELECT count(*) FROM scans sc WHERE sc.ticket_id = t.id) AS checks,
+            (SELECT COALESCE(json_agg(json_build_object('id', ph.id, 'kind', ph.kind) ORDER BY ph.id), '[]')
+               FROM gate_photos ph WHERE ph.ticket_id = t.id) AS photos,
             count(*) OVER () AS total_rows
        ${LIST_FROM}
        LEFT JOIN place_slots msl ON msl.id = t.moved_from_slot_id
@@ -540,6 +542,7 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
             fromSlot: r.moved_from_slot || null, at: r.moved_at }
         : null,
       checks: Number(r.checks || 0),
+      photos: (r.photos || []).map((ph) => ({ id: String(ph.id), kind: ph.kind })),
     })),
   };
 }

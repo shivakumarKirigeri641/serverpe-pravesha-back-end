@@ -41,6 +41,22 @@ router.get(`${P}/:id/detail`, auth, needs('tickets.view'), handle(async (req, re
   res.set('Cache-Control', 'no-store').json({ ok: true, ...found });
 }));
 
+/*
+ * A photograph taken at a barrier — the UPI screen behind a counter payment, or
+ * a vehicle that had no number plate.
+ *
+ * The bytes, with the same permission that opens the pass itself. The panel
+ * fetches this with the session token and shows it from a blob, the way it
+ * already fetches reports: an <img src> cannot carry an Authorization header,
+ * and a token in a URL would sit in browser history and in this server's own
+ * logs for as long as they are kept.
+ */
+router.get('/admin/api/photo/:id', auth, needs('tickets.view'), handle(async (req, res) => {
+  const row = await require('../gatepass/photos').bytesOf(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found', message: 'No such photograph.' });
+  res.set('Content-Type', row.mime).set('Cache-Control', 'private, max-age=3600').send(row.bytes);
+}));
+
 /* The pass itself, exactly as the visitor received it. */
 router.get(`${P}/:id/pass.pdf`, auth, needs('tickets.view'), handle(async (req, res) => {
   const t = await booking.byId(req.params.id);
