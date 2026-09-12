@@ -165,6 +165,19 @@ router.get(`${P}/live`, auth, needs('live.view'), safe(async (req, res) => {
 }));
 
 /*
+ * "Has anything happened?" — the small question the live screen asks between
+ * refreshes.
+ *
+ * The full live payload is a dozen queries; this is one, with no joins. The
+ * screen asks this often and rebuilds itself only when the answer differs from
+ * the last one, so an idle gate costs almost nothing and a barrier that has just
+ * checked a vehicle shows it within a couple of seconds.
+ */
+router.get(`${P}/live/pulse`, auth, needs('live.view'), safe(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await liveStats.pulse()) });
+}));
+
+/*
  * Older pages of today's activity feed.
  *
  * Cursor-paged rather than offset-paged: checks land while somebody is reading,

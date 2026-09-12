@@ -497,6 +497,59 @@ async function currentVehicle(today) {
   };
 }
 
+/**
+ * Has anything actually happened?
+ *
+ * WHY THIS EXISTS. The live screen used to rebuild itself every five seconds
+ * whether or not a single vehicle had moved — a dozen queries, a redrawn table,
+ * and numbers that rolled from 41 to 41. On a quiet Tuesday afternoon that is
+ * all cost and no information. A gate is not a clock: the things worth
+ * redrawing are somebody being checked at the barrier and somebody buying a
+ * pass, and both of them are writes this server made itself.
+ *
+ * So this is the cheap question asked often, and the expensive one asked only
+ * when the answer changes. Three counters and three newest rows, no joins: it
+ * costs a fraction of a full refresh, and a screen sitting on a wall in an empty
+ * office settles into asking a tiny question and being told "nothing".
+ *
+ * WHAT COUNTS AS SOMETHING. A check at a gate, a pass sold by any route — the
+ * robot, the panel, or the barrier — and a member of staff starting or ending a
+ * shift. Deliberately not the heartbeat a phone sends while it sits in a
+ * pocket: that would tick forever and make the whole idea pointless.
+ */
+async function pulse(date = null) {
+  const today = date || slotTime.nowIST().date;
+  const [row] = await rowsOf(
+    `SELECT (SELECT count(*) FROM scans
+              WHERE (scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS checks,
+            (SELECT COALESCE(max(id), 0) FROM scans
+              WHERE (scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS last_check,
+            (SELECT count(*) FROM tickets
+              WHERE travel_date = $1::date
+                 OR (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS passes,
+            (SELECT COALESCE(max(id), 0) FROM tickets
+              WHERE travel_date = $1::date
+                 OR (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS last_pass,
+            (SELECT count(*) FROM staff_sessions
+              WHERE (started_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS shifts,
+            (SELECT count(*) FROM staff_sessions
+              WHERE ended_at IS NULL AND started_at > now() - interval '18 hours')   AS on_duty`,
+    [today]);
+
+  /* One short string the screen can compare with the last one it saw. Its shape
+     is nobody's business but this file's — it is an "is it still the same?",
+     not a report. */
+  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.shifts, row.on_duty].join('.');
+  return {
+    date: today,
+    pulse: beat,
+    checks: n(row.checks),
+    passes: n(row.passes),
+    onDuty: n(row.on_duty),
+    serverTime: slotTime.hhmm(slotTime.nowIST().minutes),
+  };
+}
+
 /** Everything the live screen needs, in one call. */
 async function live() {
   const now = slotTime.nowIST();
@@ -538,4 +591,4 @@ async function live() {
   };
 }
 
-module.exports = { live, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle };
+module.exports = { live, pulse, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle };
