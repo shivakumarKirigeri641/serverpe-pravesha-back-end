@@ -164,15 +164,43 @@ async function detail(regNoOrId) {
        FROM tickets t LEFT JOIN payments p ON p.id = t.payment_id
       WHERE t.vehicle_id = $1`, [v.id]);
 
-  /* Who has booked it. A vehicle is not a person: the same car comes back with a
-     different phone, and that is worth seeing rather than hiding. */
+  /*
+   * Who has booked it.
+   *
+   * A vehicle is not a person. The same car comes back on a different phone —
+   * a family sharing it, a driver booking for an owner, a car sold last month —
+   * and that is worth seeing rather than flattening into one name. Each one
+   * carries what this service legitimately knows about them and nothing it does
+   * not: how often they have booked THIS vehicle, how long they have been a
+   * visitor, what else they bring here, and where those vehicles are registered.
+   *
+   * WHERE THEY ARE FROM IS A FACT ABOUT THE VEHICLE, NOT THE PERSON. The
+   * register says where a vehicle was registered — "SIRSI RTO, Karnataka" — and
+   * that is sourced and checkable. Where its driver lives is not something this
+   * service is told, and guessing it from a mobile number would be inventing a
+   * fact about somebody: numbers are portable and a Delhi number says nothing
+   * about where its owner sleeps. So the origin shown is the vehicles', and it
+   * is labelled as the vehicles'.
+   */
   const visitors = await rowsOf(
-    `SELECT cu.id, cu.name, cu.wa_profile_name, t.mobile,
-            count(*) AS passes, max(t.travel_date) AS last_visit
+    `SELECT cu.id, cu.name, cu.wa_profile_name, cu.language, cu.first_seen_at,
+            max(t.mobile)                              AS mobile,
+            count(*)                                   AS passes,
+            count(*) FILTER (WHERE t.status = 'used')   AS entries,
+            min(t.travel_date)                         AS first_visit,
+            max(t.travel_date)                         AS last_visit,
+            (SELECT count(DISTINCT t2.vehicle_id) FROM tickets t2 WHERE t2.customer_id = cu.id)  AS vehicles,
+            (SELECT count(*) FROM tickets t3 WHERE t3.customer_id = cu.id)                       AS all_passes,
+            (SELECT COALESCE(json_agg(DISTINCT x.reg_no), '[]') FROM (
+                SELECT v2.reg_no FROM tickets t4 JOIN vehicles v2 ON v2.id = t4.vehicle_id
+                 WHERE t4.customer_id = cu.id AND v2.id <> $1 LIMIT 8) x)                        AS other_vehicles,
+            (SELECT COALESCE(json_agg(DISTINCT v3.registered_at), '[]')
+               FROM tickets t5 JOIN vehicles v3 ON v3.id = t5.vehicle_id
+              WHERE t5.customer_id = cu.id AND v3.registered_at IS NOT NULL)                     AS registered_at
        FROM tickets t JOIN customers cu ON cu.id = t.customer_id
       WHERE t.vehicle_id = $1
-      GROUP BY cu.id, cu.name, cu.wa_profile_name, t.mobile
-      ORDER BY count(*) DESC, max(t.travel_date) DESC LIMIT 10`, [v.id]);
+      GROUP BY cu.id, cu.name, cu.wa_profile_name, cu.language, cu.first_seen_at
+      ORDER BY count(*) DESC, max(t.travel_date) DESC LIMIT 25`, [v.id]);
 
   const passes = await rowsOf(
     `SELECT t.id, t.ticket_no, t.travel_date, t.status, t.total_paise, t.used_at, t.created_at,
@@ -263,10 +291,21 @@ async function detail(regNoOrId) {
       refunded: rupees(totals.refunded_paise),
     },
     visitors: visitors.map((r) => ({
-      name: r.name || r.wa_profile_name || null,
+      name: r.name || null,
+      waName: r.wa_profile_name || null,
       mobile: mask(r.mobile),
+      language: r.language || null,
       passes: n(r.passes),
+      entries: n(r.entries),
+      firstVisit: asDate(r.first_visit),
       lastVisit: asDate(r.last_visit),
+      visitorSince: r.first_seen_at,
+      /* Everything they bring here, this vehicle included. */
+      vehicles: n(r.vehicles),
+      allPasses: n(r.all_passes),
+      otherVehicles: (r.other_vehicles || []).filter(Boolean),
+      /* Where their vehicles are registered — the register's words, not ours. */
+      from: (r.registered_at || []).filter(Boolean).map((x) => String(x).replace(/\s+/g, ' ').trim()),
     })),
     passes: passes.map((r) => ({
       id: String(r.id),
