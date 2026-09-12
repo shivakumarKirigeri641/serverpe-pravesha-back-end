@@ -102,7 +102,13 @@ async function spend(token, ticketId = null) {
   return r.rows.length > 0;
 }
 
-const linkFor = (token) =>
-  `${(process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}/book/${token}`;
+const base = () => (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 
-module.exports = { issue, verify, spend, linkFor, TTL_MINUTES };
+const linkFor = (token) => `${base()}/book/${token}`;
+
+/* The same signed, single-use token, pointed at the rating page instead. Issued
+   with purpose 'feedback' so a booking link can never be spent on a rating, nor
+   the other way round. */
+const feedbackLinkFor = (token) => `${base()}/rate/${token}`;
+
+module.exports = { issue, verify, spend, linkFor, feedbackLinkFor, TTL_MINUTES };

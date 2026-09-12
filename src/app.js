@@ -39,6 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/', require('./routes/policy'));
 app.use('/', require('./routes/bookWeb'));
+app.use('/', require('./routes/feedbackWeb'));
 app.use('/', require('./routes/checkout'));
 app.use('/', require('./routes/verify'));
 app.use('/', require('./routes/legal'));
@@ -56,6 +57,7 @@ app.use('/', require('./routes/adminAlertsApi'));
 app.use('/', require('./routes/adminPlacesApi'));
 app.use('/', require('./routes/adminHealthApi'));
 app.use('/', require('./routes/adminVehiclesApi'));
+app.use('/', require('./routes/adminOnspotApi'));
 /* Temporary, for demonstrations before launch. Delete with src/demo and src/simulation. */
 app.use('/', require('./routes/adminUnverifiedApi'));
 app.use('/', require('./routes/adminDemoApi'));

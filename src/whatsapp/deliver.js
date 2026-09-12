@@ -133,7 +133,33 @@ async function deliverTicket(ticketId) {
 
   await logEvent(t, 'pass_delivered', { message: msg.ok, pdf: doc.ok, pdf_error: doc.error || null,
     invoice_no: invoice ? invoice.invoice_no : null });
-  return { ok: msg.ok && doc.ok, message: msg, document: doc };
+
+  /*
+   * WHAT NEXT, AS BUTTONS, WHERE THE VISITOR ALREADY IS.
+   *
+   * Families arrive in two cars. Until now the second one meant scrolling back
+   * up the chat for the menu, or typing "hi" and starting over — and a link on
+   * the payment page in a browser they have already closed helps nobody.
+   * WhatsApp is where the pass was delivered and where the person still is, so
+   * the offer belongs there: one tap on "Book another" and the robot sends a
+   * fresh single-use link, through the same BOOK path the menu has always used.
+   *
+   * It goes last, after the PDF, so the pass is in their hand before anything
+   * else is asked of them. And it is allowed to fail without spoiling the
+   * delivery: a pass that arrived is a pass that arrived, whatever happened to
+   * the buttons underneath it.
+   */
+  let followUp = { ok: false };
+  try {
+    followUp = await send.buttons(to, tr('afterPass', lang), [
+      { id: 'BOOK', title: tr('btnBookAnother', lang) },
+      { id: 'MY_PASSES', title: tr('btnMyPasses', lang) },
+    ]);
+  } catch (e) {
+    console.error('[deliver] follow-up buttons for %s: %s', t.ticket_no, e.message);
+  }
+
+  return { ok: msg.ok && doc.ok, message: msg, document: doc, followUp };
 }
 
 /**

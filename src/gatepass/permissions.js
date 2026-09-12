@@ -34,6 +34,9 @@ const CAPABILITIES = {
      here, how often, and what it paid. Money is still redacted for anybody
      without finance.view, the same as everywhere else. */
   'vehicles.view': 'Look up any vehicle and its history',
+  /* Money taken at a barrier reconciles itself against nothing: cash in a hand,
+     a UPI reference off a stranger's phone. Whoever counts it needs to see it. */
+  'onspot.view': 'See passes sold at the gate and the money taken for them',
   'negative.view': 'See negative tracking',
   'negative.act': 'Review, dismiss and escalate negative activity',
   'visitors.block': 'Block and unblock visitor numbers',
@@ -74,13 +77,13 @@ const ROLES = {
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
       'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view',
-      'unverified.view', 'vehicles.view', 'health.view'],
+      'unverified.view', 'vehicles.view', 'onspot.view', 'health.view'],
   },
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
     can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit',
-      'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'health.view', 'audit.view'],
+      'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'onspot.view', 'health.view', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',

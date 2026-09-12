@@ -107,7 +107,15 @@ async function summary(period) {
             COALESCE(sum(gst_paise), 0)      AS gst,
             COALESCE(sum((raw->'gateway'->>'fee')::bigint), 0) AS gateway_fee,
             COALESCE(sum((raw->'gateway'->>'tax')::bigint), 0) AS gateway_tax,
-            count(*) FILTER (WHERE raw->'gateway'->>'fee' IS NOT NULL) AS with_fee
+            count(*) FILTER (WHERE raw->'gateway'->>'fee' IS NOT NULL) AS with_fee,
+            /* Money taken at a barrier in cash, by UPI or on a card machine
+               never passes through the payment gateway, so it never carries a
+               gateway charge. Counting it among the payments that ought to have
+               one would mean the screen said "these charges may be incomplete"
+               for ever, from the first on-spot sale onwards. */
+            count(*) FILTER (WHERE gateway <> 'counter') AS gateway_payments,
+            count(*) FILTER (WHERE gateway = 'counter')  AS counter_payments,
+            COALESCE(sum(amount_paise) FILTER (WHERE gateway = 'counter'), 0) AS counter_gross
        FROM payments
       WHERE status <> 'failed' AND paid_at IS NOT NULL AND ${IST_DAY('paid_at')} BETWEEN $1::date AND $2::date`, [from, to]);
 
@@ -175,7 +183,12 @@ async function summary(period) {
       praveshaGross: rupees(pay.service),
       gst: rupees(pay.gst),
       gatewayCharges: rupees(pay.gateway_fee),
-      gatewayChargesKnown: n(pay.with_fee) === n(pay.payments),
+      gatewayChargesKnown: n(pay.with_fee) === n(pay.gateway_payments),
+      /* Collected at a barrier rather than through the gateway. The same money
+         in the same totals — it is a sale either way — but whoever reconciles a
+         bank statement needs to know which part of it never went near a bank. */
+      collectedAtGate: rupees(pay.counter_gross),
+      collectedAtGateCount: n(pay.counter_payments),
       refunds: rupees(ref.amount),
       refundCount: n(ref.refunds),
       netRevenue: rupees(net),

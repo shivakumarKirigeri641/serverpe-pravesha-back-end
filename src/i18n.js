@@ -49,6 +49,15 @@ const S = {
   btnBook: { en: '🎟️ Book pass', kn: '🎟️ ಪಾಸ್ ಪಡೆಯಿರಿ' },
   btnMyPasses: { en: '📋 My passes', kn: '📋 ನನ್ನ ಪಾಸ್‌ಗಳು' },
   btnHelp: { en: '❓ Help', kn: '❓ ಸಹಾಯ' },
+  /* Offered straight after a pass is delivered: families arrive in two cars and
+     the second one should not mean finding the menu again. WhatsApp allows 20
+     characters on a button, so the wording is short by necessity, not by
+     choice. */
+  btnBookAnother: { en: '🎟️ Book another', kn: '🎟️ ಇನ್ನೊಂದು ಪಾಸ್' },
+  afterPass: {
+    en: 'Another vehicle to book, or want to see your passes?',
+    kn: 'ಇನ್ನೊಂದು ವಾಹನಕ್ಕೆ ಪಾಸ್ ಬೇಕೇ, ಅಥವಾ ನಿಮ್ಮ ಪಾಸ್‌ಗಳನ್ನು ನೋಡಬೇಕೇ?',
+  },
   btnAgree: { en: '✅ Agree & continue', kn: '✅ ಒಪ್ಪಿ ಮುಂದುವರಿಸಿ' },
 
   thanks: { en: '✅ Thank you.', kn: '✅ ಧನ್ಯವಾದಗಳು.' },
