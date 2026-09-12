@@ -149,6 +149,28 @@ router.post(`${P}/onspot/lookup`, json, auth, safe(async (req, res) => {
     const { vehicle, category } = await tickets.vehicleFor(req.body?.regNo);
     const price = (await require('../gatepass/pricing').tariff(req.checkpost.place_id))
       .find((t) => String(t.categoryId) === String(category.id));
+
+    /*
+     * DOES IT ALREADY HAVE ONE? ASKED HERE, NOT AT THE END.
+     *
+     * One pass per vehicle per day is enforced by the database, so a second sale
+     * was always refused — but only at the last step, after the staff member had
+     * chosen a slot, typed a mobile number and taken the money out of somebody's
+     * hand. Refusing then is correct and useless: the work is done and the
+     * visitor is already reaching for their wallet.
+     *
+     * The question is answerable the moment the number is typed, so it is asked
+     * the moment the number is typed. And the answer is not only "no": it is
+     * that pass — its number, its slot, and whether the vehicle has already come
+     * through — because the visitor standing there usually has one and does not
+     * know it, and the staff member's next move is to check them in, not to sell
+     * them anything.
+     */
+    const booking = require('../gatepass/booking');
+    const slotTime = require('../gatepass/slotTime');
+    const today = slotTime.nowIST().date;
+    const held = await booking.existingForDate(vehicle.id, today);
+
     res.json({
       ok: true,
       found: true,
@@ -157,6 +179,20 @@ router.post(`${P}/onspot/lookup`, json, auth, safe(async (req, res) => {
       vehicle: [vehicle.maker, vehicle.model].filter(Boolean).join(' ') || null,
       colour: vehicle.colour || null,
       price: price ? Math.round(price.totalPaise / 100) : null,
+      alreadyBooked: held ? {
+        ticketNo: held.ticket_no,
+        slot: held.slot_label,
+        status: held.status,
+        usedAt: held.used_at,
+        /* 'held' means somebody is paying for it right now on a phone — a
+           different thing from a pass that exists, and worth saying so. */
+        beingPaidFor: held.status === 'held',
+        message: held.status === 'used'
+          ? `This vehicle already came through today at ${new Date(held.used_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}. One pass is one entry.`
+          : held.status === 'held'
+            ? 'Somebody is paying for a pass for this vehicle right now. Wait a moment and check again.'
+            : `This vehicle already has a pass for today — ${held.ticket_no}, ${held.slot_label}. Check them in instead of selling another.`,
+      } : null,
     });
   } catch (e) {
     if (e instanceof tickets.Refusal) {
