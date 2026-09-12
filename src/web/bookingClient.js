@@ -212,16 +212,20 @@
     if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); this.blur(); runCheck(); }
   });
 
-  /* The slots, directly under the date, as a grid.
+  /* The slots, directly under the date: a card for each.
 
-     One row per slot, one column per vehicle type, each cell the places left
-     for that type as a coloured pill — green with room, amber when running low,
-     red when full. Capacity is held per type (the number left for a car is not
-     the number left for a Tempo Traveller at the same hour), so every type's
-     count is shown from the start. Once the vehicle is checked its column is
-     highlighted and the others fade, and a row is only selectable if that
-     column still has a place. A slot picked before the vehicle was checked is
-     kept if it is still open for it, and cleared with a reason if not. */
+     Capacity is held per vehicle type — the number left for a car is not the
+     number left for a Tempo Traveller at the same hour — so every type's count
+     is shown from the start, as chips that wrap two-by-two on a narrow phone.
+     This was a five-column table, which read well on a laptop and would not fit
+     the screen most visitors actually book on.
+
+     Colour carries the level (green room, amber low, red full) and the number
+     carries the fact, so it reads with the colours removed. Once the vehicle is
+     checked, its own count is promoted into the corner of the card in large type
+     and the other three fade back; a card is only selectable if that type still
+     has a place. A slot picked before the vehicle was checked is kept if it is
+     still open for it, and cleared with a reason if not. */
   var COLS = [
     { code: 'BIKE', icon: '🏍️', name: 'Bike' },
     { code: 'CAR', icon: '🚗', name: 'Car' },
@@ -271,13 +275,7 @@
       var WHY = { slot_over: 'Finished for today', too_late: 'Closed — last entry was ', date_past: 'This date has passed' };
       var anyOpen = false, keep = null, lost = null;
 
-      var head = '<div class="sg-row sg-head"><div class="sg-slot">Time slot</div>'
-        + COLS.map(function (col) {
-          return '<div class="sg-type' + (myCode === col.code ? ' mine' : '') + (myCode && myCode !== col.code ? ' dim' : '') + '">'
-            + '<span class="sg-ico">' + col.icon + '</span>' + col.name + '</div>';
-        }).join('') + '</div>';
-
-      var rows = r.slots.map(function (s, ri) {
+      var rows = r.slots.map(function (s) {
         var byCode = {};
         (s.types || []).forEach(function (x) { byCode[x.code] = x; });
         var timeShut = s.timeClosed || s.isOpen === false;
@@ -291,28 +289,59 @@
           ? (s.timeClosed ? (s.timeReason === 'too_late' ? WHY.too_late + s.lastEntry : (WHY[s.timeReason] || 'Closed')) : (s.closedNote || 'Closed'))
           : 'Last entry ' + s.lastEntry;
 
-        var cells = timeShut
+        /* The visitor's own count, promoted once we know what they drive: by
+           then the only question left is whether there is room for them. */
+        var mineBox = '';
+        if (!timeShut && myCode && byCode[myCode]) {
+          var mx = byCode[myCode];
+          var mlv = level(mx.remaining, mx.capacity);
+          mineBox = '<span class="slot-mine ' + mlv + '">'
+            + (mx.remaining <= 0
+              ? '<b>Full</b><small>for your vehicle</small>'
+              : '<b class="n" data-to="' + mx.remaining + '">0</b><small>place' + (mx.remaining === 1 ? '' : 's') + ' left</small>')
+            + '</span>';
+        }
+
+        /* The four types. Chips rather than table cells: they wrap two-by-two
+           on a narrow phone instead of being crushed into five columns. */
+        var chips = timeShut
           ? '<div class="sg-shut">' + esc(note) + '</div>'
-          : COLS.map(function (col, ci) {
+          : '<div class="slot-types">' + COLS.map(function (col) {
             var x = byCode[col.code] || { remaining: 0, capacity: 0 };
             var lv = level(x.remaining, x.capacity);
-            return '<div class="sg-cell' + (myCode === col.code ? ' mine' : '') + (myCode && myCode !== col.code ? ' dim' : '') + '">'
-              + '<span class="pill ' + lv + '" style="animation-delay:' + (calm ? 0 : (ri * 90 + ci * 45)) + 'ms">'
-              + (x.remaining <= 0 ? 'Full' : '<b class="n" data-to="' + x.remaining + '">0</b><small>/' + x.capacity + '</small>')
-              + '</span></div>';
-          }).join('');
+            var isMine = myCode === col.code;
+            /* The name is on the chip, not only in a tooltip: a car and a
+               Toofan are two emoji apart, and a phone has no hover. */
+            return '<span class="tchip ' + lv + (isMine ? ' mine' : '') + (myCode && !isMine ? ' dim' : '') + '"'
+              + ' title="' + esc(col.name) + ': ' + (x.remaining <= 0 ? 'full' : x.remaining + ' of ' + x.capacity + ' left') + '">'
+              + '<span class="tname"><i>' + col.icon + '</i>' + esc(col.name) + '</span>'
+              + (x.remaining <= 0 ? '<b>Full</b>' : '<b class="n" data-to="' + x.remaining + '">0</b>')
+              + '</span>';
+          }).join('') + '</div>';
 
-        return '<label class="sg-row sg-body' + (selectable ? '' : ' off') + (keep === s ? ' sel' : '') + '" data-slot="' + esc(s.slotId) + '">'
-          + '<div class="sg-slot"><input type="radio" name="slot" value="' + esc(s.slotId) + '"' + (selectable ? '' : ' disabled') + (keep === s ? ' checked' : '') + '>'
-          + '<span><b class="slot-name" data-label="' + esc(s.label) + '">' + esc(parts[0]) + '</b>'
+        return '<label class="slotcard' + (selectable ? '' : ' off') + (keep === s ? ' sel' : '') + '" data-slot="' + esc(s.slotId) + '">'
+          + '<span class="slot-top">'
+          + '<input type="radio" name="slot" value="' + esc(s.slotId) + '"' + (selectable ? '' : ' disabled') + (keep === s ? ' checked' : '') + '>'
+          + '<span class="slot-id">'
+          + '<b class="slot-name" data-label="' + esc(s.label) + '">' + esc(parts[0]) + '</b>'
           + '<span class="sg-time">' + esc(parts[1]) + '</span>'
-          + (timeShut ? '' : '<span class="sg-note">' + esc(note) + '</span>') + '</span></div>'
-          + cells + '</label>';
+          + (timeShut ? '' : '<span class="sg-note">' + esc(note) + '</span>')
+          + '</span>'
+          + mineBox
+          + '</span>'
+          + chips + '</label>';
       }).join('');
 
-      var html = '<div class="sgrid' + (calm ? ' calm' : '') + '">' + head + rows + '</div>'
-        + '<div class="sg-legend"><span class="pill ok">3</span> places left <span class="pill low">1</span> almost full <span class="pill full">Full</span></div>';
-      if (!v) html = '<div class="hint" style="margin:0 0 8px">Places left for each vehicle type. After you check your vehicle below, its column is highlighted.</div>' + html;
+      var html = '<div class="sgrid">' + rows + '</div>'
+        + '<div class="sg-legend">'
+        + '<span><i style="background:#dcf5e8;border:1px solid #a9e2c4"></i>places left</span>'
+        + '<span><i style="background:#fff6e6;border:1px solid #f0d3a0"></i>almost full</span>'
+        + '<span><i style="background:#fdeceb;border:1px solid #f3c2be"></i>full</span>'
+        + '</div>';
+      if (!v) {
+        html = '<div class="hint" style="margin:0 0 8px">Places left for each vehicle type. '
+          + 'Once you check your vehicle below, its own count is shown here.</div>' + html;
+      }
       if (lost) html += '<div class="msg warn show"><b class="msg-title">Please choose another slot</b>' + esc(lost.label) + ' is not available for your vehicle.</div>';
       if (!anyOpen) html += '<div class="msg warn show"><b class="msg-title">No slots on this date</b>Please choose another date.</div>';
 
@@ -322,10 +351,12 @@
 
       Array.prototype.forEach.call($('slots').querySelectorAll('input[name=slot]'), function (i) {
         i.addEventListener('change', function () {
-          Array.prototype.forEach.call($('slots').querySelectorAll('.sg-body'), function (el) {
+          Array.prototype.forEach.call($('slots').querySelectorAll('.slotcard'), function (el) {
             el.classList.toggle('sel', el.getAttribute('data-slot') === i.value);
           });
-          state.slot = { id: i.value, label: i.parentNode.querySelector('.slot-name').getAttribute('data-label') };
+          /* The card is the label around the radio, whatever the markup nests. */
+          var card = i.closest ? i.closest('.slotcard') : i.parentNode.parentNode;
+          state.slot = { id: i.value, label: card.querySelector('.slot-name').getAttribute('data-label') };
           /* Everything the form needs may already be on the page: if a number
              is sitting in the field unchecked, check it now rather than leaving
              the visitor to find a button they have scrolled past. */
