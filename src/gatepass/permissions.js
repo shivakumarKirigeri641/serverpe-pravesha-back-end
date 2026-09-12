@@ -44,6 +44,7 @@ const CAPABILITIES = {
   'settings.staff': 'Manage checkpost staff',
   'settings.users': 'Manage panel users and their roles',
   'settings.gst': 'Change GST and business details',
+  'settings.simulation': 'Switch demonstration mode on and off',
   'health.view': 'See system health',
   'audit.view': 'Read the audit log',
 };

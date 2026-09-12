@@ -109,6 +109,31 @@ router.get(`${P}/settings/gst`, auth, needs('settings.gst'), read(() => settings
 router.put(`${P}/settings/gst`, json, auth, needs('settings.gst'),
   change('gst_business_changed', (req) => settingsAdmin.updateGst({ body: req.body, reason: req.body.reason })));
 
+/* ── Demonstration mode ────────────────────────────────────────────────── */
+router.get(`${P}/settings/simulation`, auth, needs('settings.simulation'), read(() => require('../simulation').status()));
+
+router.put(`${P}/settings/simulation`, json, auth, needs('settings.simulation'), async (req, res) => {
+  const simulation = require('../simulation');
+  try {
+    const reason = String(req.body?.reason || '').trim();
+    if (reason.length < 5) {
+      return res.status(400).json({ error: 'reason_required', message: 'Say why demonstration mode is being switched — it is recorded in the audit log.' });
+    }
+    const out = await simulation.set({ enabled: req.body?.enabled === true, rate: req.body?.rate, hours: req.body?.hours });
+    await admin.audit({
+      adminId: req.admin.admin_id,
+      action: req.body?.enabled === true ? 'simulation_started' : 'simulation_stopped',
+      subject: 'settings:simulation', before: out.before, after: out.after, reason,
+      ip: ipOf(req), sessionId: req.admin.session_id,
+    });
+    res.json({ ok: true, ...(await simulation.status()) });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.code || 'invalid', message: e.message });
+    console.error('[settingsApi] simulation: %s', e.stack || e.message);
+    res.status(500).json({ error: 'server_error', message: 'Something went wrong. Nothing was changed.' });
+  }
+});
+
 /* ── Free and on-spot passes ───────────────────────────────────────────── */
 router.get(`${P}/tickets/availability`, auth, (req, res, next) => (
   admin.can(req.admin.role, 'tickets.free') || admin.can(req.admin.role, 'tickets.onspot') ? next()

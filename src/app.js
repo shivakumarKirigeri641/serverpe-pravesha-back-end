@@ -83,6 +83,10 @@ try {
   process.exit(1);
 }
 
+/* Demonstration mode: off unless switched on in Settings, and never on a
+   production server unless ALLOW_SIMULATION says so. See src/simulation. */
+require('./simulation').start();
+
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
   require('./jobs/reconcile').start();

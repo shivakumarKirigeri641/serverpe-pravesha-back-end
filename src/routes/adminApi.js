@@ -101,6 +101,8 @@ const me = (s) => ({
     readPersonal: admin.can(s.role, 'conversations.view'),
   },
   roleLabel: (require('../gatepass/permissions').ROLES[s.role] || {}).label || s.role,
+  /* Filled in by the session route: the panel shows a banner while it runs. */
+  simulation: s.simulation || null,
   capabilities: require('../gatepass/permissions').capabilitiesOf(s.role),
   signedInAt: s.started_at,
 });
@@ -118,7 +120,12 @@ router.post(`${P}/session`, json, safe(async (req, res) => {
   res.json({ ok: true, token: out.token, ...me(session) });
 }));
 
-router.get(`${P}/session`, auth, safe(async (req, res) => res.json({ ok: true, ...me(req.admin) })));
+router.get(`${P}/session`, auth, safe(async (req, res) => {
+  /* Demonstration mode is stated on every screen while it is on: nobody should
+     mistake generated traffic for real visitors. */
+  const simulation = await require('../simulation').config();
+  res.json({ ok: true, ...me({ ...req.admin, simulation: { running: simulation.enabled, until: simulation.until } }) });
+}));
 
 router.delete(`${P}/session`, auth, safe(async (req, res) => {
   await admin.signOut(tokenOf(req));
