@@ -112,15 +112,37 @@
     var had = !!state.vehicle;
     clearVehicle();
     state.checked = false;
+    state.checkedReg = null;
     if (had) loadSlots(); // the counts were for the old vehicle
   });
 
-  $('check').addEventListener('click', function () {
+  /*
+   * Look the vehicle up.
+   *
+   * WHY THIS IS NO LONGER ONLY A BUTTON. The slot grid sits above the vehicle
+   * field, so a visitor who typed their number and then scrolled up to pick a
+   * slot had chosen everything the form needs and still saw nothing happen —
+   * the review only appears once the vehicle has been checked, and the button
+   * to do that was now off the bottom of their screen. They scrolled back down,
+   * tapped Check vehicle, and were scrolled up again. Choosing a slot now runs
+   * the check itself, and so does leaving the number field.
+   *
+   * IT IS STILL NOT RUN WHILE THEY TYPE. Every check is a paid call to the
+   * vehicle register, and a plate half-entered is a call spent on a number that
+   * does not exist yet. So it runs on a deliberate act — a slot chosen, the
+   * field left, Enter pressed, or the button — and never twice for the same
+   * number.
+   */
+  function runCheck(opts) {
+    var quiet = opts && opts.quiet;
     var reg = $('reg').value.trim();
     if (reg.length < 6) {
+      if (quiet) return;
       $('verr').innerHTML = '<b class="msg-title">Vehicle number needed</b>Please enter the full registration number.';
       show($('verr'), true); return;
     }
+    if ($('check').disabled) return;
+    state.checkedReg = reg;
     var b = $('check');
     b.disabled = true;
     b.innerHTML = '<span class="spin"></span>Checking…';
@@ -179,6 +201,15 @@
       }
       show($('verr'), true);
     });
+  }
+
+  $('check').addEventListener('click', function () { runCheck(); });
+
+  /* Leaving the field, or pressing Go on the keyboard, is as clear a statement
+     that the number is finished as tapping the button is. */
+  $('reg').addEventListener('change', function () { runCheck({ quiet: true }); });
+  $('reg').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); this.blur(); runCheck(); }
   });
 
   /* The slots, directly under the date, as a grid.
@@ -295,7 +326,14 @@
             el.classList.toggle('sel', el.getAttribute('data-slot') === i.value);
           });
           state.slot = { id: i.value, label: i.parentNode.querySelector('.slot-name').getAttribute('data-label') };
-          review();
+          /* Everything the form needs may already be on the page: if a number
+             is sitting in the field unchecked, check it now rather than leaving
+             the visitor to find a button they have scrolled past. */
+          if (!state.vehicle && $('reg').value.trim().length >= 6 && $('reg').value.trim() !== state.checkedReg) {
+            runCheck({ quiet: true });
+          } else {
+            review();
+          }
         });
       });
       review();

@@ -17,6 +17,7 @@ const booking = require('../gatepass/booking');
 const deliver = require('../whatsapp/deliver');
 const pricing = require('../gatepass/pricing');
 const { query } = require('../gatepass/db');
+const webToken = require('../gatepass/webToken');
 const { PREFIX } = require('../config/paths');
 
 const router = express.Router();
@@ -67,8 +68,29 @@ router.get('/pay/:token', async (req, res) => {
       'We could not start the payment just now. Please try the link again in a minute.'));
   }
 
+  /*
+   * A link to book the next vehicle, minted now rather than after paying.
+   *
+   * Families arrive in two cars. Until now the second one meant going back to
+   * WhatsApp, finding the menu, tapping Book and waiting for a fresh link —
+   * four steps to repeat something the visitor had just finished doing.
+   *
+   * It is a NEW single-use token, never the one that opened this page: reusing
+   * that would mean an old message still worked and a visitor could book twice
+   * by scrolling up, which is exactly what single-use prevents. It is minted
+   * here, with the payment page, because by the time the success screen is
+   * drawn the browser has no session left to ask the server with.
+   */
+  let bookAgainUrl = null;
+  try {
+    bookAgainUrl = webToken.linkFor(await webToken.issue(ticket.customer_id, 'booking'));
+  } catch (e) {
+    /* No link is better than a broken page; the WhatsApp button still works. */
+    console.error('[checkout] could not mint a book-again link: %s', e.message);
+  }
+
   const k = checkout.keys();
-  res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token }));
+  res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token, bookAgainUrl }));
 });
 
 /* ────────────────────────────────────────────── path 1: browser callback */
@@ -192,7 +214,7 @@ a.btn{display:block;background:#008069;color:#fff;text-decoration:none;padding:1
 ${link ? `<a class="btn" href="${esc(link)}">Back to WhatsApp</a>` : ''}</div></body></html>`;
 }
 
-function payPage({ ticket, payment, orderId, keyId, token }) {
+function payPage({ ticket, payment, orderId, keyId, token, bookAgainUrl = null }) {
   const rs = (p) => pricing.rs(p);
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -251,6 +273,8 @@ var btn = document.getElementById('pay');
  * silently leaves somebody staring at a dead screen holding a paid ticket.
  */
 function backToWhatsApp(httpsUrl) {
+  /* Empty unless a fresh booking link could be minted. */
+  var bookAgain = ${JSON.stringify(bookAgainUrl || '')};
   var num = String(${JSON.stringify(String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\\D/g, ''))});
 
   /* The token goes first. The address bar is rewritten to /pay/done before
@@ -266,6 +290,11 @@ function backToWhatsApp(httpsUrl) {
     + '<p style="margin:0 0 18px;color:#4b5563">Your entry pass has been sent to you on WhatsApp.<br>'
     + '<span id="goingMsg">Taking you back to WhatsApp…</span></p>'
     + '<button id="back">Open WhatsApp</button>'
+    + (bookAgain
+      ? '<a id="again" href="' + bookAgain + '" style="display:block;margin-top:10px;padding:13px 16px;'
+        + 'border:1px solid #cfd8d3;border-radius:10px;text-decoration:none;color:#0b7a3f;font-weight:600">'
+        + 'Book another vehicle</a>'
+      : '')
     + '<p style="margin:14px 0 0;font-size:12px;color:#9ca3af">If WhatsApp does not open by itself, tap the button. '
     + 'This page can be closed.</p></div>';
 
