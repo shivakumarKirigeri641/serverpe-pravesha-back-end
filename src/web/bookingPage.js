@@ -169,82 +169,13 @@ const SHELL = (title, body) => `<!doctype html>
   .sum td{font-weight:600}
   .sum tr.total th,.sum tr.total td{font-size:16px;font-weight:700;background:rgba(0,168,132,.12);color:var(--ink)}
   button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line);margin-top:10px}
-  /*
-   * SLOTS, AS A CARD EACH.
-   *
-   * This was a table: slots down the side, the four vehicle types across the
-   * top, a count in every cell. It reads beautifully on a laptop and does not
-   * fit a phone — five columns inside 360 pixels left the type headings stacked
-   * two letters wide and the counts squeezed against each other, on the one
-   * screen a visitor has to understand before paying.
-   *
-   * So each slot is now a card: what time it is, on its own line, in words. The
-   * four types sit underneath as chips that lay themselves out in one row where
-   * there is room and two-by-two where there is not, because a phone held in one
-   * hand at a petrol pump is the normal case and the laptop is the exception.
-   *
-   * COLOUR CARRIES THE LEVEL AND THE NUMBER CARRIES THE FACT — green with room,
-   * amber running low, red full — so it still reads for a colour-blind visitor
-   * with the colours removed.
-   *
-   * ONCE THE VEHICLE IS KNOWN, its own count is promoted to the top right of the
-   * card in large type and the other three fade back: at that point the visitor
-   * has one question left, which is whether there is room for THEM, and three
-   * numbers about other people's vehicles are noise in the way of it.
-   */
-  .sgrid{display:grid;gap:10px}
-  .slotcard{display:block;border:1px solid var(--line);border-radius:14px;background:var(--card);
-            padding:12px 13px;cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
-  .slotcard.sel{border-color:var(--accent);background:rgba(0,168,132,.07);box-shadow:0 0 0 2px rgba(0,168,132,.35)}
-  .slotcard.off{cursor:not-allowed;opacity:.72}
-  .slot-top{display:flex;align-items:flex-start;gap:11px}
-  .slot-top input{width:auto;flex:none;margin:2px 0 0;accent-color:var(--accent);transform:scale(1.15)}
-  .slot-id{flex:1;min-width:0}
-  .slot-name{display:block;font-weight:700;font-size:15.5px;line-height:1.25}
-  .sg-time{display:block;font-size:13px;color:var(--ink);opacity:.85;line-height:1.35;margin-top:1px}
-  .sg-note{display:block;font-size:12px;color:var(--muted);margin-top:2px}
-  /* The visitor's own count, once we know what they drive. */
-  .slot-mine{flex:none;text-align:right;line-height:1}
-  .slot-mine b{display:block;font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ok)}
-  .slot-mine small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
-  .slot-mine.low b{color:#8a4b00}
-  .slot-mine.full b{font-size:17px;color:#a4160c}
-  /* The four types. One row where it fits, two-by-two where it does not. */
-  .slot-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px;margin-top:11px}
-  .tchip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-         padding:7px 4px;border-radius:10px;background:var(--bg);border:1px solid var(--line);
-         transition:opacity .3s ease,background .3s ease}
-  .tname{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted);
-         line-height:1.1;white-space:nowrap}
-  .tchip i{font-style:normal;font-size:13px;line-height:1}
-  .tchip b{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.15}
-  .tchip.ok b{color:#0b6b3a}
-  .tchip.low{background:#fff6e6;border-color:#f0d3a0}
-  .tchip.low b{color:#8a4b00}
-  .tchip.full{background:#fdeceb;border-color:#f3c2be}
-  .tchip.full b{color:#a4160c;font-size:13px}
-  .tchip.mine{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:rgba(0,168,132,.08)}
-  .tchip.dim{opacity:.45}
-  /* A slot that has closed says so instead of showing counts nobody can use. */
-  .sg-shut{margin-top:10px;padding:8px 10px;border-radius:10px;font-size:12.5px;font-weight:600;
-           color:#9a3412;background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(154,52,18,.07) 8px 16px);
-           border:1px dashed rgba(154,52,18,.35);text-align:center}
-  @media(prefers-color-scheme:dark){
-    .tchip.ok b{color:#7ff0b4}
-    .tchip.low{background:#3a2708;border-color:#6b4a12}.tchip.low b{color:#ffd27a}
-    .tchip.full{background:#3f1310;border-color:#7a2a24}.tchip.full b{color:#ffb3ab}
-    .slot-mine b{color:#7ff0b4}.slot-mine.low b{color:#ffd27a}.slot-mine.full b{color:#ffb3ab}
-    .sg-shut{color:#fdba74}
-  }
-  @media(prefers-reduced-motion:reduce){.slotcard,.tchip{transition:none}}
-  /* Wide enough for the four chips to sit comfortably in a row. */
-  @media(min-width:420px){
-    .slot-types{grid-template-columns:repeat(4,minmax(0,1fr))}
-    .tchip{font-size:12.5px;padding:8px 6px}
-  }
-  .sg-legend{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px}
-  .sg-legend span{display:inline-flex;align-items:center;gap:5px}
-  .sg-legend i{font-style:normal;width:11px;height:11px;border-radius:3px;display:inline-block}
+  /* The slot cards style themselves — see bookingClient.js.
+     WHY NOT HERE. This page lives in a module the server loads once at
+     start-up; app.js is re-read from disk on every request. Ship a change to
+     the markup and it reaches visitors at once while the CSS for it waits for
+     a restart — which is exactly how the slot grid came to render on a phone
+     as a run of unstyled text. Markup and styling now travel together in the
+     file that is hot, so they cannot disagree. */
   /* The pointer back up to the slot grid. The slot sits under the date, above
      the vehicle, so after a vehicle is checked the next step is behind the
      visitor; without this the form looked finished with nothing to tap. */

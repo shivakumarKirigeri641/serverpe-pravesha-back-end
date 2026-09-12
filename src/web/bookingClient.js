@@ -260,6 +260,28 @@
     window.requestAnimationFrame(step);
   }
 
+  /*
+   * THE SLOT CARDS BRING THEIR OWN STYLING.
+   *
+   * app.js is re-read from disk on every request; the page's HTML and CSS live
+   * in a module the server loaded when it started. Change how the slots are
+   * drawn and the new markup reaches a visitor at once, while the CSS for it
+   * waits for a restart — which is how the slot grid came to render on a phone
+   * as a run of unstyled text: "Bike148Car399Toofan100TT100".
+   *
+   * Markup and styling now ship in the same file, so they cannot disagree. The
+   * colours come from the page's own variables, which have been stable for far
+   * longer than this layout has.
+   */
+  var SLOT_CSS = ".sgrid{display:grid;gap:10px}\n.slotcard{display:block;border:1px solid var(--line);border-radius:14px;background:var(--card);\npadding:12px 13px;cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}\n.slotcard.sel{border-color:var(--accent);background:rgba(0,168,132,.07);box-shadow:0 0 0 2px rgba(0,168,132,.35)}\n.slotcard.off{cursor:not-allowed;opacity:.72}\n.slot-top{display:flex;align-items:flex-start;gap:11px}\n.slot-top input{width:auto;flex:none;margin:2px 0 0;accent-color:var(--accent);transform:scale(1.15)}\n.slot-id{flex:1;min-width:0}\n.slot-name{display:block;font-weight:700;font-size:15.5px;line-height:1.25}\n.sg-time{display:block;font-size:13px;color:var(--ink);opacity:.85;line-height:1.35;margin-top:1px}\n.sg-note{display:block;font-size:12px;color:var(--muted);margin-top:2px}\n.slot-mine{flex:none;text-align:right;line-height:1}\n.slot-mine b{display:block;font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ok)}\n.slot-mine small{display:block;font-size:11px;color:var(--muted);margin-top:2px}\n.slot-mine.low b{color:#8a4b00}\n.slot-mine.full b{font-size:17px;color:#a4160c}\n.slot-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px;margin-top:11px}\n.tchip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;\npadding:7px 4px;border-radius:10px;background:var(--bg);border:1px solid var(--line);\ntransition:opacity .3s ease,background .3s ease}\n.tname{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--muted);\nline-height:1.1;white-space:nowrap}\n.tchip i{font-style:normal;font-size:13px;line-height:1}\n.tchip b{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.15}\n.tchip.ok b{color:#0b6b3a}\n.tchip.low{background:#fff6e6;border-color:#f0d3a0}\n.tchip.low b{color:#8a4b00}\n.tchip.full{background:#fdeceb;border-color:#f3c2be}\n.tchip.full b{color:#a4160c;font-size:13px}\n.tchip.mine{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:rgba(0,168,132,.08)}\n.tchip.dim{opacity:.45}\n.sg-shut{margin-top:10px;padding:8px 10px;border-radius:10px;font-size:12.5px;font-weight:600;\ncolor:#9a3412;background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(154,52,18,.07) 8px 16px);\nborder:1px dashed rgba(154,52,18,.35);text-align:center}\n@media(prefers-color-scheme:dark){\n.tchip.ok b{color:#7ff0b4}\n.tchip.low{background:#3a2708;border-color:#6b4a12}.tchip.low b{color:#ffd27a}\n.tchip.full{background:#3f1310;border-color:#7a2a24}.tchip.full b{color:#ffb3ab}\n.slot-mine b{color:#7ff0b4}.slot-mine.low b{color:#ffd27a}.slot-mine.full b{color:#ffb3ab}\n.sg-shut{color:#fdba74}\n}\n@media(prefers-reduced-motion:reduce){.slotcard,.tchip{transition:none}}\n@media(min-width:420px){\n.slot-types{grid-template-columns:repeat(4,minmax(0,1fr))}\n.tchip{font-size:12.5px;padding:8px 6px}\n}\n.sg-legend{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px}\n.sg-legend span{display:inline-flex;align-items:center;gap:5px}\n.sg-legend i{font-style:normal;width:11px;height:11px;border-radius:3px;display:inline-block}";
+  (function () {
+    if (document.getElementById('slot-styles')) return;
+    var el = document.createElement('style');
+    el.id = 'slot-styles';
+    el.textContent = SLOT_CSS;
+    document.head.appendChild(el);
+  }());
+
   var loadSeq = 0;
   function loadSlots() {
     var mine = ++loadSeq;
