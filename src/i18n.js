@@ -54,6 +54,20 @@ const S = {
      characters on a button, so the wording is short by necessity, not by
      choice. */
   btnBookAnother: { en: '🎟️ Book another', kn: '🎟️ ಇನ್ನೊಂದು ಪಾಸ್' },
+  btnRate: { en: '⭐ Rate your visit', kn: '⭐ ಅನಿಸಿಕೆ ತಿಳಿಸಿ' },
+  rateAsk: {
+    en: 'You are through the gate — enjoy the hills. How was it? It takes two taps and it is read by the people who run the gate.',
+    kn: 'ನೀವು ಗೇಟ್ ದಾಟಿದ್ದೀರಿ — ಪ್ರಯಾಣ ಸುಖಕರವಾಗಿರಲಿ. ಹೇಗಿತ್ತು? ಎರಡು ಟ್ಯಾಪ್ ಸಾಕು, ಗೇಟ್ ನಡೆಸುವವರು ಇದನ್ನು ಓದುತ್ತಾರೆ.',
+  },
+  rateLinkBody: {
+    en: 'Tap below to rate your visit. It takes a moment, and nothing you write is made public unless we ask you first.',
+    kn: 'ನಿಮ್ಮ ಭೇಟಿಗೆ ರೇಟಿಂಗ್ ನೀಡಲು ಕೆಳಗೆ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಬರೆದದ್ದನ್ನು ನಿಮ್ಮ ಒಪ್ಪಿಗೆಯಿಲ್ಲದೆ ಸಾರ್ವಜನಿಕಗೊಳಿಸುವುದಿಲ್ಲ.',
+  },
+  rateLinkCta: { en: 'Rate your visit', kn: 'ಅನಿಸಿಕೆ ತಿಳಿಸಿ' },
+  rateThanks: {
+    en: 'Thank you — that is recorded.',
+    kn: 'ಧನ್ಯವಾದಗಳು — ದಾಖಲಾಗಿದೆ.',
+  },
   afterPass: {
     en: 'Another vehicle to book, or want to see your passes?',
     kn: 'ಇನ್ನೊಂದು ವಾಹನಕ್ಕೆ ಪಾಸ್ ಬೇಕೇ, ಅಥವಾ ನಿಮ್ಮ ಪಾಸ್‌ಗಳನ್ನು ನೋಡಬೇಕೇ?',

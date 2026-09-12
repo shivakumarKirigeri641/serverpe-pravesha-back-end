@@ -308,9 +308,38 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
 async function notify(t, checkpost, recordedAt) {
   const templates = require('../whatsapp/templates');
   const phone = require('../whatsapp/phone');
+  const send = require('../whatsapp/send');
+  const { t: tr } = require('../i18n');
   const customer = await one('SELECT language FROM customers WHERE id = $1', [t.customer_id]);
   const lang = customer && customer.language === 'kn' ? 'kn' : 'en';
-  await templates.sendEntryRecorded(phone.toWa(t.mobile), t, { checkpost, recordedAt }, lang);
+  const to = phone.toWa(t.mobile);
+  await templates.sendEntryRecorded(to, t, { checkpost, recordedAt }, lang);
+
+  /*
+   * AND, HAVING JUST ARRIVED, ASKED HOW IT WENT.
+   *
+   * This is the moment worth asking: they are through the barrier, the queue is
+   * behind them, and the answer is about something that has actually happened.
+   * Asking when the pass was booked would be asking about a visit that had not
+   * occurred yet.
+   *
+   * IT IS ONLY ASKED WHEN WHATSAPP ALLOWS A FREE MESSAGE. Outside the 24-hour
+   * window a button like this needs an approved template, which costs money per
+   * send and would turn a courtesy into a marketing expense levied on every
+   * visitor. Somebody who booked yesterday and drove up this morning is outside
+   * that window, and they simply are not asked — a silent skip is a better
+   * outcome than a paid interruption.
+   *
+   * AND IT NEVER AFFECTS THE ENTRY. The vehicle is already through. A failure
+   * here is logged and forgotten.
+   */
+  try {
+    if (await send.windowOpen(to)) {
+      await send.buttons(to, tr('rateAsk', lang), [{ id: 'FEEDBACK', title: tr('btnRate', lang) }]);
+    }
+  } catch (e) {
+    console.error('[checkin] could not ask %s for feedback: %s', t.ticket_no, e.message);
+  }
 }
 
 /* A phone left open on a pass for an hour is not a one-hour check; it is a

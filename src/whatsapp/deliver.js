@@ -151,6 +151,21 @@ async function deliverTicket(ticketId) {
    */
   let followUp = { ok: false };
   try {
+    /*
+     * NO RATING BUTTON HERE, DELIBERATELY.
+     *
+     * This message goes out when the pass is bought, which is often the night
+     * before the visit. "How was your visit?" asked then is a question about
+     * something that has not happened, and an answer to it would be a rating of
+     * the booking form dressed up as a rating of the place.
+     *
+     * The asking happens at the barrier instead, once the vehicle is actually
+     * through — see notify() in gatepass/checkin.js. The cost of that choice is
+     * reach: a free message may only be sent inside WhatsApp's 24-hour window,
+     * so somebody who books tonight and drives up tomorrow afternoon is outside
+     * it and is not asked at all. That is the right trade — a rating of a visit
+     * that happened, from fewer people, beats a rating of nothing from everybody.
+     */
     followUp = await send.buttons(to, tr('afterPass', lang), [
       { id: 'BOOK', title: tr('btnBookAnother', lang) },
       { id: 'MY_PASSES', title: tr('btnMyPasses', lang) },

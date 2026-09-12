@@ -170,23 +170,34 @@ function ratingPage({ pass, existing, place }) {
 
 /* ──────────────────────────────────────────────────────────────── the routes */
 
-/** Everything below needs a live feedback token. */
-const gate = safe(async (req, res, next) => {
-  const check = await token.verify(req.params.token);
-  if (!check.ok) {
-    return res.status(410).type('html').send(shell('Link expired',
-      '<h1>This link has expired</h1><p class="sub">Send <b>hi</b> on WhatsApp and tap “Rate your visit” again.</p>'));
+/*
+ * Everything below needs a live feedback token.
+ *
+ * Written as a plain middleware rather than wrapped in safe(): that helper takes
+ * (req, res) and would quietly drop `next`, which is how this first went out
+ * answering every rating link with a 500.
+ */
+const gate = async (req, res, next) => {
+  try {
+    const check = await token.verify(req.params.token);
+    if (!check.ok) {
+      return res.status(410).type('html').send(shell('Link expired',
+        '<h1>This link has expired</h1><p class="sub">Send <b>hi</b> on WhatsApp and tap “Rate your visit” again.</p>'));
+    }
+    if (check.purpose !== 'feedback') {
+      return res.status(400).type('html').send(shell('Wrong link',
+        '<h1>That link is for something else</h1><p class="sub">Please use the rating link from your chat.</p>'));
+    }
+    req.customer = await one('SELECT * FROM customers WHERE id = $1', [check.customerId]);
+    if (!req.customer) {
+      return res.status(404).type('html').send(shell('Not found', '<h1>We could not find you</h1>'));
+    }
+    return next();
+  } catch (e) {
+    console.error('[feedback] gate %s: %s', req.path, e.stack || e.message);
+    return res.status(500).type('html').send(shell('Something went wrong', '<p>Please try again in a moment.</p>'));
   }
-  if (check.purpose !== 'feedback') {
-    return res.status(400).type('html').send(shell('Wrong link',
-      '<h1>That link is for something else</h1><p class="sub">Please use the rating link from your chat.</p>'));
-  }
-  req.customer = await one('SELECT * FROM customers WHERE id = $1', [check.customerId]);
-  if (!req.customer) {
-    return res.status(404).type('html').send(shell('Not found', '<h1>We could not find you</h1>'));
-  }
-  return next();
-});
+};
 
 router.get('/rate/:token', gate, safe(async (req, res) => {
   const pass = await lastPassFor(req.customer.id);
@@ -217,6 +228,22 @@ router.post('/rate/:token', json, gate, safe(async (req, res) => {
 
   require('../log').event('wa', 'rated', `${'•'.repeat(6)}${String(req.customer.mobile).slice(-4)}  ${rating}★${comment ? ` · "${comment.slice(0, 40)}"` : ''}`);
   res.json({ ok: true, id: String(row.id) });
+}));
+
+/*
+ * What the marketing site shows.
+ *
+ * Public, unauthenticated and cached, because it is a handful of sentences
+ * somebody deliberately published — but only ever those: the query is filtered
+ * on is_published, and the shape returned has no room for a mobile number, a
+ * pass number or a date more precise than a month. A testimonial page must not
+ * double as a way of working out who came when.
+ */
+router.get('/public/testimonials', safe(async (req, res) => {
+  const feedback = require('../gatepass/adminFeedback');
+  const list = await feedback.published({ limit: req.query.limit });
+  res.set('Cache-Control', 'public, max-age=300')
+    .json({ ok: true, testimonials: list });
 }));
 
 module.exports = router;

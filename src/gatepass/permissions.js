@@ -37,6 +37,10 @@ const CAPABILITIES = {
   /* Money taken at a barrier reconciles itself against nothing: cash in a hand,
      a UPI reference off a stranger's phone. Whoever counts it needs to see it. */
   'onspot.view': 'See passes sold at the gate and the money taken for them',
+  /* Reading what visitors said is an operational matter. Putting their words on
+     a public page is a different permission, and is kept as one. */
+  'feedback.view': 'Read what visitors said about their visit',
+  'feedback.publish': 'Publish a comment as a testimonial on the public site',
   'negative.view': 'See negative tracking',
   'negative.act': 'Review, dismiss and escalate negative activity',
   'visitors.block': 'Block and unblock visitor numbers',
@@ -77,18 +81,19 @@ const ROLES = {
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
       'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view',
-      'unverified.view', 'vehicles.view', 'onspot.view', 'health.view'],
+      'unverified.view', 'vehicles.view', 'onspot.view', 'feedback.view', 'health.view'],
   },
   finance: {
     label: 'Finance',
     description: 'Revenue, GST, reports and the audit log.',
     can: ['dashboard.view', 'analytics.view', 'reports.view', 'finance.view', 'finance.expenses', 'finance.remit',
-      'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'onspot.view', 'health.view', 'audit.view'],
+      'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'onspot.view',
+      'feedback.view', 'health.view', 'audit.view'],
   },
   viewer: {
     label: 'Viewer',
     description: 'Reads the dashboard, live monitoring, analytics and reports.',
-    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'health.view'],
+    can: ['dashboard.view', 'live.view', 'analytics.view', 'reports.view', 'tickets.view', 'alerts.view', 'destinations.view', 'unverified.view', 'vehicles.view', 'feedback.view', 'health.view'],
   },
 };
 

@@ -160,6 +160,24 @@ async function handle(msg, contact) {
     return;
   }
 
+  /*
+   * RATE YOUR VISIT — the button sent once the vehicle is through the barrier.
+   *
+   * A fresh single-use link each time, exactly as booking does, with purpose
+   * 'feedback' so the two can never be spent on each other. The page behind it
+   * asks two questions and nothing else.
+   */
+  if (action === 'FEEDBACK' || /^\s*(rate|feedback|review)\s*$/i.test(body)) {
+    const lang = langOf(customer);
+    const tok = await webToken.issue(customer.id, 'feedback');
+    await send.ctaUrl(to, {
+      body: t('rateLinkBody', lang),
+      displayText: t('rateLinkCta', lang),
+      url: webToken.feedbackLinkFor(tok),
+    });
+    return;
+  }
+
   /* DELETE MY DATA — the deletion request described on the Data Deletion page.
 
      Accepted only here, from the number itself: WhatsApp has already proven the
