@@ -41,6 +41,7 @@ const crypto = require('crypto');
 const { query, one } = require('../src/gatepass/db');
 const slotTime = require('../src/gatepass/slotTime');
 const passCodec = require('../src/gatepass/passCodec');
+const arrivals = require('../src/simulation/arrivals');
 
 /* ─────────────────────────────────────────────────────────── settings ── */
 
@@ -379,9 +380,11 @@ async function main() {
           const earliest = Math.min(daysAhead === 0 ? Math.max(300, startMin - 240) : 420, latest - 1);
           const boughtAt = ist(bookedOn, int(Math.max(1, earliest), latest));
 
-          /* Most turn up, inside their slot, with a bunching at the start. */
+          /* Most turn up, inside their slot, at the hour people really arrive:
+             the drive from Bengaluru is four to five hours, so the hill fills
+             late morning rather than the moment the gate opens. */
           const shows = chance(rnd(SHOW_UP[0], SHOW_UP[1]));
-          const enterMin = Math.min(lastEntry - 5, startMin + Math.floor(Math.abs(rnd(0, 1) ** 1.6 * (lastEntry - startMin))));
+          const enterMin = arrivals.pickMinute(startMin, lastEntry - 5);
           const entered = shows && (date < today || (date === today && enterMin <= nowMinutes));
           const enterAt = entered ? ist(date, enterMin) : null;
 
@@ -464,7 +467,7 @@ async function main() {
       const upto = date === today ? Math.min(nowMinutes, 1020) : 1020;
       if (upto <= 380) break;
       scans.push([null, null, `KA${pick(RTO)}ZZ${String(int(1, 9999)).padStart(4, '0')}`, checkpost?.id || null, gateStaff(),
-        'unknown_ticket', ist(date, int(380, upto)), JSON.stringify({ seeded: 'occupancy' }), int(4000, 12000), true]);
+        'unknown_ticket', ist(date, arrivals.pickMinute(380, upto)), JSON.stringify({ seeded: 'occupancy' }), int(4000, 12000), true]);
     }
     await bulk('scans', ['ticket_id', 'ticket_no', 'reg_no', 'checkpost_id', 'staff_id', 'verdict', 'scanned_at', 'raw_payload', 'duration_ms', 'is_test'], scans);
 

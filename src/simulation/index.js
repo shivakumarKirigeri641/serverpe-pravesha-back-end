@@ -37,6 +37,7 @@ const settings = require('../gatepass/settings');
 const slotTime = require('../gatepass/slotTime');
 const booking = require('../gatepass/booking');
 const inventory = require('../gatepass/inventory');
+const arrivals = require('./arrivals');
 
 const TICK_SECONDS = 20;
 
@@ -357,13 +358,16 @@ async function automaticRate(place, slots, holidays) {
   const bookingHoursLeft = Math.max(0.25, (BOOKING_DAY.to - Math.min(Math.max(now, BOOKING_DAY.from), BOOKING_DAY.to)) / 60);
 
   const lastEntry = Math.max(...slots.map((x) => slotTime.toMinutes(x.ends_at) - slotTime.LAST_ENTRY_BUFFER_MIN));
-  const gateHoursLeft = Math.max(0.25, (lastEntry - now) / 60);
   /* Not everyone who booked turns up; the rest are the day's no-shows. */
   const arriving = Math.round(n(state.yet_to_arrive) * 0.75);
+  /* Not evenly, either: most of them are driving up from Bengaluru and land
+     late morning. See arrivals.js — this hour gets its share of what is left. */
+  const shareNow = arrivals.shareOfRemaining(now, lastEntry);
 
   return {
     bookingsPerHour: Math.round(gap / bookingHoursLeft),
-    entriesPerHour: now <= lastEntry ? Math.round(arriving / gateHoursLeft) : 0,
+    entriesPerHour: now <= lastEntry ? Math.round(arriving * shareNow) : 0,
+    shareNow: Math.round(shareNow * 100),
     target,
     booked: n(state.booked),
     yetToArrive: n(state.yet_to_arrive),
