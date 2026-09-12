@@ -55,6 +55,54 @@ const me = (s) => ({
   serverTime: slotTime.hhmm(slotTime.nowIST().minutes),
 });
 
+/*
+ * "Get OTP" — a code to the staff member's own phone.
+ *
+ * The number is checked against the staff list before a single SMS is sent: an
+ * unknown number must not be able to make this service text arbitrary people,
+ * and it is told plainly that it is not permitted, in English and in Kannada.
+ *
+ * The answer is the same whether the number belongs to nobody or to a staff
+ * member who has been switched off. Which of the two it is would be a useful
+ * thing to learn by typing numbers into a public login screen, and it is nobody's
+ * business from outside the panel.
+ */
+router.post(`${P}/session/otp`, json, safe(async (req, res) => {
+  const otp = require('../gatepass/staffOtp');
+  const out = await otp.request({
+    mobile: req.body?.mobile,
+    ip: (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim(),
+  });
+  /* 'not_staff' is a refusal, not a server problem; the app shows the sentence. */
+  const status = out.ok ? 200
+    : out.error === 'too_soon' || out.error === 'too_many' ? 429
+      : out.error === 'not_configured' ? 503 : 403;
+  res.status(status).json(out);
+}));
+
+/* The code, typed back. On success this opens the shift. */
+router.post(`${P}/session/verify`, json, safe(async (req, res) => {
+  const otp = require('../gatepass/staffOtp');
+  const out = await otp.verify({
+    mobile: req.body?.mobile,
+    code: req.body?.code,
+    checkpostId: req.body?.checkpostId,
+  });
+  if (!out.ok) {
+    const status = out.error === 'choose_checkpost' ? 200 : 401;
+    return res.status(status).json(out);
+  }
+  const session = await staff.sessionFor(out.token);
+  res.json({ ok: true, token: out.token, ...me(session) });
+}));
+
+/*
+ * The old way in: a mobile number and the six-digit PIN an administrator issued.
+ *
+ * Kept working while the codes bed in, because a gate that cannot open because
+ * the SMS gateway is having a bad morning is a worse failure than an old login
+ * route existing for another week. It is the fallback, not the front door.
+ */
 router.post(`${P}/session`, json, safe(async (req, res) => {
   const { mobile, pin, checkpostId } = req.body || {};
   const out = await staff.signIn({ mobile, pin, checkpostId });

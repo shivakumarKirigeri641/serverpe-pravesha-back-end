@@ -96,6 +96,26 @@ async function signIn({ mobile, pin, checkpostId, deviceToken }) {
       message: 'Too many wrong PINs. Please wait a few minutes, or ask the administrator to reset it.' };
   }
 
+  return signInVerified({ staffId: staff.id, checkpostId, deviceToken });
+}
+
+/**
+ * Open the shift, once we are satisfied who this is.
+ *
+ * Split out of signIn because there is now more than one way to prove it: a PIN
+ * the administrator issued, or a code sent to the staff member's own phone.
+ * Everything after that proof is identical, and must stay identical — one shift
+ * per gate, one per person, a handover recorded rather than a session silently
+ * replaced — so it lives in one place instead of being written twice and
+ * drifting apart.
+ */
+async function signInVerified({ staffId, checkpostId = null, deviceToken = null }) {
+  const staff = await one(`SELECT * FROM staff WHERE id = $1 AND is_active`, [staffId]);
+  if (!staff) {
+    return { ok: false, error: 'not_staff', message: 'This mobile number is not permitted to login.',
+      messageKn: 'ಈ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಗೆ ಲಾಗಿನ್ ಅನುಮತಿ ಇಲ್ಲ.' };
+  }
+
   /* Which gate. One posting is the normal case and is chosen for them; somebody
      posted to two must say which, because every entry is stamped with it. */
   const posts = (await query(
@@ -199,4 +219,4 @@ async function upsert({ name, mobile, pin, checkpostIds = [] }) {
   return row;
 }
 
-module.exports = { signIn, signOut, sessionFor, upsert, hashPin, pinMatches, localMobile };
+module.exports = { signIn, signInVerified, signOut, sessionFor, upsert, hashPin, pinMatches, localMobile };
