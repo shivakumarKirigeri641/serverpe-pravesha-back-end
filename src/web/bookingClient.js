@@ -418,8 +418,10 @@
     vis($('holdModal'), false);
     document.body.style.overflow = '';
     /* The tick belonged to that hold. A new one starts unticked. */
-    var box = $('atGate');
-    if (box) { box.checked = false; $('atGateRow').classList.remove('on'); $('atGateMsg').className = 'msg'; }
+    var box = $('atGate'), row = $('atGateRow'), msg = $('atGateMsg');
+    if (box) box.checked = false;
+    if (row) row.classList.remove('on');
+    if (msg) msg.className = 'msg';
   }
 
   function releaseHold(reason) {
@@ -497,6 +499,23 @@
    */
   var atGate = (function () {
     var row = $('atGateRow'), box = $('atGate'), msg = $('atGateMsg'), hint = $('atGateHint');
+
+    /*
+     * THIS SCRIPT MUST NEVER ASSUME THE PAGE IT IS RUNNING AGAINST.
+     *
+     * app.js is re-read from disk on every request, while the page's HTML lives
+     * in a module the server loaded when it started. Deploy a new script without
+     * restarting and a visitor gets tomorrow's script with today's page — which
+     * is exactly what happened: these four elements did not exist yet, the line
+     * below threw while the page was still wiring itself up, and every listener
+     * registered after this point — including the one on Continue to payment —
+     * was never attached. A missing tick box turned into a dead payment button.
+     *
+     * So a page without these elements simply does not offer the feature. That
+     * is the honest outcome of a half-deployed page, and it costs nobody a
+     * booking.
+     */
+    if (!row || !box || !msg || !hint) return { reset: function () {} };
 
     function say(text, good) {
       msg.textContent = text || '';
