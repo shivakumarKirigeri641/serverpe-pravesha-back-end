@@ -174,6 +174,7 @@ async function build({ kind = 'daily', anchor = null, placeId = null } = {}) {
       neverCame: miss.neverCame,
       neverCamePercent: miss.sold ? Math.round((miss.neverCame / miss.sold) * 100) : 0,
       refused: miss.refused,
+      collected: revenue.revenue.grossCollection,
       department: revenue.revenue.departmentAmount,
       gateTakings: gate.totals.collected,
       gateSales: gate.totals.sales,
@@ -187,39 +188,40 @@ async function build({ kind = 'daily', anchor = null, placeId = null } = {}) {
 /**
  * The values the approved template expects, split the way WhatsApp splits them.
  *
- * A template has three parts and they are numbered independently: the header has
- * its own {{1}}, the body starts again at {{1}}, and the footer may not have
- * variables at all. Returning them in one flat list is how a report ends up with
- * the month in the vehicle count.
+ * A template has three parts and they number their variables independently: the
+ * header has its own {{1}}, the body starts again at {{1}}, and the footer may
+ * not have variables at all. Returning one flat list is how a report ends up
+ * with the month in the vehicle count.
  *
  *   header  {{1}}  daily | weekly | monthly
- *   body    {{1}}  the period in words        {{6}}  turned away
- *           {{2}}  the place                  {{7}}  department collection
- *           {{3}}  vehicles entered           {{8}}  taken at the gate
- *           {{4}}  passes sold                {{9}}  busiest hour
- *           {{5}}  booked, never arrived      {{10}} slot occupancy
+ *   body    {{1}}  the period in words     {{5}}  skipped — booked, never came
+ *           {{2}}  the place               {{6}}  revenue collected
+ *           {{3}}  vehicles booked         {{7}}  slot occupancy
+ *           {{4}}  entered the checkpost
  *
- * Built here rather than at the send site so the template and the numbers are
- * described in one place: if it is ever re-registered in a different order,
- * exactly one function changes.
+ * FIVE FIGURES, NOT ELEVEN. The longer version carried the busiest hour, the
+ * split by vehicle type and the gate takings, and every one of them was a thing
+ * somebody would have to read past to reach the number they opened the message
+ * for. What survives is what a person answering for the hill is actually asked:
+ * how many were sold, how many turned up, how many did not, what was collected,
+ * and how full it was. The rest is in the panel for whoever wants it.
+ *
+ * REVENUE CARRIES THE DEPARTMENT'S SHARE INSIDE IT rather than as a sixth line.
+ * "Rs 880 (department Rs 800)" answers both the question asked and the question
+ * meant, in one variable.
  */
 function variables(report) {
   const f = report.figures;
   return {
     header: [report.period.kind],
     body: [
-      report.period.label,                                                     //  1
-      report.place,                                                            //  2
-      f.split ? `${inr(f.entered)} (${f.split})` : inr(f.entered),             //  3
-      inr(f.sold),                                                             //  4
-      `${inr(f.neverCame)} (${f.neverCamePercent}%)`,                          //  5
-      inr(f.refused),                                                          //  6
-      money(f.department),                                                     //  7
-      f.gateSales                                                              //  8
-        ? `${money(f.gateTakings)} (${inr(f.gateSales)} sale${f.gateSales === 1 ? '' : 's'})`
-        : money(0),
-      f.peakHour ? `${f.peakHour} — ${inr(f.peakEntries)} vehicles` : 'no entries', // 9
-      f.occupancy.length                                                       // 10
+      report.period.label,                                                     // 1
+      report.place,                                                            // 2
+      inr(f.sold),                                                             // 3  booked
+      f.split ? `${inr(f.entered)} (${f.split})` : inr(f.entered),             // 4  entered
+      `${inr(f.neverCame)} (${f.neverCamePercent}%)`,                          // 5  skipped
+      `${money(f.collected)} (department ${money(f.department)})`,             // 6  revenue
+      f.occupancy.length                                                       // 7  occupancy
         ? f.occupancy.map((s) => `${s.slot} ${s.percent}%`).join(', ')
         : 'no slots configured',
     ],
@@ -229,7 +231,7 @@ function variables(report) {
 /**
  * The same report as plain text — for the preview in the panel, for a copy
  * somebody pastes into an email, and for the day WhatsApp is down and this has
- * to go by some other road.
+ * to travel by some other road.
  */
 function asText(report) {
   const v = variables(report);
@@ -238,16 +240,11 @@ function asText(report) {
     '',
     `For ${v.body[0]} at ${v.body[1]}.`,
     '',
-    `Vehicles entered: ${v.body[2]}`,
-    `Passes sold: ${v.body[3]}`,
-    `Booked but did not arrive: ${v.body[4]}`,
-    `Turned away at the barrier: ${v.body[5]}`,
-    '',
-    `Department collection: ${v.body[6]}`,
-    `Collected at the gate: ${v.body[7]}`,
-    '',
-    `Busiest hour: ${v.body[8]}`,
-    `Slot occupancy: ${v.body[9]}`,
+    `Vehicles booked: ${v.body[2]}`,
+    `Entered the checkpost: ${v.body[3]}`,
+    `Skipped (did not arrive): ${v.body[4]}`,
+    `Revenue collected: ${v.body[5]}`,
+    `Slot occupancy: ${v.body[6]}`,
     '',
     'Figures from the Pravesha entry system.',
   ].join('\n');
