@@ -108,6 +108,91 @@ router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
   res.json(out);
 }));
 
+/*
+ * Selling a pass at the barrier.
+ *
+ * The same sale the panel makes and the same one WhatsApp makes: the vehicle
+ * decides the type, the type decides the price, the place comes out of the
+ * slot's capacity, and a tax invoice is issued. What is different at a gate is
+ * who is standing there — sometimes a vehicle the register has never heard of.
+ *
+ * A LOOK-UP THAT FAILS IS NOT A REFUSAL. A temporary registration on a car
+ * bought last week, a dealer plate, a gateway having a bad morning: the answer
+ * is "we do not know what this is", and the staff member — who can see the
+ * vehicle — says what it is instead. The pass then records that the type was
+ * declared and by whom, so it is never confused with one the register verified.
+ */
+router.get(`${P}/onspot`, auth, safe(async (req, res) => {
+  const tickets = require('../gatepass/adminTickets');
+  const out = await tickets.availability({ placeId: req.checkpost.place_id });
+  const now = slotTime.nowIST();
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    place: out.place,
+    date: out.date,
+    prices: out.prices,
+    /* Only slots a vehicle could actually enter now can be sold at a gate. */
+    slots: out.slots.filter((x) => x.isOpen && !x.timeClosed),
+    types: out.prices.map((x) => ({ code: x.code, label: x.label, total: x.total })),
+    /* What counts as identification when the register cannot vouch for a
+       vehicle, in the order a staff member should reach for it. */
+    identityKinds: Object.entries(require('../gatepass/adminTickets').IDENTITY)
+      .map(([key, v]) => ({ key, label: v.label, hint: v.hint, min: v.min })),
+    serverTime: slotTime.hhmm(now.minutes),
+  });
+}));
+
+/* What is this vehicle? Answers "we do not know" rather than failing. */
+router.post(`${P}/onspot/lookup`, json, auth, safe(async (req, res) => {
+  const tickets = require('../gatepass/adminTickets');
+  try {
+    const { vehicle, category } = await tickets.vehicleFor(req.body?.regNo);
+    const price = (await require('../gatepass/pricing').tariff(req.checkpost.place_id))
+      .find((t) => String(t.categoryId) === String(category.id));
+    res.json({
+      ok: true,
+      found: true,
+      regNo: vehicle.reg_no,
+      type: { code: category.code, label: category.label },
+      vehicle: [vehicle.maker, vehicle.model].filter(Boolean).join(' ') || null,
+      colour: vehicle.colour || null,
+      price: price ? Math.round(price.totalPaise / 100) : null,
+    });
+  } catch (e) {
+    if (e instanceof tickets.Refusal) {
+      /* not_permitted is a real no; everything else means "you tell us". */
+      const blocking = e.code === 'not_permitted';
+      return res.status(blocking ? 409 : 200).json({
+        ok: !blocking, found: false, code: e.code, message: e.message, declareType: !blocking,
+      });
+    }
+    /* The gateway is down or unreachable — the counter stays open. */
+    console.error('[staffApi] lookup %s: %s', req.body?.regNo, e.message);
+    res.json({
+      ok: true, found: false, code: 'lookup_failed', declareType: true,
+      message: 'The vehicle register cannot be reached just now. Choose the vehicle type to carry on.',
+    });
+  }
+}));
+
+/* Take the money, issue the pass, and record the entry if the vehicle is here. */
+router.post(`${P}/onspot`, json, auth, safe(async (req, res) => {
+  const tickets = require('../gatepass/adminTickets');
+  try {
+    const out = await tickets.onspotTicket({
+      body: { ...(req.body || {}), placeId: req.checkpost.place_id },
+      staff: req.session,
+      checkpost: req.checkpost,
+    });
+    res.json({ ok: true, ticket: out.ticket });
+  } catch (e) {
+    if (e instanceof tickets.Refusal) {
+      return res.status(e.status).json({ error: e.code, message: e.message });
+    }
+    throw e;
+  }
+}));
+
 /* Further back than the shift: this gate's own log, searchable and paged. */
 router.get(`${P}/history`, auth, safe(async (req, res) => {
   res.json({ ok: true, ...(await checkin.history(req.checkpost, {

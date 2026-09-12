@@ -53,18 +53,117 @@ const localMobile = (m) => String(m || '').replace(/\D/g, '').replace(/^(?:0|91)
  * Uses the vehicle cache first, as a booking does; a plate never seen before is
  * looked up the same way a WhatsApp booking would look it up.
  */
-async function vehicleFor(regNoInput) {
+/**
+ * A vehicle type somebody has read off the vehicle, because the register could
+ * not tell us.
+ *
+ * A temporary registration on a car bought last week, a dealer plate, or a
+ * lookup that failed — none of them are reasons to turn a visitor away at the
+ * barrier, but the price depends on what the vehicle is, so somebody has to
+ * say. That somebody is named on the pass, and the vehicle is marked as
+ * declared rather than verified, so no report ever confuses the two.
+ */
+/*
+ * What may be written down against a vehicle the register cannot vouch for,
+ * and how much of it is enough. The chassis number leads because it is stamped
+ * on the vehicle, printed on the invoice and the temporary registration paper,
+ * and stays with it for life — when a TR becomes a permanent number, the
+ * chassis is what ties the two together.
+ */
+const IDENTITY = {
+  chassis: { label: 'Chassis number', min: 6, hint: 'Last 6 characters are enough' },
+  engine: { label: 'Engine number', min: 6, hint: 'From the invoice or the engine block' },
+  tr_paper: { label: 'Temporary registration paper', min: 4, hint: 'The number on the TR paper' },
+  invoice: { label: 'Invoice number', min: 4, hint: 'Dealer invoice for a new vehicle' },
+  licence: { label: 'Driving licence', min: 6, hint: 'Identifies the driver, not the vehicle' },
+  other: { label: 'Something else', min: 4, hint: 'Write what you can see' },
+};
+
+async function declaredVehicle({ regNo, typeCode, note, kind = 'chassis', noPlate = false }) {
+  const cat = await one(`SELECT id, code, label FROM vehicle_categories WHERE code = $1 AND is_active`, [String(typeCode || '').toUpperCase()]);
+  if (!cat) refuse('Choose what kind of vehicle it is.', { code: 'type_required' });
+
+  /*
+   * SOMETHING UNIQUE, ALWAYS. When the register cannot vouch for a vehicle,
+   * the only record of what came through the gate is what the staff member
+   * writes down — so it is mandatory, for a temporary registration as much as
+   * for a vehicle with no plate at all. The visitor's mobile is taken too, on
+   * every sale, which gives a second way back to whoever this was.
+   */
+  const identityKind = IDENTITY[kind] ? kind : 'other';
+  const rule = IDENTITY[identityKind];
+  const identity = String(note || '').trim().toUpperCase();
+  if (identity.length < rule.min) {
+    refuse(`This vehicle is not in the register, so it needs something unique written against it. ${rule.label}: ${rule.hint.toLowerCase()}.`,
+      { code: 'identity_required' });
+  }
+
+  const shape = { kind: identityKind, label: rule.label, value: identity };
+
+  /* A vehicle WITH a number is that number: the same plate is the same vehicle,
+     and one pass per vehicle per day follows from it. */
+  if (!noPlate) {
+    const row = await one(
+      `INSERT INTO vehicles (reg_no, vehicle_class, rc_status, identified_by, identity_kind, identity_note, is_allowed)
+       VALUES ($1, $2, 'NOT_VERIFIED', 'declared', $3, $4, true)
+       ON CONFLICT (reg_no) DO UPDATE SET identified_by = 'declared',
+         identity_kind = EXCLUDED.identity_kind, identity_note = EXCLUDED.identity_note,
+         /* A failed look-up can leave a shell row with no class at all; the
+            staff member's answer fills it, but never overwrites the register. */
+         vehicle_class = COALESCE(vehicles.vehicle_class, EXCLUDED.vehicle_class), last_seen_at = now()
+       RETURNING *`,
+      [regNo, cat.label, identityKind, identity]);
+    return { vehicle: row, category: cat, declared: true, noPlate: false, identity: shape };
+  }
+
+  /*
+   * A vehicle with NO number is whatever was written against it — so the same
+   * chassis presented twice is the same vehicle, and the one-pass-a-day rule
+   * still bites. Only when it is genuinely new is an identifier minted, short
+   * enough for the column and retried in the unlikely event of a clash.
+   */
+  const seen = await one(
+    `SELECT * FROM vehicles WHERE identified_by = 'no_plate' AND identity_kind = $1 AND identity_note = $2 LIMIT 1`,
+    [identityKind, identity]);
+  if (seen) return { vehicle: seen, category: cat, declared: true, noPlate: true, identity: shape };
+
+  const stamp = slotTime.nowIST().date.slice(2).replace(/-/g, '');   // YYMMDD
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const minted = `NP${stamp}${crypto.randomBytes(2).toString('hex').toUpperCase().slice(0, 3)}`;
+    const row = await one(
+      `INSERT INTO vehicles (reg_no, vehicle_class, rc_status, identified_by, identity_kind, identity_note, is_allowed)
+       VALUES ($1, $2, 'NOT_VERIFIED', 'no_plate', $3, $4, true)
+       ON CONFLICT (reg_no) DO NOTHING
+       RETURNING *`,
+      [minted, cat.label, identityKind, identity]);
+    if (row) return { vehicle: row, category: cat, declared: true, noPlate: true, identity: shape };
+  }
+  refuse('Could not record this vehicle. Try again.', { status: 500, code: 'no_identifier' });
+}
+
+async function vehicleFor(regNoInput, { declare = null } = {}) {
+  /* Nothing to look up: the staff member is telling us what this is. */
+  if (declare && declare.noPlate) return declaredVehicle({ ...declare, noPlate: true });
+
   const parsed = plateParser.parse(regNoInput);
   if (!parsed.ok) refuse(String(parsed.error || 'Check the vehicle number.').replace(/\*/g, ''), { code: 'bad_plate' });
   const vehicles = require('./vehicle');
   const eligibility = require('./eligibility');
   const resolved = await vehicles.resolve(parsed.regNo, {});
   if (!resolved.ok || !resolved.vehicle || !vehicles.isClassified(resolved.vehicle)) {
-    refuse('That registration number could not be found. Check it and try again.', { status: 404, code: 'vehicle_not_found' });
+    /* The register has nothing — a temporary registration, or a lookup that
+       failed. If somebody has said what it is, sell them a pass; if not, say so
+       plainly and let the screen offer the choice. */
+    if (declare && declare.typeCode) return declaredVehicle({ ...declare, regNo: parsed.regNo });
+    refuse('That registration number is not in the vehicle register. It may be a temporary registration — choose the vehicle type to carry on.',
+      { status: 404, code: 'vehicle_not_found' });
   }
   const verdict = await eligibility.decide(resolved.vehicle);
   if (!verdict.allowed) refuse(verdict.reason || 'This vehicle is not permitted.', { code: 'not_permitted' });
-  if (verdict.unclassified || !verdict.categoryId) refuse('The vehicle type could not be determined.', { code: 'unclassified' });
+  if (verdict.unclassified || !verdict.categoryId) {
+    if (declare && declare.typeCode) return declaredVehicle({ ...declare, regNo: parsed.regNo });
+    refuse('The register does not say what kind of vehicle this is — choose the type to carry on.', { code: 'unclassified' });
+  }
   const cat = await one(`SELECT id, code, label FROM vehicle_categories WHERE id = $1`, [verdict.categoryId]);
   return { vehicle: resolved.vehicle, category: cat, description: vehicles.describe ? vehicles.describe(resolved.vehicle) : null };
 }
@@ -159,10 +258,12 @@ async function issue({ kind, place, slot, vehicle, category, customer, travelDat
       if (paymentId) await client.query(`UPDATE payments SET raw = raw || jsonb_build_object('ticket_id', $2::bigint) WHERE id = $1`, [paymentId, ticket.id]);
 
       await client.query(
-        `INSERT INTO ticket_grants (ticket_id, kind, reason_code, reason, approved_by, issued_by, payment_method, payment_reference, amount_paise)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO ticket_grants (ticket_id, kind, reason_code, reason, approved_by, issued_by, payment_method,
+                                    payment_reference, amount_paise, issued_by_staff, checkpost_id, declared)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [ticket.id, kind, grant.reasonCode || null, grant.reason || null, grant.approvedBy || null, grant.issuedBy || null,
-          grant.paymentMethod || null, grant.paymentReference || null, amounts.total_paise]);
+          grant.paymentMethod || null, grant.paymentReference || null, amounts.total_paise,
+          grant.issuedByStaff || null, grant.checkpostId || null, grant.declared === true]);
 
       /* An on-spot visitor is usually already at the barrier: record the entry now
          if asked, attributed to the checkpost, with no gate staff behind it. */
@@ -238,7 +339,15 @@ async function freeTicket({ body, adminId }) {
 
 const METHODS = ['cash', 'upi', 'card'];
 
-async function onspotTicket({ body, adminId }) {
+/**
+ * A pass sold on the spot — at the desk in the panel, or at the barrier itself.
+ *
+ * The gate passes its own staff member and checkpost instead of an
+ * administrator, and may be selling to a vehicle the register cannot identify;
+ * everything else is the same sale, through the same capacity, at the same
+ * price, with the same tax invoice.
+ */
+async function onspotTicket({ body, adminId = null, staff = null, checkpost = null }) {
   const method = String(body.paymentMethod || '');
   if (!METHODS.includes(method)) refuse('Choose how the visitor paid: cash, UPI or card.', { code: 'payment_method' });
   const reference = String(body.paymentReference || '').trim();
@@ -247,20 +356,26 @@ async function onspotTicket({ body, adminId }) {
   /* On-spot means now: today, in a slot that can still be entered. */
   const travelDate = slotTime.nowIST().date;
   const { place, slot } = await slotAndPlace(body.placeId, body.slotId, travelDate, { mustBeEnterable: true });
-  const { vehicle, category } = await vehicleFor(body.regNo);
+  const declare = body.declaredType || body.noPlate
+    ? { typeCode: body.declaredType, note: body.identityNote, kind: body.identityKind, noPlate: body.noPlate === true }
+    : null;
+  const { vehicle, category, declared, noPlate } = await vehicleFor(body.regNo, { declare });
   const customer = await visitorFor(body.mobile, body.name);
 
   const price = await pricing.forPlaceCategory(place.id, category.id);
   if (!price) refuse('No price is set for this vehicle type.', { code: 'no_price' });
   const b = await pricing.breakdown(price);
 
-  const checkpost = await one(`SELECT id FROM checkposts WHERE place_id = $1 AND is_active ORDER BY id LIMIT 1`, [place.id]);
+  const gate = checkpost || await one(`SELECT id FROM checkposts WHERE place_id = $1 AND is_active ORDER BY id LIMIT 1`, [place.id]);
   const ticket = await issue({
     kind: 'onspot', place, slot, vehicle, category, customer, travelDate,
     amounts: { entry_paise: b.entry_paise, platform_paise: b.platform_paise, gst_paise: b.gst_paise, total_paise: b.total_paise },
-    grant: { paymentMethod: method, paymentReference: reference || null, issuedBy: adminId },
+    grant: {
+      paymentMethod: method, paymentReference: reference || null, issuedBy: adminId,
+      issuedByStaff: staff ? staff.staff_id : null, checkpostId: gate?.id || null, declared: Boolean(declared),
+    },
     recordEntry: body.recordEntry === true,
-    checkpostId: checkpost?.id,
+    checkpostId: gate?.id,
   });
 
   /* A sale, so a tax invoice — from the same unbroken series as online sales.
@@ -273,9 +388,9 @@ async function onspotTicket({ body, adminId }) {
   }
 
   return {
-    ticket: { ...summary(ticket, { place, slot, category, customer, vehicle }), invoiceNo },
+    ticket: { ...summary(ticket, { place, slot, category, customer, vehicle }), invoiceNo, declared: Boolean(declared), noPlate: Boolean(noPlate) },
     audit: { subject: `ticket:${ticket.ticket_no}`, before: null,
-      after: { kind: 'onspot', invoiceNo, ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
+      after: { kind: 'onspot', invoiceNo, declaredType: declared ? category.code : null, noPlate: Boolean(noPlate), ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, amount: Math.round(b.total_paise / 100), method, reference: reference || null, entered: body.recordEntry === true } },
   };
 }
 
@@ -311,4 +426,4 @@ async function grants({ kind, limit = 20 }) {
   }));
 }
 
-module.exports = { Refusal, availability, freeTicket, onspotTicket, grants };
+module.exports = { Refusal, IDENTITY, availability, vehicleFor, freeTicket, onspotTicket, grants };
