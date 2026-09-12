@@ -108,6 +108,19 @@ router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
   res.json(out);
 }));
 
+/* Further back than the shift: this gate's own log, searchable and paged. */
+router.get(`${P}/history`, auth, safe(async (req, res) => {
+  res.json({ ok: true, ...(await checkin.history(req.checkpost, {
+    q: req.query.q, verdict: req.query.verdict, before: req.query.before, limit: req.query.limit,
+  })) });
+}));
+
+/* One number plate: every check and every pass this gate has seen of it. */
+router.get(`${P}/vehicle/:regNo`, auth, safe(async (req, res) => {
+  const out = await checkin.vehicle(req.checkpost, req.params.regNo);
+  res.status(out.ok ? 200 : 400).json(out);
+}));
+
 /* The shift's log, for the handover and for "did that go through?". */
 router.get(`${P}/recent`, auth, safe(async (req, res) => {
   res.json({ ok: true, entries: await checkin.recent(req.checkpost) });

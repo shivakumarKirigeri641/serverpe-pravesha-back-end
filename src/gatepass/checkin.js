@@ -318,4 +318,116 @@ async function recent(checkpost, { limit = 25 } = {}) {
   }));
 }
 
-module.exports = { arrivals, search, inspect, record, recent, verdictFor };
+
+/**
+ * The log, further back than the shift.
+ *
+ * "Did that car go through yesterday?" and "what happened with this number
+ * plate?" are asked at a gate constantly, and until now the app could only
+ * answer for today. Paged by the moment of the check so a long day does not
+ * arrive in one lump, and searchable by plate or pass number, because that is
+ * what staff have in front of them.
+ *
+ * It is this checkpost's own log. A gate is not given the run of every other
+ * gate's activity — that is the panel's job, not a phone's.
+ */
+async function history(checkpost, { q = null, verdict = null, before = null, limit = 30 } = {}) {
+  const size = Math.max(1, Math.min(100, Number(limit) || 30));
+  const term = String(q || '').trim();
+  const plate = term.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cursor = before && /^\d+$/.test(String(before)) ? String(before) : null;
+
+  const rows = await rowsOf(
+    `SELECT sc.id, sc.verdict, sc.scanned_at, sc.ticket_no, sc.reg_no, sc.duration_ms,
+            s.name AS staff_name, c.label AS category_label, t.travel_date,
+            regexp_replace(sl.label, '[[:space:]]+', ' ', 'g') AS slot_label,
+            cu.name AS customer_name, cu.wa_profile_name
+       FROM scans sc
+       LEFT JOIN staff s ON s.id = sc.staff_id
+       LEFT JOIN tickets t ON t.id = sc.ticket_id
+       LEFT JOIN place_slots sl ON sl.id = t.slot_id
+       LEFT JOIN vehicle_categories c ON c.id = t.category_id
+       LEFT JOIN customers cu ON cu.id = t.customer_id
+      WHERE sc.checkpost_id = $1
+        AND ($2::bigint IS NULL OR sc.id < $2::bigint)
+        AND ($3::text IS NULL OR sc.verdict = $3
+             OR ($3 = 'entered' AND sc.verdict IN ('valid','valid_override'))
+             OR ($3 = 'refused' AND sc.verdict NOT IN ('valid','valid_override')))
+        AND ($4::text IS NULL
+             OR sc.reg_no LIKE '%' || $4 || '%'
+             OR sc.ticket_no = ANY($5::text[]))
+      ORDER BY sc.scanned_at DESC, sc.id DESC
+      LIMIT $6`,
+    [checkpost.id, cursor, verdict || null, plate || null,
+      booking.passNumberCandidates(term), size + 1]);
+
+  const hasMore = rows.length > size;
+  const page = hasMore ? rows.slice(0, size) : rows;
+
+  return {
+    checks: page.map((r) => ({
+      id: String(r.id),
+      verdict: r.verdict,
+      at: r.scanned_at,
+      ticketNo: r.ticket_no,
+      regNo: r.reg_no,
+      by: r.staff_name,
+      type: r.category_label,
+      slot: r.slot_label,
+      travelDate: r.travel_date ? String(r.travel_date instanceof Date ? r.travel_date.toISOString() : r.travel_date).slice(0, 10) : null,
+      visitor: r.customer_name || r.wa_profile_name || null,
+      seconds: r.duration_ms === null || r.duration_ms === undefined ? null : Math.round(Number(r.duration_ms) / 100) / 10,
+    })),
+    hasMore,
+    nextCursor: hasMore && page.length ? String(page[page.length - 1].id) : null,
+  };
+}
+
+/**
+ * One vehicle, everything this gate has seen of it.
+ *
+ * The question behind it is usually suspicion — the same plate twice in a
+ * morning, or a pass that did not work — so the refusals matter as much as the
+ * entries, and both are shown in one line of history.
+ */
+async function vehicle(checkpost, regNoInput) {
+  const regNo = String(regNoInput || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (regNo.length < 4) return { ok: false, error: 'short', message: 'Type at least four characters of the number plate.' };
+
+  const checks = await rowsOf(
+    `SELECT sc.verdict, sc.scanned_at, sc.ticket_no, sc.duration_ms, s.name AS staff_name
+       FROM scans sc LEFT JOIN staff s ON s.id = sc.staff_id
+      WHERE sc.checkpost_id = $1 AND sc.reg_no = $2
+      ORDER BY sc.scanned_at DESC LIMIT 40`, [checkpost.id, regNo]);
+
+  const passes = await rowsOf(
+    `SELECT t.ticket_no, t.travel_date, t.status, t.used_at,
+            regexp_replace(sl.label, '[[:space:]]+', ' ', 'g') AS slot_label, c.label AS category_label
+       FROM tickets t
+       JOIN place_slots sl ON sl.id = t.slot_id
+       JOIN vehicle_categories c ON c.id = t.category_id
+      WHERE t.reg_no = $1 AND t.place_id = $2
+      ORDER BY t.travel_date DESC LIMIT 20`, [regNo, checkpost.place_id]);
+
+  const v = await one(
+    `SELECT maker, model, colour, fuel, vehicle_class FROM vehicles WHERE reg_no = $1`, [regNo]);
+
+  return {
+    ok: true,
+    regNo,
+    vehicle: v ? { maker: v.maker, model: v.model, colour: v.colour, fuel: v.fuel, vehicleClass: v.vehicle_class } : null,
+    entries: checks.filter((c) => c.verdict === 'valid' || c.verdict === 'valid_override').length,
+    refusals: checks.filter((c) => c.verdict !== 'valid' && c.verdict !== 'valid_override').length,
+    checks: checks.map((c) => ({
+      verdict: c.verdict, at: c.scanned_at, ticketNo: c.ticket_no, by: c.staff_name,
+      seconds: c.duration_ms === null || c.duration_ms === undefined ? null : Math.round(Number(c.duration_ms) / 100) / 10,
+    })),
+    passes: passes.map((p) => ({
+      ticketNo: p.ticket_no,
+      travelDate: String(p.travel_date instanceof Date ? p.travel_date.toISOString() : p.travel_date).slice(0, 10),
+      status: p.status, usedAt: p.used_at, slot: p.slot_label, type: p.category_label,
+    })),
+  };
+}
+
+module.exports = { arrivals, search, inspect, record, recent, history, vehicle, verdictFor };
