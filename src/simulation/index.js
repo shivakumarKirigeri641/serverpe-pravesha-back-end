@@ -17,8 +17,10 @@
  * goes live:
  *
  *   1. It is off unless somebody switches it on in Settings.
- *   2. Switching it on sets an expiry — it stops by itself, and the longest it
- *      will run unattended is a day.
+ *   2. Switching it on normally sets an expiry — it stops by itself, and the
+ *      longest it will run unattended is a day. "Never" is offered for a long
+ *      demonstration and then it runs until stopped, which is why every screen
+ *      says so while it is on.
  *   3. On a production server it refuses outright: NODE_ENV=production turns it
  *      off and keeps it off unless ALLOW_SIMULATION=true is set deliberately.
  *   4. Turning it off takes effect within one tick, and every switch is audited.
@@ -38,9 +40,35 @@ const inventory = require('../gatepass/inventory');
 
 const TICK_SECONDS = 20;
 
-/* How much happens in a minute, by rate. Entries are bounded by who has
-   actually booked and not yet arrived, so these are appetites, not promises. */
+/*
+ * HOW BUSY IT IS, WORKED OUT RATHER THAN CHOSEN.
+ *
+ * Automatic is the point of this: the day of the week decides. A Sunday should
+ * end at 95-100% of capacity and a Wednesday at 50-65%, so the simulation looks
+ * at what the day is meant to reach, at what it has reached so far, and at how
+ * much of the day is left, and books at whatever rate closes that gap. Arrivals
+ * follow the same idea against the passes still to be used, so the gate is
+ * busiest while the slots are open.
+ *
+ * The three fixed rates stay for when a particular look is wanted on a
+ * particular screen.
+ */
+const OCCUPANCY = {
+  0: [0.95, 1.00],   // Sunday
+  1: [0.75, 0.90],
+  2: [0.60, 0.80],
+  3: [0.50, 0.65],
+  4: [0.60, 0.80],
+  5: [0.75, 0.90],
+  6: [0.95, 1.00],   // Saturday
+  holiday: [0.98, 1.00],
+};
+
+/* Bookings arrive across the day; entries only while a gate can be entered. */
+const BOOKING_DAY = { from: 6 * 60, to: 22 * 60 };
+
 const RATES = {
+  automatic: { label: 'Automatic', blurb: 'Follows the weekly pattern - Sunday busy, Wednesday quiet', automatic: true },
   quiet: { label: 'Quiet', bookingsPerHour: 12, entriesPerHour: 30, blurb: 'A weekday morning' },
   steady: { label: 'Steady', bookingsPerHour: 40, entriesPerHour: 90, blurb: 'An ordinary Saturday' },
   busy: { label: 'Busy', bookingsPerHour: 110, entriesPerHour: 240, blurb: 'A long weekend' },
@@ -52,7 +80,7 @@ const chance = (p) => Math.random() < p;
 const int = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
 
 /* What this process has generated since it started, for the screen. */
-const made = { bookings: 0, entries: 0, refusals: 0, messages: 0, ticks: 0, lastTickAt: null, lastError: null };
+const made = { bookings: 0, entries: 0, refusals: 0, messages: 0, ticks: 0, lastTickAt: null, lastError: null, plan: null };
 
 let timer = null;
 let running = false;
@@ -69,7 +97,7 @@ function allowed() {
 async function config() {
   const [enabled, rate, until, startedAt] = await Promise.all([
     settings.str('simulation_enabled', 'false'),
-    settings.str('simulation_rate', 'steady'),
+    settings.str('simulation_rate', 'automatic'),
     settings.str('simulation_until', ''),
     settings.str('simulation_started_at', ''),
   ]);
@@ -78,7 +106,7 @@ async function config() {
   return {
     enabled: String(enabled) === 'true' && !expired,
     requested: String(enabled) === 'true',
-    rate: RATES[rate] ? rate : 'steady',
+    rate: RATES[rate] ? rate : 'automatic',
     until: expiry && !Number.isNaN(expiry.getTime()) ? expiry.toISOString() : null,
     startedAt: startedAt || null,
     expired,
@@ -108,9 +136,13 @@ async function set({ enabled, rate = null, hours = null }) {
     throw e;
   }
 
+  /* 'never' means exactly that: it runs until somebody stops it. The other
+     guards still hold — it cannot start on a production server, it says so on
+     every screen while it runs, and Stop now works within one tick. */
+  const never = hours === 'never' || Number(hours) === 0;
   const span = Math.max(1, Math.min(24, Number(hours) || 4));
   if (enabled) {
-    await put('simulation_until', new Date(Date.now() + span * 3600 * 1000).toISOString());
+    await put('simulation_until', never ? '' : new Date(Date.now() + span * 3600 * 1000).toISOString());
     await put('simulation_started_at', new Date().toISOString());
     if (rate) await put('simulation_rate', rate);
     await put('simulation_enabled', 'true');
@@ -285,6 +317,66 @@ async function makeMessage(bookingMade) {
   return true;
 }
 
+/**
+ * The target for a day: capacity times the occupancy its weekday should reach.
+ *
+ * Where inside the band it lands is settled by the date itself rather than by
+ * chance, so the target does not wander between one tick and the next.
+ */
+function targetFor(date, capacity, holidays) {
+  const [y, m, d] = date.split('-').map(Number);
+  const band = holidays.has(date) ? OCCUPANCY.holiday : OCCUPANCY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const seed = (((y * 372 + m * 31 + d) * 2654435761) % 1000) / 1000;
+  return Math.round(capacity * (band[0] + seed * (band[1] - band[0])));
+}
+
+/**
+ * What should happen in the next hour, read off where the day stands.
+ *
+ * Bookings close the gap to the day's target over the hours of booking left;
+ * arrivals bring in the passes still to be used before the last entry.
+ */
+async function automaticRate(place, slots, holidays) {
+  const today = slotTime.nowIST().date;
+  const now = slotTime.nowIST().minutes;
+
+  const [cap] = (await query(
+    `SELECT COALESCE(sum(sc.capacity), 0) AS capacity
+       FROM slot_capacity sc JOIN place_slots s ON s.id = sc.slot_id
+      WHERE sc.place_id = $1 AND s.is_active`, [place.id])).rows;
+  const capacity = n(cap.capacity);
+  if (!capacity) return { bookingsPerHour: 0, entriesPerHour: 0, target: 0, booked: 0 };
+
+  const [state] = (await query(
+    `SELECT count(*) FILTER (WHERE status IN ('paid','used')) AS booked,
+            count(*) FILTER (WHERE status = 'paid')           AS yet_to_arrive
+       FROM tickets WHERE travel_date = $1::date`, [today])).rows;
+
+  const target = targetFor(today, capacity, holidays);
+  const gap = Math.max(0, target - n(state.booked));
+  const bookingHoursLeft = Math.max(0.25, (BOOKING_DAY.to - Math.min(Math.max(now, BOOKING_DAY.from), BOOKING_DAY.to)) / 60);
+
+  const lastEntry = Math.max(...slots.map((x) => slotTime.toMinutes(x.ends_at) - slotTime.LAST_ENTRY_BUFFER_MIN));
+  const gateHoursLeft = Math.max(0.25, (lastEntry - now) / 60);
+  /* Not everyone who booked turns up; the rest are the day's no-shows. */
+  const arriving = Math.round(n(state.yet_to_arrive) * 0.75);
+
+  return {
+    bookingsPerHour: Math.round(gap / bookingHoursLeft),
+    entriesPerHour: now <= lastEntry ? Math.round(arriving / gateHoursLeft) : 0,
+    target,
+    booked: n(state.booked),
+    yetToArrive: n(state.yet_to_arrive),
+    capacity,
+    occupancy: Math.round((n(state.booked) / capacity) * 100),
+    targetOccupancy: Math.round((target / capacity) * 100),
+  };
+}
+
+/** Days that should be treated as holidays, from settings. */
+const holidayList = async () => new Set(
+  String(await settings.str('simulation_holidays', '')).split(',').map((x) => x.trim()).filter(Boolean));
+
 /* ─────────────────────────────────────────────────────────────── tick ── */
 
 async function tick() {
@@ -303,7 +395,12 @@ async function tick() {
   const checkpost = await one('SELECT * FROM checkposts WHERE place_id = $1 AND is_active ORDER BY id LIMIT 1', [place.id]);
   const staffList = (await query('SELECT id FROM staff WHERE is_active')).rows;
 
-  const rate = RATES[cfg.rate];
+  const holidays = await holidayList();
+  const chosen = RATES[cfg.rate];
+  const rate = chosen.automatic ? await automaticRate(place, slots, holidays) : chosen;
+  made.plan = chosen.automatic
+    ? { mode: 'automatic', ...rate }
+    : { mode: cfg.rate, bookingsPerHour: rate.bookingsPerHour, entriesPerHour: rate.entriesPerHour };
   const share = TICK_SECONDS / 3600;
   /* Gate activity only while a slot can be entered; bookings happen all day. */
   const now = slotTime.nowIST().minutes;
@@ -315,6 +412,10 @@ async function tick() {
     return Math.floor(expected) + (chance(expected % 1) ? 1 : 0);
   };
 
+  let tickBookings = 0;
+  let tickEntries = 0;
+  let tickRefusals = 0;
+
   try {
     for (let i = 0; i < draw(rate.bookingsPerHour); i += 1) {
       /* A draw can come up empty — the vehicle already has a pass for that day,
@@ -324,19 +425,33 @@ async function tick() {
       for (let attempt = 0; attempt < 3 && !b; attempt += 1) b = await makeBooking(place, slots);
       if (!b) continue;
       made.bookings += 1;
+      tickBookings += 1;
       if (chance(0.35) && await makeMessage(b)) made.messages += 2;
     }
 
     if (gateOpen) {
       for (let i = 0; i < draw(rate.entriesPerHour); i += 1) {
-        if (await makeEntry(checkpost, staffList)) made.entries += 1;
+        if (await makeEntry(checkpost, staffList)) { made.entries += 1; tickEntries += 1; }
       }
-      if (chance(0.25) && await makeRefusal(checkpost, staffList)) made.refusals += 1;
+      if (chance(0.25) && await makeRefusal(checkpost, staffList)) { made.refusals += 1; tickRefusals += 1; }
     }
 
     made.ticks += 1;
     made.lastTickAt = new Date().toISOString();
     made.lastError = null;
+
+    /* One line on the console per tick that did something, so the terminal
+       shows the same story the screen does. */
+    const did = [];
+    if (tickBookings) did.push(`${tickBookings} booked`);
+    if (tickEntries) did.push(`${tickEntries} entered`);
+    if (tickRefusals) did.push(`${tickRefusals} refused`);
+    if (did.length) {
+      const where = rate.target
+        ? `today ${rate.booked + tickBookings}/${rate.capacity} (${Math.round(((rate.booked + tickBookings) / rate.capacity) * 100)}% of ${rate.targetOccupancy}% target)`
+        : `${cfg.rate} rate`;
+      require('../log').demo(`${did.join(' · ')} — ${where}`);
+    }
   } catch (e) {
     made.lastError = e.message;
     console.error('[simulation] tick failed: %s', e.message);
@@ -365,7 +480,11 @@ async function status() {
   return {
     available: allowed(),
     ...cfg,
-    rates: Object.entries(RATES).map(([key, r]) => ({ key, label: r.label, blurb: r.blurb, bookingsPerHour: r.bookingsPerHour, entriesPerHour: r.entriesPerHour })),
+    rates: Object.entries(RATES).map(([key, r]) => ({ key, label: r.label, blurb: r.blurb,
+      automatic: Boolean(r.automatic), bookingsPerHour: r.bookingsPerHour || null, entriesPerHour: r.entriesPerHour || null })),
+    occupancyPattern: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      .map((day, i) => ({ day, from: Math.round(OCCUPANCY[i][0] * 100), to: Math.round(OCCUPANCY[i][1] * 100) }))
+      .concat([{ day: 'Holidays', from: Math.round(OCCUPANCY.holiday[0] * 100), to: Math.round(OCCUPANCY.holiday[1] * 100) }]),
     tickSeconds: TICK_SECONDS,
     sinceRestart: { ...made },
     lastHour: { bookings: n(counts.bookings_hour), checks: n(counts.checks_hour) },

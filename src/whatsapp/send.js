@@ -64,6 +64,20 @@ async function record({ mobile, direction, type, body, payload, waId, error }) {
   }
 }
 
+/** What an outgoing message is, in three words, for the console. */
+function describe(message) {
+  if (!message) return 'message';
+  if (message.type === 'text') return `"${String(message.text?.body || '').replace(/\s+/g, ' ').slice(0, 50)}"`;
+  if (message.type === 'template') return `template ${message.template?.name || ''}`.trim();
+  if (message.type === 'interactive') {
+    const i = message.interactive || {};
+    if (i.type === 'button') return `buttons: ${(i.action?.buttons || []).map((b) => b.reply?.title).join(', ')}`;
+    if (i.type === 'list') return `list: ${(i.action?.sections || []).flatMap((x) => (x.rows || []).map((r) => r.title)).slice(0, 4).join(', ')}`;
+    if (i.type === 'cta_url') return `link: ${i.action?.parameters?.display_text || 'open'}`;
+  }
+  return message.type || 'message';
+}
+
 async function post(to, message) {
   const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to, ...message };
 
@@ -98,6 +112,7 @@ async function post(to, message) {
       body: message.text?.body, waId, error: err });
 
     if (!res.ok) console.error('[wa] send failed', res.status, err);
+    else require('../log').waOut(to, describe(message));
     return { ok: res.ok, waId, error: err };
   } catch (e) {
     await record({ mobile: to, direction: 'out', type: message.type, payload,

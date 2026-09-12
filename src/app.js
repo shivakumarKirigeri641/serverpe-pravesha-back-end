@@ -18,6 +18,9 @@ app.set('trust proxy', 1); // ngrok and any reverse proxy in front of this
 
 app.use(cors());
 
+/* One readable line per request; see src/log.js for the switches. */
+app.use(require('./log').middleware);
+
 /* Mounted first, and with no body parser above it. See the note in the route. */
 app.use('/', require('./routes/whatsapp'));
 
@@ -44,6 +47,8 @@ app.use('/', require('./routes/adminBookingsApi'));
 app.use('/', require('./routes/adminAlertsApi'));
 app.use('/', require('./routes/adminPlacesApi'));
 app.use('/', require('./routes/adminHealthApi'));
+/* Temporary, for demonstrations before launch. Delete with src/demo and src/simulation. */
+app.use('/', require('./routes/adminDemoApi'));
 app.use('/', require('./routes/notices'));
 
 app.get('/health', async (req, res) => {

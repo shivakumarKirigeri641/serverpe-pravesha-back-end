@@ -13,6 +13,7 @@
  */
 
 const express = require('express');
+const log = require('../log');
 const signature = require('../whatsapp/signature');
 const inbox = require('../whatsapp/inbox');
 const { PREFIX } = require('../config/paths');
@@ -98,6 +99,10 @@ async function dispatch(payload) {
       for (const msg of value.messages || []) {
         const contact = contacts.find((c) => c.wa_id === msg.from) || contacts[0];
         try {
+          log.waIn(msg.from, msg.text?.body
+            || msg.interactive?.button_reply?.title
+            || msg.interactive?.list_reply?.title
+            || `(${msg.type})`);
           await inbox.handle(msg, contact);
         } catch (e) {
           console.error('[wa] handling', msg.id, e.message);

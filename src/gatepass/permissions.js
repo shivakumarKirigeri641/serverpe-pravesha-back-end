@@ -44,7 +44,9 @@ const CAPABILITIES = {
   'settings.staff': 'Manage checkpost staff',
   'settings.users': 'Manage panel users and their roles',
   'settings.gst': 'Change GST and business details',
-  'settings.simulation': 'Switch demonstration mode on and off',
+  /* Temporary, for demonstrations before launch - see src/demo. */
+  'demo.simulate': 'Use the demonstration tools and simulated traffic',
+  'demo.reset': 'Remove all test data from the database',
   'health.view': 'See system health',
   'audit.view': 'Read the audit log',
 };
@@ -60,7 +62,7 @@ const ROLES = {
   admin: {
     label: 'Admin',
     description: 'Runs the service: everything except panel users and GST.',
-    can: ALL.filter((c) => !['settings.users', 'settings.gst'].includes(c)),
+    can: ALL.filter((c) => !['settings.users', 'settings.gst', 'demo.reset'].includes(c)),
   },
   checkpost_manager: {
     label: 'Checkpost Manager',

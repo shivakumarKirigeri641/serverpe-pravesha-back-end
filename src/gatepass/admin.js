@@ -139,6 +139,12 @@ async function audit({ adminId, action, subject = null, detail = {}, ip = null,
         before === undefined ? null : JSON.stringify(before),
         after === undefined ? null : JSON.stringify(after),
         reason || null, sessionId || null]);
+    /* Also on the console: during a demonstration the terminal is the only
+       place anybody is watching. */
+    if (action !== 'sign_in') {
+      const who = (await one('SELECT name FROM admin_users WHERE id = $1', [adminId]).catch(() => null))?.name || 'someone';
+      require('../log').admin(who, action, subject);
+    }
   } catch (e) {
     console.error('[admin] audit %s failed: %s', action, e.message);
   }

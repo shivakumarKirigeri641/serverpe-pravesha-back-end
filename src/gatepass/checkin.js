@@ -256,9 +256,13 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
   if (!claimed) {
     const fresh = await booking.byTicketNo(t.ticket_no);
     await logScan({ session, checkpost, ticket: t, verdict: 'already_used', rawPayload, durationMs });
+    require('../log').gate('already_used', `already used — ${t.ticket_no} · ${t.reg_no}`);
     return { ok: false, verdict: 'already_used', usedAt: fresh ? fresh.used_at : null,
       message: 'This pass was recorded a moment ago.', pass: detail(fresh || t) };
   }
+
+  require('../log').gate(override ? 'valid_override' : 'valid',
+    `${t.ticket_no}  ${t.reg_no} · ${checkpost.name}${durationMs ? ` · ${(sane(durationMs) / 1000).toFixed(1)}s` : ''}`);
 
   notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
 

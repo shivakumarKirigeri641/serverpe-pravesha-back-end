@@ -170,6 +170,7 @@ async function markPaid(ticketId, paymentId) {
     await client.query(
       'UPDATE web_tokens SET used_at = COALESCE(used_at, now()) WHERE ticket_id = $1', [ticketId]);
 
+    require('../log').paid(u.total_paise, paymentId, u.ticket_no);
     return { ok: true, ticket: u };
   });
 }
