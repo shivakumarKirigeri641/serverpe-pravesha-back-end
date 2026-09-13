@@ -108,6 +108,7 @@ require('./simulation').start();
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
   require('./jobs/reconcile').start();
+  require('./jobs/periodReports').start();
   console.log(`\nPravesha listening on :${PORT}`);
   console.log(`  public   ${process.env.PUBLIC_BASE_URL || '(PUBLIC_BASE_URL not set)'}`);
   console.log(`  webhook  ${process.env.PUBLIC_BASE_URL || ''}${require('./config/paths').PREFIX}/whatsapp/webhook`);
