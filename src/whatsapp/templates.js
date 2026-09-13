@@ -67,4 +67,46 @@ function entryRecorded(t, opts, lang) {
 /** Send it. Used by the checkpost view when an entry is recorded. */
 const sendEntryRecorded = (to, t, opts, lang) => send.post(to, entryRecorded(t, opts, lang));
 
-module.exports = { entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED };
+/* ── The period report ──────────────────────────────────────────────────── */
+
+/**
+ * The daily, weekly or monthly report, as approved.
+ *
+ * ONE TEMPLATE FOR THREE PERIODS. Which period it is rides in the header, so
+ * there is one registration to keep approved rather than three that can drift
+ * apart. No buttons: this is a statement, not a conversation.
+ *
+ * THE HEADER AND THE BODY NUMBER THEIR VARIABLES SEPARATELY — the header's
+ * {{1}} is "daily", the body's {{1}} is the date — which is why the report
+ * hands them over as two lists and they are kept apart all the way here. Merge
+ * them anywhere along the way and the month appears in the vehicle count.
+ */
+const PERIOD_REPORT = { name: 'pv_checkpostreport_v1', language: 'en' };
+
+function periodReport({ header, body }) {
+  return {
+    type: 'template',
+    template: {
+      name: PERIOD_REPORT.name,
+      language: { code: PERIOD_REPORT.language },
+      components: [
+        { type: 'header', parameters: header.map((text) => ({ type: 'text', text: String(text) })) },
+        { type: 'body', parameters: body.map((text) => ({ type: 'text', text: String(text) })) },
+      ],
+    },
+  };
+}
+
+/**
+ * Send one report to one number.
+ *
+ * Deliberately takes a number rather than a list: who receives this is a
+ * decision about money and it belongs with whoever is choosing the recipients,
+ * not buried in a fan-out loop here.
+ */
+const sendPeriodReport = (to, vars) => send.post(to, periodReport(vars));
+
+module.exports = {
+  entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
+  periodReport, sendPeriodReport, PERIOD_REPORT,
+};
