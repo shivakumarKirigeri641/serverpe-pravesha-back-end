@@ -41,19 +41,30 @@ async function recipients() {
     .filter((x) => /^[6-9]\d{9}$/.test(x));
 }
 
-/* What has already gone out, so nothing goes twice. */
-async function alreadySent(kind, period) {
-  const row = await one(
-    `SELECT value FROM app_settings WHERE key = $1`, [`report_sent_${kind}`]);
-  return row && String(row.value) === `${period.from}..${period.to}`;
-}
-
-async function markSent(kind, period) {
-  await query(
+/*
+ * Claim the right to send one period's report — atomically.
+ *
+ * This used to be two statements: read "has it gone?", then write "it has". Two
+ * server instances ticking in the same minute could both read "not yet" before
+ * either wrote, and both send — the Deputy Commissioner gets the evening report
+ * twice, which is the kind of mistake that is noticed by exactly the person you
+ * least want to notice it.
+ *
+ * Now it is one statement. The row is written only if it does not already say
+ * this period; RETURNING tells us whether our write happened. Postgres holds a
+ * row lock through ON CONFLICT DO UPDATE, so of any number of instances racing
+ * for the same key, exactly one gets a row back and the rest get nothing.
+ */
+async function claim(kind, period) {
+  const mark = `${period.from}..${period.to}`;
+  const won = await one(
     `INSERT INTO app_settings (key, value) VALUES ($1, $2)
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-    [`report_sent_${kind}`, `${period.from}..${period.to}`]);
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+       WHERE app_settings.value IS DISTINCT FROM EXCLUDED.value
+     RETURNING key`,
+    [`report_sent_${kind}`, mark]);
   settings.clear();
+  return Boolean(won);
 }
 
 /** Which reports are due on this date, in the order they should arrive. */
@@ -113,8 +124,9 @@ async function pass() {
 
   for (const kind of dueOn(now.date)) {
     const period = periodReport.periodFor(kind, now.date);
-    if (await alreadySent(kind, period)) continue;
-    await markSent(kind, period);               // before sending: a crash mid-send must not repeat it
+    /* Claimed before sending: a crash mid-send must not repeat it, and a second
+       instance ticking in the same minute must not send it too. */
+    if (!(await claim(kind, period))) continue;
     await sendOne(kind, to);
   }
 }
@@ -125,4 +137,4 @@ function start() {
   setInterval(() => pass().catch((e) => console.error('[reports] %s', e.message)), EVERY_MS).unref();
 }
 
-module.exports = { start, pass, dueOn, recipients, sendOne };
+module.exports = { start, pass, dueOn, recipients, sendOne, claim };
