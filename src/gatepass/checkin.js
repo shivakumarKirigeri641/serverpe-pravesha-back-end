@@ -309,9 +309,11 @@ async function notify(t, checkpost, recordedAt) {
   const templates = require('../whatsapp/templates');
   const phone = require('../whatsapp/phone');
   const send = require('../whatsapp/send');
-  const { t: tr } = require('../i18n');
+  const { t: tr, langOf } = require('../i18n');
   const customer = await one('SELECT language FROM customers WHERE id = $1', [t.customer_id]);
-  const lang = customer && customer.language === 'kn' ? 'kn' : 'en';
+  /* The same rule every other message uses, so the entry template, the feedback
+     template and the chat can never disagree about which language a visitor reads. */
+  const lang = langOf(customer);
   const to = phone.toWa(t.mobile);
   await templates.sendEntryRecorded(to, t, { checkpost, recordedAt }, lang);
 
@@ -320,22 +322,33 @@ async function notify(t, checkpost, recordedAt) {
    *
    * This is the moment worth asking: they are through the barrier, the queue is
    * behind them, and the answer is about something that has actually happened.
-   * Asking when the pass was booked would be asking about a visit that had not
-   * occurred yet.
    *
-   * IT IS ONLY ASKED WHEN WHATSAPP ALLOWS A FREE MESSAGE. Outside the 24-hour
-   * window a button like this needs an approved template, which costs money per
-   * send and would turn a courtesy into a marketing expense levied on every
-   * visitor. Somebody who booked yesterday and drove up this morning is outside
-   * that window, and they simply are not asked — a silent skip is a better
-   * outcome than a paid interruption.
+   * THE APPROVED TEMPLATE FIRST. Most visitors booked the night before and are
+   * outside WhatsApp's 24-hour window by the time they reach the gate, where a
+   * free message is not delivered at all — so a template is the only thing that
+   * reaches the people most worth asking. It costs a template send per entry;
+   * that was a decision, made knowingly.
+   *
+   * THE BUTTONS AS A FALLBACK, inside the window only. Until Meta approves the
+   * template, or on any day it refuses one, the ask goes the old way to whoever
+   * can still receive a free message. Nothing needs switching when approval
+   * lands: the template simply starts succeeding.
    *
    * AND IT NEVER AFFECTS THE ENTRY. The vehicle is already through. A failure
    * here is logged and forgotten.
    */
   try {
-    if (await send.windowOpen(to)) {
-      await send.buttons(to, tr('rateAsk', lang), [{ id: 'FEEDBACK', title: tr('btnRate', lang) }]);
+    const webToken = require('./webToken');
+    const token = await webToken.issue(t.customer_id, 'feedback');
+    const sent = await templates.sendFeedbackRequest(to, t, token, lang);
+
+    if (!sent || !sent.ok) {
+      console.warn('[checkin] feedback template not sent for %s (%s) — %s', t.ticket_no,
+        sent && sent.error ? sent.error : 'no answer',
+        'falling back to buttons if the chat window is open');
+      if (await send.windowOpen(to)) {
+        await send.buttons(to, tr('rateAsk', lang), [{ id: 'FEEDBACK', title: tr('btnRate', lang) }]);
+      }
     }
   } catch (e) {
     console.error('[checkin] could not ask %s for feedback: %s', t.ticket_no, e.message);
@@ -610,4 +623,4 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
   };
 }
 
-module.exports = { arrivals, search, inspect, record, recent, history, passes, vehicle, verdictFor };
+module.exports = { arrivals, search, inspect, record, recent, history, passes, vehicle, verdictFor, notify };

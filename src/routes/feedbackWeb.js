@@ -1,16 +1,26 @@
 /**
  * feedbackWeb.js — "how was your visit?"
  *
- * A page with two questions on it, opened from a button in the chat after the
- * pass has been delivered. It is deliberately the smallest thing that could
- * work: five stars, a box for words, and a send button. Anything more — name,
- * email, which gate, would you recommend us — is a form, and a form asked of
- * somebody standing in a car park is a form nobody fills in.
+ * A page with two questions on it, opened from the button on the feedback
+ * template after the vehicle is through the gate. It is deliberately the
+ * smallest thing that could work: five stars, a box for words, and a send
+ * button. Anything more — name, email, which gate, would you recommend us — is a
+ * form, and a form asked of somebody who has just driven up a hill is a form
+ * nobody fills in.
  *
- * THE LINK IS THE IDENTITY. It is the same signed, single-use token the booking
- * link uses, issued with purpose 'feedback', so the page knows who is writing
- * and about which visit without asking either. A booking link cannot be spent
- * here and this cannot be spent on a booking.
+ * IN THE VISITOR'S LANGUAGE, ALL THE WAY. Somebody who chose Kannada has been
+ * written to in Kannada since the menu; the entry message and the feedback
+ * template were Kannada. Landing on an English page from a Kannada button would
+ * undo all of that at the one moment we are asking them for something. So every
+ * word a visitor reads here — the question, the star words, the placeholder, the
+ * button, the note, the thank-you, the refusals — follows the language they
+ * chose. Where nobody is known yet (a broken or expired link), the page speaks
+ * both languages, because it cannot know which one the reader wants.
+ *
+ * THE LINK IS THE IDENTITY. It is the same signed token the booking link uses,
+ * issued with purpose 'feedback', so the page knows who is writing and about
+ * which visit without asking either. A booking link cannot be spent here and
+ * this cannot be spent on a booking.
  *
  * SUBMITTING TWICE IS AN EDIT, NOT A SECOND OPINION. Somebody who changes their
  * mind, or taps send twice on a bad connection, should not become two rows in a
@@ -23,9 +33,10 @@
  */
 
 const express = require('express');
-const { query, one } = require('../gatepass/db');
+const { one } = require('../gatepass/db');
 const token = require('../gatepass/webToken');
-const { t: tr, langOf } = require('../i18n');
+const { langOf } = require('../i18n');
+const L = require('../localize');
 
 const router = express.Router();
 const json = express.json({ limit: '16kb' });
@@ -34,17 +45,90 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+/* Data placed inside a <script>. A "<" is escaped so that nothing in it — least
+   of all a visitor's own earlier comment — can close the script tag early. */
+const inScript = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+/* ────────────────────────────────────────────────────────────── the words */
+
+const COPY = {
+  en: {
+    title: 'How was your visit?',
+    pass: 'pass',
+    star: (n) => `${n} star${n === 1 ? '' : 's'}`,
+    tap: 'Tap a star',
+    words: ['', 'Poor', 'Not good', 'All right', 'Good', 'Excellent'],
+    label: 'Anything you would like to tell us? (optional)',
+    placeholder: 'The queue, the staff, the road, the view — whatever stood out.',
+    send: 'Send',
+    sending: 'Sending…',
+    note: 'This goes to the people who run the entry gate. Nothing you write is shown publicly unless somebody there asks for it to be used as a testimonial — and then only the words and the name they choose to show.',
+    thanks: 'Thank you',
+    happy: 'We are glad it went well. It helps to hear it.',
+    unhappy: 'Thank you for saying so — this is read by the people who can fix it.',
+    close: 'You can close this page and go back to WhatsApp.',
+    couldNotSend: 'Could not send that.',
+    tapFirst: 'Please tap a star first.',
+  },
+  kn: {
+    title: 'ನಿಮ್ಮ ಭೇಟಿ ಹೇಗಿತ್ತು?',
+    pass: 'ಪಾಸ್',
+    star: (n) => `${n} ನಕ್ಷತ್ರ`,
+    tap: 'ಒಂದು ನಕ್ಷತ್ರ ಆಯ್ಕೆಮಾಡಿ',
+    words: ['', 'ಕಳಪೆ', 'ಚೆನ್ನಾಗಿಲ್ಲ', 'ಪರವಾಗಿಲ್ಲ', 'ಚೆನ್ನಾಗಿತ್ತು', 'ಅತ್ಯುತ್ತಮ'],
+    label: 'ನಮಗೆ ಏನಾದರೂ ತಿಳಿಸಲು ಬಯಸುವಿರಾ? (ಐಚ್ಛಿಕ)',
+    placeholder: 'ಸಾಲು, ಸಿಬ್ಬಂದಿ, ರಸ್ತೆ, ದೃಶ್ಯ — ನಿಮ್ಮ ಗಮನ ಸೆಳೆದ ಯಾವುದಾದರೂ.',
+    send: 'ಕಳುಹಿಸಿ',
+    sending: 'ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ…',
+    note: 'ಇದು ಪ್ರವೇಶ ದ್ವಾರವನ್ನು ನಡೆಸುವವರಿಗೆ ತಲುಪುತ್ತದೆ. ನೀವು ಬರೆದದ್ದನ್ನು ಸಾರ್ವಜನಿಕವಾಗಿ ತೋರಿಸುವುದಿಲ್ಲ — ಅದನ್ನು ಅಭಿಪ್ರಾಯವಾಗಿ ಬಳಸಲು ಅಲ್ಲಿಯವರು ಕೇಳಿದರೆ ಮಾತ್ರ, ಮತ್ತು ಅವರು ಆರಿಸುವ ಪದಗಳು ಹಾಗೂ ಹೆಸರು ಮಾತ್ರ.',
+    thanks: 'ಧನ್ಯವಾದಗಳು',
+    happy: 'ಭೇಟಿ ಚೆನ್ನಾಗಿತ್ತು ಎಂದು ಕೇಳಿ ಸಂತೋಷವಾಯಿತು. ಇದು ನಮಗೆ ಸಹಾಯ ಮಾಡುತ್ತದೆ.',
+    unhappy: 'ತಿಳಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು — ಇದನ್ನು ಸರಿಪಡಿಸಬಲ್ಲವರು ಓದುತ್ತಾರೆ.',
+    close: 'ನೀವು ಈ ಪುಟವನ್ನು ಮುಚ್ಚಿ WhatsApp ಗೆ ಹಿಂತಿರುಗಬಹುದು.',
+    couldNotSend: 'ಕಳುಹಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.',
+    tapFirst: 'ದಯವಿಟ್ಟು ಮೊದಲು ಒಂದು ನಕ್ಷತ್ರ ಆಯ್ಕೆಮಾಡಿ.',
+  },
+};
+
+/*
+ * The pages shown before anybody is known — a broken, expired or wrong link —
+ * in both languages, English first, because there is no way to tell which one
+ * the reader wants. A new rating link comes from sending "feedback" in the chat,
+ * which the chat answers with a fresh one.
+ */
+const BOTH = {
+  expired: {
+    title: 'Link expired',
+    body: '<h1>This link has expired</h1><p class="sub">Send <b>feedback</b> on WhatsApp to get a new one.</p>'
+      + '<h1 style="margin-top:18px">ಈ ಲಿಂಕ್ ಅವಧಿ ಮುಗಿದಿದೆ</h1><p class="sub">ಹೊಸ ಲಿಂಕ್‌ಗಾಗಿ WhatsApp ನಲ್ಲಿ <b>feedback</b> ಎಂದು ಕಳುಹಿಸಿ.</p>',
+  },
+  wrong: {
+    title: 'Wrong link',
+    body: '<h1>That link is for something else</h1><p class="sub">Please use the feedback link from your chat.</p>'
+      + '<h1 style="margin-top:18px">ಈ ಲಿಂಕ್ ಬೇರೆ ಉದ್ದೇಶಕ್ಕಾಗಿ</h1><p class="sub">ದಯವಿಟ್ಟು ನಿಮ್ಮ ಚಾಟ್‌ನಲ್ಲಿರುವ ಪ್ರತಿಕ್ರಿಯೆ ಲಿಂಕ್ ಬಳಸಿ.</p>',
+  },
+  notFound: {
+    title: 'Not found',
+    body: '<h1>We could not find you</h1><h1 style="margin-top:18px">ನಿಮ್ಮನ್ನು ಹುಡುಕಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ</h1>',
+  },
+  error: {
+    title: 'Something went wrong',
+    body: '<h1>Something went wrong</h1><p class="sub">Please try again in a moment.</p>'
+      + '<h1 style="margin-top:18px">ಏನೋ ತಪ್ಪಾಗಿದೆ</h1><p class="sub">ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</p>',
+  },
+};
+
 const safe = (fn) => async (req, res) => {
   try { await fn(req, res); } catch (e) {
     console.error('[feedback] %s %s: %s', req.method, req.path, e.stack || e.message);
-    res.status(500).type('html').send(shell('Something went wrong', '<p>Please try again in a moment.</p>'));
+    res.status(500).type('html').send(shell(BOTH.error.title, BOTH.error.body));
   }
 };
 
 /* The most recent pass this visitor has, which is the one they are rating. */
 async function lastPassFor(customerId) {
   return one(
-    `SELECT t.id, t.ticket_no, t.travel_date, t.place_id, p.name AS place_name
+    `SELECT t.id, t.ticket_no, t.travel_date, t.place_id, p.name AS place_name, p.name_kn AS place_name_kn
        FROM tickets t JOIN places p ON p.id = t.place_id
       WHERE t.customer_id = $1 AND t.status IN ('paid', 'used')
       ORDER BY t.travel_date DESC, t.created_at DESC LIMIT 1`, [customerId]);
@@ -52,8 +136,8 @@ async function lastPassFor(customerId) {
 
 /* ───────────────────────────────────────────────────────────────── the page */
 
-function shell(title, body, extraHead = '') {
-  return `<!doctype html><html lang="en"><head>
+function shell(title, body, lang = 'en') {
+  return `<!doctype html><html lang="${lang === 'kn' ? 'kn' : 'en'}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${esc(title)} · Pravesha</title>
@@ -61,7 +145,7 @@ function shell(title, body, extraHead = '') {
   :root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--card:#fff;--bg:#f6f8f7;--accent:#00a884;--star:#f59e0b}
   @media(prefers-color-scheme:dark){:root{--ink:#e8eef5;--muted:#93a3b5;--line:#25303c;--card:#121a23;--bg:#0b1219}}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Kannada",sans-serif;
        display:flex;justify-content:center;padding:18px}
   .card{width:100%;max-width:460px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px}
   h1{margin:0 0 4px;font-size:20px}
@@ -87,39 +171,46 @@ function shell(title, body, extraHead = '') {
               display:grid;place-items:center;font-size:32px;color:var(--accent)}
   .err{margin-top:12px;padding:10px 12px;border-radius:10px;background:#fdeceb;color:#a4160c;font-size:14px}
   @media(prefers-color-scheme:dark){.err{background:#3f1310;color:#ffb3ab}}
-</style>${extraHead}</head><body><div class="card">${body}</div></body></html>`;
+</style></head><body><div class="card">${body}</div></body></html>`;
 }
 
 const STAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.4-5.8-3-5.8 3 1.1-6.4L2.6 9.4l6.5-.9Z"/></svg>';
 
-function ratingPage({ pass, existing, place }) {
+function ratingPage({ pass, existing, lang }) {
+  const c = COPY[lang === 'kn' ? 'kn' : 'en'];
+  const place = pass ? L.placeName(pass, lang) : 'Pravesha';
+
   const stars = [1, 2, 3, 4, 5]
-    .map((i) => `<button type="button" class="star" data-v="${i}" aria-label="${i} star${i === 1 ? '' : 's'}">${STAR}</button>`)
+    .map((i) => `<button type="button" class="star" data-v="${i}" aria-label="${esc(c.star(i))}">${STAR}</button>`)
     .join('');
 
-  return shell('How was your visit?', `
-  <h1>How was your visit?</h1>
-  <p class="sub">${esc(place || 'Pravesha')}${pass ? ` · pass ${esc(pass.ticket_no)}` : ''}</p>
+  /* Only the words the script needs, in this visitor's language and no other —
+     a Kannada page must not carry English strings waiting to be shown. */
+  const words = {
+    tap: c.tap, words: c.words, send: c.send, sending: c.sending, thanks: c.thanks,
+    happy: c.happy, unhappy: c.unhappy, close: c.close, couldNotSend: c.couldNotSend,
+  };
+
+  return shell(c.title, `
+  <h1>${esc(c.title)}</h1>
+  <p class="sub">${esc(place)}${pass ? ` · ${esc(c.pass)} ${esc(pass.ticket_no)}` : ''}</p>
 
   <div class="stars" id="stars">${stars}</div>
-  <div class="word" id="word">Tap a star</div>
+  <div class="word" id="word">${esc(c.tap)}</div>
 
-  <label for="comment">Anything you would like to tell us? (optional)</label>
-  <textarea id="comment" maxlength="600" placeholder="The queue, the staff, the road, the view — whatever stood out."></textarea>
+  <label for="comment">${esc(c.label)}</label>
+  <textarea id="comment" maxlength="600" placeholder="${esc(c.placeholder)}"></textarea>
   <div class="count"><span id="count">0</span>/600</div>
 
-  <button type="button" class="send" id="send" disabled>Send</button>
+  <button type="button" class="send" id="send" disabled>${esc(c.send)}</button>
   <div id="err"></div>
 
-  <p class="note">
-    This goes to the people who run the entry gate. Nothing you write is shown publicly unless somebody there
-    asks for it to be used as a testimonial — and then only the words and the name they choose to show.
-  </p>
+  <p class="note">${esc(c.note)}</p>
 
   <script>
   (function () {
+    var C = ${inScript(words)};
     var value = ${existing ? Number(existing.rating) : 0};
-    var WORDS = ['', 'Poor', 'Not good', 'All right', 'Good', 'Excellent'];
     var stars = [].slice.call(document.querySelectorAll('.star'));
     var word = document.getElementById('word');
     var comment = document.getElementById('comment');
@@ -127,11 +218,11 @@ function ratingPage({ pass, existing, place }) {
     var send = document.getElementById('send');
     var err = document.getElementById('err');
 
-    comment.value = ${JSON.stringify(existing && existing.comment ? existing.comment : '')};
+    comment.value = ${inScript(existing && existing.comment ? existing.comment : '')};
 
     function paint() {
       stars.forEach(function (s) { s.classList.toggle('on', Number(s.dataset.v) <= value); });
-      word.textContent = value ? WORDS[value] : 'Tap a star';
+      word.textContent = value ? C.words[value] : C.tap;
       send.disabled = !value;
     }
     stars.forEach(function (s) {
@@ -144,28 +235,30 @@ function ratingPage({ pass, existing, place }) {
     send.addEventListener('click', function () {
       if (!value) return;
       send.disabled = true;
-      send.textContent = 'Sending…';
-      err.innerHTML = '';
+      send.textContent = C.sending;
+      err.textContent = '';
       fetch(location.pathname, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ rating: value, comment: comment.value })
       }).then(function (r) { return r.json(); }).then(function (r) {
-        if (!r.ok) throw new Error(r.message || 'Could not send that.');
-        document.querySelector('.card').innerHTML =
-          '<div class="done"><div class="tick">&#10003;</div><h1>Thank you</h1>' +
-          '<p class="sub">' + (value >= 4
-            ? 'We are glad it went well. It helps to hear it.'
-            : 'Thank you for saying so — this is read by the people who can fix it.') +
-          '</p><p class="note">You can close this page and go back to WhatsApp.</p></div>';
+        if (!r.ok) throw new Error(r.message || C.couldNotSend);
+        var card = document.querySelector('.card');
+        card.innerHTML = '<div class="done"><div class="tick">&#10003;</div><h1></h1><p class="sub"></p><p class="note"></p></div>';
+        card.querySelector('h1').textContent = C.thanks;
+        card.querySelector('.sub').textContent = value >= 4 ? C.happy : C.unhappy;
+        card.querySelector('.note').textContent = C.close;
       }).catch(function (e) {
         send.disabled = false;
-        send.textContent = 'Send';
-        err.innerHTML = '<div class="err">' + (e.message || 'Could not send that.') + '</div>';
+        send.textContent = C.send;
+        var box = document.createElement('div');
+        box.className = 'err';
+        box.textContent = (e && e.message) || C.couldNotSend;
+        err.appendChild(box);
       });
     });
   }());
-  </script>`);
+  </script>`, lang);
 }
 
 /* ──────────────────────────────────────────────────────────────── the routes */
@@ -180,38 +273,33 @@ function ratingPage({ pass, existing, place }) {
 const gate = async (req, res, next) => {
   try {
     const check = await token.verify(req.params.token);
-    if (!check.ok) {
-      return res.status(410).type('html').send(shell('Link expired',
-        '<h1>This link has expired</h1><p class="sub">Send <b>hi</b> on WhatsApp and tap “Rate your visit” again.</p>'));
-    }
-    if (check.purpose !== 'feedback') {
-      return res.status(400).type('html').send(shell('Wrong link',
-        '<h1>That link is for something else</h1><p class="sub">Please use the rating link from your chat.</p>'));
-    }
+    if (!check.ok) return res.status(410).type('html').send(shell(BOTH.expired.title, BOTH.expired.body));
+    if (check.purpose !== 'feedback') return res.status(400).type('html').send(shell(BOTH.wrong.title, BOTH.wrong.body));
+
     req.customer = await one('SELECT * FROM customers WHERE id = $1', [check.customerId]);
-    if (!req.customer) {
-      return res.status(404).type('html').send(shell('Not found', '<h1>We could not find you</h1>'));
-    }
+    if (!req.customer) return res.status(404).type('html').send(shell(BOTH.notFound.title, BOTH.notFound.body));
     return next();
   } catch (e) {
     console.error('[feedback] gate %s: %s', req.path, e.stack || e.message);
-    return res.status(500).type('html').send(shell('Something went wrong', '<p>Please try again in a moment.</p>'));
+    return res.status(500).type('html').send(shell(BOTH.error.title, BOTH.error.body));
   }
 };
 
 router.get('/rate/:token', gate, safe(async (req, res) => {
+  const lang = langOf(req.customer);
   const pass = await lastPassFor(req.customer.id);
   const existing = pass
     ? await one('SELECT rating, comment FROM feedback WHERE ticket_id = $1', [pass.id])
     : await one('SELECT rating, comment FROM feedback WHERE customer_id = $1 ORDER BY id DESC LIMIT 1', [req.customer.id]);
 
-  res.type('html').send(ratingPage({ pass, existing, place: pass ? pass.place_name : null }));
+  res.type('html').send(ratingPage({ pass, existing, lang }));
 }));
 
 router.post('/rate/:token', json, gate, safe(async (req, res) => {
+  const lang = langOf(req.customer);
   const rating = Number(req.body?.rating);
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    return res.status(400).json({ ok: false, message: 'Please tap a star first.' });
+    return res.status(400).json({ ok: false, message: COPY[lang].tapFirst });
   }
   const comment = String(req.body?.comment || '').trim().slice(0, 600) || null;
   const pass = await lastPassFor(req.customer.id);
@@ -226,7 +314,7 @@ router.post('/rate/:token', json, gate, safe(async (req, res) => {
     [pass ? pass.id : null, req.customer.id, pass ? pass.place_id : null,
       rating, comment, req.customer.is_test === true]);
 
-  require('../log').event('wa', 'rated', `${'•'.repeat(6)}${String(req.customer.mobile).slice(-4)}  ${rating}★${comment ? ` · "${comment.slice(0, 40)}"` : ''}`);
+  require('../log').event('wa', 'rated', `${'•'.repeat(6)}${String(req.customer.mobile).slice(-4)}  ${rating}★ ${lang}${comment ? ` · "${comment.slice(0, 40)}"` : ''}`);
   res.json({ ok: true, id: String(row.id) });
 }));
 

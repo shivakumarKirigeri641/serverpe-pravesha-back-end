@@ -21,7 +21,9 @@ const send = require('./send');
 
 const ENTRY_RECORDED = {
   en: { name: 'pv_checkpostentry_en_v2', language: 'en' },
-  kn: { name: 'pv_checkpostentry_kn_v2', language: 'kn' },
+  /* v3: v2 was registered with the wrong language (English), and a template's
+     language cannot be changed after submission — so it was re-raised as v3. */
+  kn: { name: 'pv_checkpostentry_kn_v3', language: 'kn' },
 };
 
 /**
@@ -38,7 +40,7 @@ function entryRecordedParams(t, { checkpost, recordedAt, statusKey = 'entry_reco
     L.vehicleType(t, lang),                      // {{3}} vehicle type
     t.ticket_no,                                 // {{4}} pass number
     L.placeWithDistrict(t, lang),                // {{5}} place of visit
-    L.checkpostName(checkpost, lang) || na,      // {{6}} checkpost
+    L.checkpostName(checkpost, lang, t) || na,   // {{6}} checkpost — Kannada even without name_kn
     L.longDate(t.travel_date, lang),             // {{7}} date of visit
     L.slotLabel(t, lang) || na,                  // {{8}} time slot
     L.dateTime(recordedAt, lang),                // {{9}} entry recorded at
@@ -66,6 +68,55 @@ function entryRecorded(t, opts, lang) {
 
 /** Send it. Used by the checkpost view when an entry is recorded. */
 const sendEntryRecorded = (to, t, opts, lang) => send.post(to, entryRecorded(t, opts, lang));
+
+/* ── The feedback request ───────────────────────────────────────────────── */
+
+/**
+ * "How was your visit?", sent after the entry-recorded message.
+ *
+ * A TEMPLATE, NOT A FREE MESSAGE, because the visitor is usually outside
+ * WhatsApp's 24-hour window by the time they reach the gate — they booked the
+ * night before — and a free message would simply not be delivered to exactly
+ * the people most worth asking.
+ *
+ * ONE PER LANGUAGE, in the language the visitor chose. The place is sent in that
+ * language too; the name is sent as they gave it.
+ *
+ * The button opens the rating page. Only the link's token is sent: the fixed
+ * part of the URL is approved with the template and WhatsApp appends the token.
+ *
+ *   body   {{1}} visitor's name     {{2}} the place
+ *   button {{1}} the rating token
+ */
+const FEEDBACK_REQUEST = {
+  /* Named per language, the same way the entry templates are. */
+  en: { name: 'pv_feedback_en_v1', language: 'en' },
+  kn: { name: 'pv_feedback_kn_v1', language: 'kn' },
+};
+
+function feedbackParams(t, lang) {
+  return [
+    t.customer_name || t.wa_profile_name || (lang === 'kn' ? 'ಸಂದರ್ಶಕರೇ' : 'Visitor'), // {{1}}
+    L.placeName(t, lang),                                                             // {{2}}
+  ];
+}
+
+function feedbackRequest(t, token, lang) {
+  const tpl = FEEDBACK_REQUEST[lang === 'kn' ? 'kn' : 'en'];
+  return {
+    type: 'template',
+    template: {
+      name: tpl.name,
+      language: { code: tpl.language },
+      components: [
+        { type: 'body', parameters: feedbackParams(t, lang).map((text) => ({ type: 'text', text: String(text) })) },
+        { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
+      ],
+    },
+  };
+}
+
+const sendFeedbackRequest = (to, t, token, lang) => send.post(to, feedbackRequest(t, token, lang));
 
 /* ── The period report ──────────────────────────────────────────────────── */
 
@@ -108,5 +159,6 @@ const sendPeriodReport = (to, vars) => send.post(to, periodReport(vars));
 
 module.exports = {
   entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
+  feedbackRequest, feedbackParams, sendFeedbackRequest, FEEDBACK_REQUEST,
   periodReport, sendPeriodReport, PERIOD_REPORT,
 };

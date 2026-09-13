@@ -110,7 +110,8 @@ async function handle(msg, contact) {
       console.log('[wa] greeting burst from %s — already welcomed, not repeating', mobile);
       return;
     }
-    await welcome.send(to, customer);
+    /* Terms if not yet accepted; otherwise the language question, every time. */
+    await welcome.greet(to, customer);
     return;
   }
 
@@ -137,10 +138,14 @@ async function handle(msg, contact) {
      visitor looks as though they had chosen. */
   if (action === 'LANG_EN' || action === 'LANG_KN') {
     const lang = action === 'LANG_KN' ? 'kn' : 'en';
+    /* The confirmation is sent only when something changed. The question is
+       now asked on every greeting, and "Continuing in Kannada" in reply to
+       choosing Kannada for the fifth time is a third message saying nothing. */
+    const changed = !customer.language_asked_at || customer.language !== lang;
     const r = await query(
       `UPDATE customers SET language = $2, language_asked_at = now(), modified_at = now()
         WHERE id = $1 RETURNING *`, [customer.id, lang]);
-    await send.text(to, t('languageSet', lang));
+    if (changed) await send.text(to, t('languageSet', lang));
     await welcome.sendMenu(to, r.rows[0]);
     return;
   }

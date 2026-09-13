@@ -23,6 +23,23 @@ const { query, one } = require('./db');
 
 const TTL_MINUTES = 120;
 
+/*
+ * How long a link lives depends on what it is for.
+ *
+ * A booking link is answered the moment it is tapped: two hours is generous,
+ * and a short life keeps an old link in a chat from being a way in later.
+ *
+ * A rating link arrives in a template message after the vehicle is through the
+ * gate, and people read that in the evening, at home, not at the barrier. Two
+ * hours there meant "This link has expired" for most of the people it was sent
+ * to. Forty-eight hours covers the evening and the day after, and still dies
+ * long before anyone would stumble on it again.
+ */
+const TTL_BY_PURPOSE = {
+  booking: TTL_MINUTES,
+  feedback: 48 * 60,
+};
+
 const secret = () => {
   const s = process.env.WEB_TOKEN_SECRET || process.env.WHATSAPP_APP_SECRET;
   if (!s) throw new Error('WEB_TOKEN_SECRET (or WHATSAPP_APP_SECRET) is not configured');
@@ -50,7 +67,7 @@ async function issue(customerId, purpose = 'booking') {
   await query(
     `INSERT INTO web_tokens (token_hash, customer_id, purpose, expires_at)
      VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval)`,
-    [hash(token), customerId, purpose, String(TTL_MINUTES)]);
+    [hash(token), customerId, purpose, String(TTL_BY_PURPOSE[purpose] || TTL_MINUTES)]);
 
   return token;
 }
@@ -111,4 +128,4 @@ const linkFor = (token) => `${base()}/book/${token}`;
    the other way round. */
 const feedbackLinkFor = (token) => `${base()}/rate/${token}`;
 
-module.exports = { issue, verify, spend, linkFor, feedbackLinkFor, TTL_MINUTES };
+module.exports = { issue, verify, spend, linkFor, feedbackLinkFor, TTL_MINUTES, TTL_BY_PURPOSE };

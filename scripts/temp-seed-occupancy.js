@@ -572,7 +572,7 @@ async function conversations(samples, place, slots) {
     out(m, new Date(paid.getTime() + 4000), 'document', null, doc(`Pravesha-Pass-${s.ticketNo}.pdf`, `${s.ticketNo} · ${s.vehicle.regNo} · ${day}`));
 
     if (s.entered) {
-      out(m, s.enterAt, 'template', null, { type: 'template', template: { name: kn ? 'pv_checkpostentry_kn_v2' : 'pv_checkpostentry_en_v2' } }, kn ? 'pv_checkpostentry_kn_v2' : 'pv_checkpostentry_en_v2');
+      out(m, s.enterAt, 'template', null, { type: 'template', template: { name: kn ? 'pv_checkpostentry_kn_v3' : 'pv_checkpostentry_en_v2' } }, kn ? 'pv_checkpostentry_kn_v3' : 'pv_checkpostentry_en_v2');
     }
 
     /* One in four asks something afterwards. */

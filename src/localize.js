@@ -9,7 +9,8 @@
  * Names come from the *_kn columns (023_kannada_names.sql), so a destination the
  * department adds brings its Kannada name with it. A missing translation falls
  * back to English rather than to a blank, which would be worse in a message the
- * visitor cannot reply to.
+ * visitor cannot reply to — except where a Kannada name can be built from facts
+ * that ARE translated, as the checkpost name is below.
  *
  * Identifiers are never translated: the plate and the pass number are written
  * the same way on the vehicle, the pass and the checkpost screen.
@@ -26,7 +27,23 @@ const state = (lang) => pick(lang, 'ಕರ್ನಾಟಕ', 'Karnataka');
 const placeWithDistrict = (t, lang) => `${placeName(t, lang)}, ${district(t, lang)}`;
 const slotLabel = (t, lang) => pick(lang, t.slot_label_kn, t.slot_label);
 const vehicleType = (t, lang) => pick(lang, t.category_label_kn, TYPE_EN[t.category_code] || t.category_label);
-const checkpostName = (cp, lang) => (cp ? pick(lang, cp.name_kn, cp.name) : '');
+/*
+ * A checkpost, in the visitor's language.
+ *
+ * Checkposts are added by the department and rarely come with a Kannada name,
+ * so this used to fall back to English — which put "Mullayanagiri Main Gate" in
+ * the middle of an otherwise Kannada message. When no Kannada name is stored but
+ * the place's is, the gate is named from that: "ಮುಳ್ಳಯ್ಯನಗಿರಿ ಚೆಕ್‌ಪೋಸ್ಟ್". That
+ * is built only from words already translated, never invented. A proper name set
+ * in the panel still wins.
+ */
+const checkpostName = (cp, lang, t = null) => {
+  if (!cp) return '';
+  if (lang !== 'kn') return cp.name;
+  if (cp.name_kn) return cp.name_kn;
+  if (t && t.place_name_kn) return `${t.place_name_kn} ಚೆಕ್‌ಪೋಸ್ಟ್`;
+  return cp.name;
+};
 
 /** "Saturday, 12 Sep 2026" / "ಶನಿವಾರ, 12 ಸೆಪ್ಟೆಂಬರ್ 2026" from a DATE. */
 function longDate(yyyyMmDd, lang = 'en') {

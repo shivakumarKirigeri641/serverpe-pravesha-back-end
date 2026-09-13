@@ -13,8 +13,14 @@
  * invested anything in the booking.
  *
  * AGREEING IS ASKED ONCE. A returning visitor who has already accepted this
- * version goes straight to booking — re-consenting on every "hi" trains people
- * to tap without reading, which is the opposite of what the gate is for.
+ * version is not asked again — re-consenting on every "hi" trains people to tap
+ * without reading, which is the opposite of what the gate is for.
+ *
+ * THE LANGUAGE IS ASKED ON EVERY "hi". Unlike consent, a language is not a
+ * decision made once for ever: the same phone is handed between a family, a
+ * driver books for an owner, and somebody who chose English last month may want
+ * Kannada today. Asking costs one tap, and it is asked only on a greeting — never
+ * in the middle of a booking, and never in reply to a stray message.
  */
 
 const send = require('./send');
@@ -130,4 +136,19 @@ async function send_(to, customer) {
   return sendMenu(to, customer);
 }
 
-module.exports = { send: send_, firstTime, menu, askLanguage, sendMenu, termsVersionNow, termsUrl, privacyUrl };
+/**
+ * What a "hi" gets: the terms if this version has not been accepted, otherwise
+ * the language question — every time.
+ *
+ * Kept apart from send_() on purpose. send_() also answers messages nobody
+ * recognised, and a visitor who types "ok" mid-conversation should get the menu
+ * back, not be asked which language they speak.
+ */
+async function greet(to, customer) {
+  const version = await termsVersionNow();
+  const accepted = customer?.terms_accepted_at && customer?.terms_version === version;
+  if (!accepted) return send_(to, customer);
+  return askLanguage(to, customer);
+}
+
+module.exports = { send: send_, greet, firstTime, menu, askLanguage, sendMenu, termsVersionNow, termsUrl, privacyUrl };
