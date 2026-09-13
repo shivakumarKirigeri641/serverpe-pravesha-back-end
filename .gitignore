@@ -4,3 +4,8 @@ node_modules
 docs
 # Rendered marketing image variants (generated on demand)
 src/images/marketingsite/.resized/
+
+# Production secrets and local server output: never commit.
+.env_prod
+server.log
+server.err.log
