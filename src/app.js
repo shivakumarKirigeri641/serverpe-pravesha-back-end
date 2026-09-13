@@ -59,6 +59,7 @@ app.use('/', require('./routes/adminHealthApi'));
 app.use('/', require('./routes/adminVehiclesApi'));
 app.use('/', require('./routes/adminOnspotApi'));
 app.use('/', require('./routes/adminFeedbackApi'));
+app.use('/', require('./routes/adminReportsApi'));
 /* Temporary, for demonstrations before launch. Delete with src/demo and src/simulation. */
 app.use('/', require('./routes/adminUnverifiedApi'));
 app.use('/', require('./routes/adminDemoApi'));

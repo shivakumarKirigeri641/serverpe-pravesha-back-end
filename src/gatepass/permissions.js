@@ -56,6 +56,10 @@ const CAPABILITIES = {
   'settings.staff': 'Manage checkpost staff',
   'settings.users': 'Manage panel users and their roles',
   'settings.gst': 'Change GST and business details',
+  /* Who receives the evening report, and sending one by hand. Separate from
+     reports.view because reading figures and putting them on somebody else's
+     phone are different acts. */
+  'settings.reports': 'Choose who receives the period report, and send one now',
   /* Temporary, for demonstrations before launch - see src/demo. */
   'demo.simulate': 'Use the demonstration tools and simulated traffic',
   'demo.reset': 'Remove all test data from the database',
