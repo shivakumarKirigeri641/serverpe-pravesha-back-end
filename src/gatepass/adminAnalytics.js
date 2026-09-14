@@ -21,6 +21,7 @@
 
 const { query } = require('./db');
 const slotTime = require('./slotTime');
+const rto = require('./rtoCodes');
 
 const rowsOf = async (text, params) => (await query(text, params)).rows;
 const n = (v) => Number(v || 0);
@@ -655,7 +656,86 @@ async function overview({ from, to } = {}) {
   return { from: start, to: end, today, traffic: t, daily: day, visitors: people, staff: staffRows };
 }
 
+/**
+ * Where the vehicles are registered — by state, and by registering office.
+ *
+ * WHAT IT IS FOR. Who actually comes up the hill is a tourism question, not an
+ * operations one: whether Mullayanagiri is a Bengaluru weekend or a Karnataka
+ * one, whether Kerala and Tamil Nadu traffic is worth a Malayalam or Tamil
+ * notice, which districts to advertise in. The answer is already on every
+ * number plate that reaches the barrier.
+ *
+ * COUNTED BY VEHICLE, NOT BY ENTRY. A Tempo Traveller that comes up nine times
+ * in a month is one Bengaluru vehicle, and counting it nine times would make
+ * the nearest districts look larger than they are. Both figures are returned:
+ * `vehicles` for how many distinct ones came, `entries` for how often.
+ *
+ * The state comes off the plate, which is fixed and unambiguous. The office
+ * comes from the registration certificate, and is left out where we have not
+ * fetched one — see rtoCodes.js.
+ */
+async function origins(from, to) {
+  const rows = await rowsOf(
+    `SELECT left(regexp_replace(s.reg_no, '[^A-Za-z0-9]', '', 'g'), 2) AS state_code,
+            left(regexp_replace(s.reg_no, '[^A-Za-z0-9]', '', 'g'), 4) AS rto_code,
+            v.registered_at,
+            count(DISTINCT s.reg_no) AS vehicles,
+            count(*)                 AS entries
+       FROM scans s
+       LEFT JOIN vehicles v ON v.reg_no = s.reg_no
+      WHERE s.verdict IN ('valid', 'valid_override')
+        AND (s.scanned_at AT TIME ZONE 'Asia/Kolkata')::date BETWEEN $1::date AND $2::date
+      GROUP BY 1, 2, 3`, [from, to]);
+
+  const states = new Map();
+  const places = new Map();
+  let vehicles = 0;
+  let entries = 0;
+
+  for (const r of rows) {
+    const state = rto.stateOf(r.state_code);
+    const office = rto.officeOf(r.registered_at);
+    const v = n(r.vehicles);
+    const e = n(r.entries);
+    vehicles += v;
+    entries += e;
+
+    if (!states.has(state.code)) states.set(state.code, { code: state.code, name: state.name, kind: state.kind, vehicles: 0, entries: 0 });
+    const st = states.get(state.code);
+    st.vehicles += v;
+    st.entries += e;
+
+    /* One line per place: the office where the RC names one, the RTO code on
+       the plate where it does not. Both say which state they are in. */
+    const key = office ? `${state.code}|${office}` : `${r.rto_code}|`;
+    if (!places.has(key)) {
+      places.set(key, {
+        key, stateCode: state.code, stateName: state.name,
+        place: office, rtoCode: r.rto_code, named: Boolean(office),
+        vehicles: 0, entries: 0,
+      });
+    }
+    const pl = places.get(key);
+    pl.vehicles += v;
+    pl.entries += e;
+  }
+
+  const byVehicles = (a, b) => b.vehicles - a.vehicles || b.entries - a.entries;
+  const stateList = [...states.values()].sort(byVehicles);
+  const placeList = [...places.values()].sort(byVehicles);
+  const share = (x) => (vehicles ? Math.round((x / vehicles) * 1000) / 10 : 0);
+
+  return {
+    from, to, vehicles, entries,
+    states: stateList.map((s) => ({ ...s, share: share(s.vehicles) })),
+    places: placeList.map((p) => ({ ...p, share: share(p.vehicles) })),
+    home: stateList[0] ? { ...stateList[0], share: share(stateList[0].vehicles) } : null,
+    fromOutside: stateList.slice(1).reduce((a, s) => a + s.vehicles, 0),
+    named: placeList.filter((p) => p.named).reduce((a, p) => a + p.vehicles, 0),
+  };
+}
+
 module.exports = {
-  overview, traffic, daily, compare, presets, staff, staffTrend, heatmap,
+  overview, traffic, daily, compare, presets, staff, staffTrend, heatmap, origins,
   visitors, visitorBands, visitorVisits, vehicle, classify, frequency, shiftDay,
 };

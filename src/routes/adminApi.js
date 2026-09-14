@@ -236,6 +236,16 @@ router.get(`${P}/analytics/patterns`, auth, needs('analytics.view'), safe(async 
   res.set('Cache-Control', 'no-store').json({ ok: true, heatmap: await analytics.heatmap(from, to) });
 }));
 
+/* Where the vehicles are registered: by state, and by registering office. */
+router.get(`${P}/analytics/origins`, auth, needs('analytics.view'), safe(async (req, res) => {
+  const to = String(req.query.to || '').slice(0, 10);
+  const from = String(req.query.from || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: 'bad_range', message: 'Choose a start and end date.' });
+  }
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await analytics.origins(from, to)) });
+}));
+
 /* Each staff member day by day: how much they checked, and how long it took. */
 router.get(`${P}/analytics/staff-trend`, auth, needs('analytics.view'), safe(async (req, res) => {
   const to = String(req.query.to || '').slice(0, 10);
