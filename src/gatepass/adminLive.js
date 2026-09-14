@@ -550,6 +550,108 @@ async function pulse(date = null) {
   };
 }
 
+/**
+ * Each of today's slots: the first vehicle through the gate, and the latest.
+ *
+ * WHY THESE TWO. The first entry says when the slot really started moving — a
+ * morning slot that opens at six and sees its first car at twenty to eight is a
+ * different morning from one that queues at the barrier. The latest says the
+ * slot is still flowing, or that it stopped an hour ago. Together, per slot,
+ * they are what an officer reads off a wall screen without opening the feed.
+ *
+ * An entry is an admitted check at a gate — valid, or admitted anyway — or a
+ * visitor who recorded themselves at the gate when paying, which writes the
+ * same row. The pass decides the slot, not the clock: a morning pass admitted
+ * late still belongs to the morning.
+ */
+async function slotEntries(today) {
+  const slots = await rowsOf(
+    `SELECT s.id, s.code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS label, s.starts_at, s.ends_at,
+            p.id AS place_id, p.name AS place_name
+       FROM place_slots s
+       JOIN places p ON p.id = s.place_id AND p.is_active
+      WHERE s.is_active
+        AND (s.valid_from IS NULL OR s.valid_from <= $1::date)
+        AND (s.valid_to IS NULL OR s.valid_to >= $1::date)
+      ORDER BY p.id, s.starts_at, s.sort_order`, [today]);
+  if (!slots.length) return [];
+
+  const entries = await rowsOf(
+    `WITH admitted AS (
+       SELECT sc.id, sc.scanned_at, sc.reg_no, sc.ticket_no, sc.verdict, sc.staff_id, sc.checkpost_id,
+              t.slot_id, t.entry_source, t.category_id, t.customer_id
+         FROM scans sc JOIN tickets t ON t.id = sc.ticket_id
+        WHERE (sc.scanned_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+          AND sc.verdict IN ('valid', 'valid_override')
+          AND t.travel_date = $1::date
+     ),
+     /* A pass checked twice is still one vehicle in. */
+     per_slot AS (
+       SELECT slot_id, count(DISTINCT ticket_no) AS entered FROM admitted GROUP BY slot_id
+     ),
+     ranked AS (
+       SELECT a.*,
+              row_number() OVER (PARTITION BY slot_id ORDER BY scanned_at ASC, id ASC)   AS from_first,
+              row_number() OVER (PARTITION BY slot_id ORDER BY scanned_at DESC, id DESC) AS from_last
+         FROM admitted a
+     )
+     SELECT r.*, ps.entered, c.label AS category_label, c.code AS category_code,
+            st.name AS staff_name, cp.name AS checkpost_name,
+            cu.name AS customer_name, cu.wa_profile_name
+       FROM ranked r
+       JOIN per_slot ps ON ps.slot_id = r.slot_id
+       LEFT JOIN vehicle_categories c ON c.id = r.category_id
+       LEFT JOIN staff st ON st.id = r.staff_id
+       LEFT JOIN checkposts cp ON cp.id = r.checkpost_id
+       LEFT JOIN customers cu ON cu.id = r.customer_id
+      WHERE r.from_first = 1 OR r.from_last = 1`, [today]);
+
+  const booked = await rowsOf(
+    `SELECT slot_id, count(*) AS n FROM tickets
+      WHERE travel_date = $1::date AND status IN ('paid', 'used')
+      GROUP BY slot_id`, [today]);
+  const bookedBy = Object.fromEntries(booked.map((b) => [String(b.slot_id), n(b.n)]));
+
+  const shape = (r) => (r ? {
+    at: r.scanned_at,
+    regNo: r.reg_no,
+    ticketNo: r.ticket_no,
+    type: r.category_label,
+    typeCode: r.category_code,
+    visitor: r.customer_name || r.wa_profile_name || null,
+    staff: r.staff_name || null,
+    checkpost: r.checkpost_name || null,
+    /* Recorded by the visitor at the gate when paying, rather than by staff. */
+    selfDeclared: r.entry_source === 'self' && !r.staff_name,
+    admittedAnyway: r.verdict === 'valid_override',
+  } : null);
+
+  const now = slotTime.nowIST();
+  return slots.map((s) => {
+    const mine = entries.filter((e) => String(e.slot_id) === String(s.id));
+    const first = mine.find((e) => n(e.from_first) === 1) || null;
+    const latest = mine.find((e) => n(e.from_last) === 1) || null;
+    const starts = slotTime.toMinutes(String(s.starts_at).slice(0, 5));
+    const ends = slotTime.toMinutes(String(s.ends_at).slice(0, 5));
+    return {
+      slotId: String(s.id),
+      code: s.code,
+      label: s.label,
+      placeName: s.place_name,
+      startsAt: slotTime.hhmm(starts),
+      endsAt: slotTime.hhmm(ends),
+      state: now.minutes < starts ? 'upcoming' : now.minutes >= ends ? 'over' : 'open',
+      booked: bookedBy[String(s.id)] || 0,
+      entered: first ? n(first.entered) : 0,
+      first: shape(first),
+      /* One entry so far is both the first and the latest; the screen says so
+         rather than showing the same car twice. */
+      latest: latest && first && latest.id === first.id ? null : shape(latest),
+      onlyOne: Boolean(first && latest && latest.id === first.id),
+    };
+  });
+}
+
 /** Everything the live screen needs, in one call. */
 async function live() {
   const now = slotTime.nowIST();
@@ -557,7 +659,7 @@ async function live() {
   const yesterday = previousDay(today);
   const nowTime = `${slotTime.hhmm(now.minutes)}:59`;
 
-  const [v, veh, hours, byCat, acts, people, perf, verds, current, counts] = await Promise.all([
+  const [v, veh, hours, byCat, acts, people, perf, verds, current, counts, bySlot] = await Promise.all([
     visitors(today, yesterday, nowTime, slotTime.hhmm(now.minutes)),
     vehicles(today, yesterday, nowTime),
     hourly(today, yesterday),
@@ -568,6 +670,7 @@ async function live() {
     verdicts(today),
     currentVehicle(today),
     activityCounts(today),
+    slotEntries(today),
   ]);
 
   return {
@@ -588,7 +691,8 @@ async function live() {
     performance: perf,
     verdicts: verds,
     current,
+    slots: bySlot,
   };
 }
 
-module.exports = { live, pulse, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle };
+module.exports = { live, pulse, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle, slotEntries };
