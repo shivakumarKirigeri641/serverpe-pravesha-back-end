@@ -187,13 +187,6 @@ router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
   res.json(out);
 }));
 
-/* Take back an entry this shift recorded within the last minute. */
-router.post(`${P}/entry/undo`, json, auth, safe(async (req, res) => {
-  const { ticketNo, reason } = req.body || {};
-  const out = await checkin.undo({ session: req.session, ticketNo, reason });
-  res.status(out.ok ? 200 : ['too_late', 'not_yours'].includes(out.code) ? 409 : 400).json(out);
-}));
-
 /*
  * An entry recorded on a phone with no signal, sent when the signal came back.
  *

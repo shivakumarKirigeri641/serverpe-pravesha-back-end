@@ -41,10 +41,6 @@ async function forSession(sessionId) {
        FROM scans
       WHERE session_id = $1`, [s.id]);
 
-  /* Entries taken back on this shift. A mis-tap now and then is normal; a run
-     of them is worth a word at handover. */
-  const undone = await one(`SELECT count(*) AS n FROM scan_undos WHERE session_id = $1`, [s.id]);
-
   const sales = await one(
     `SELECT count(*)                                                              AS sold,
             count(*) FILTER (WHERE t.status = 'used')                             AS sold_entered,
@@ -77,7 +73,6 @@ async function forSession(sessionId) {
     entries: n(checks.entries) + n(sales.sold_entered),
     overrides: n(checks.overrides),
     refused: n(checks.refused),
-    undone: n(undone && undone.n),
     averageSeconds: checks.avg_ms === null ? null : Math.round(n(checks.avg_ms) / 100) / 10,
     sold: {
       count: n(sales.sold),
