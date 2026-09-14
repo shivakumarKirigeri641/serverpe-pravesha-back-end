@@ -389,17 +389,54 @@
     document.head.appendChild(el);
   }());
 
+  /*
+   * REDRAWING THE SLOTS MUST NOT MOVE THE PAGE UNDER THE VISITOR.
+   *
+   * The slot grid sits above the vehicle field. Every vehicle check redraws it
+   * with that vehicle's counts, and the redraw used to collapse the grid to one
+   * "Loading…" line first: everything below it — the field the visitor was
+   * typing in — jumped up by the grid's height, and the grid grew back in front
+   * of them. A visitor who had already picked a slot and scrolled down to type
+   * their number was thrown back up to the slots, every time.
+   *
+   * So the old grid stays on screen, dimmed, until the new one is ready; and if
+   * the vehicle field is where the visitor is looking, it is held at exactly the
+   * same place on screen across the redraw, whatever the grid above it does.
+   */
+  function steady(update) {
+    var anchor = $('reg');
+    var r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+    /* Only when the field is on screen or already scrolled past — somebody
+       looking at the slots themselves is left exactly where they are. */
+    var hold = r && r.top < (window.innerHeight || 0);
+    var before = hold ? r.top : 0;
+    update();
+    if (!hold) return;
+    var shift = anchor.getBoundingClientRect().top - before;
+    if (Math.abs(shift) > 1) window.scrollBy(0, shift);
+  }
+
   var loadSeq = 0;
   function loadSlots() {
     var mine = ++loadSeq;
-    if (placeIsSoon()) { $('slots').innerHTML = ''; return; }
+    if (placeIsSoon()) { steady(function () { $('slots').innerHTML = ''; }); return; }
     var v = state.vehicle;
     var myCode = v ? v.category.code : null;
-    $('slots').innerHTML = '<div class="hint">' + esc(t('loadingSlots')) + '</div>';
+    if ($('slots').querySelector('.sgrid')) {
+      $('slots').style.opacity = '.55';   // the counts are being refreshed; the grid stays put
+    } else {
+      $('slots').innerHTML = '<div class="hint">' + esc(t('loadingSlots')) + '</div>';
+    }
 
     api('slots', { placeId: $('place').value, travelDate: $('date').value }).then(function (r) {
       if (mine !== loadSeq) return; // a newer load has started; this answer is stale
-      if (!r.ok) { $('slots').innerHTML = '<div class="hint">' + esc(t('cantLoad')) + '</div>'; return; }
+      if (!r.ok) {
+        steady(function () {
+          $('slots').innerHTML = '<div class="hint">' + esc(t('cantLoad')) + '</div>';
+          $('slots').style.opacity = '';
+        });
+        return;
+      }
 
       var anyOpen = false, keep = null, lost = null;
 
@@ -476,7 +513,10 @@
       if (lost) html += '<div class="msg warn show">' + msgHtml('lostT', t('lost', { slot: slotText(lost)[2] })) + '</div>';
       if (!anyOpen) html += '<div class="msg warn show">' + msgHtml('noSlotsT', t('noSlots')) + '</div>';
 
-      $('slots').innerHTML = html;
+      steady(function () {
+        $('slots').innerHTML = html;
+        $('slots').style.opacity = '';
+      });
       if (!keep) state.slot = null;
       Array.prototype.forEach.call($('slots').querySelectorAll('.n'), countUp);
 
@@ -502,9 +542,12 @@
     }).catch(function (err) {
       if (mine !== loadSeq) return;
       if (!(err && err.network)) report('slots-render', err);
-      $('slots').innerHTML = '<div class="msg bad show">'
-        + (err && err.network ? msgHtml('noConnT', t('slotsNoConn')) : msgHtml('reloadT', t('reload')))
-        + '</div>';
+      steady(function () {
+        $('slots').innerHTML = '<div class="msg bad show">'
+          + (err && err.network ? msgHtml('noConnT', t('slotsNoConn')) : msgHtml('reloadT', t('reload')))
+          + '</div>';
+        $('slots').style.opacity = '';
+      });
     });
   }
 
@@ -715,32 +758,67 @@
       row.classList.add('busy');
       say(t('checkingGate'));
 
-      navigator.geolocation.getCurrentPosition(function (pos) {
-        tell(true, {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        }).then(function (r) {
-          row.classList.remove('busy');
-          if (r.ok && r.on) {
-            box.checked = true;
-            row.classList.add('on');
-            say(r.message || t('atGate'), true);
-          } else {
+      /*
+       * THE FIRST ANSWER IS OFTEN NOT THE REAL ONE.
+       *
+       * On Android the first request is where the browser asks "Allow?" — and if
+       * the phone's own location switch is off, that request fails at once,
+       * before the phone has offered to turn it on. The offer only appears on
+       * the next request. Visitors tapped "Allow for now", were told their
+       * location could not be read, ticked the box again, and only then saw the
+       * phone ask to switch location on.
+       *
+       * So a failure that is not a flat refusal is asked again by the page
+       * itself, twice, a moment apart — which is what brings up the phone's own
+       * prompt — and the visitor sees "checking" throughout instead of an error
+       * they have to work around. A refusal is asked once more (some in-app
+       * browsers report the permission prompt itself as a refusal) and then
+       * believed. Unticking the box stops it.
+       */
+      var attempt = 0;
+      var locate = function () {
+        attempt += 1;
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          if (!box.checked) return;
+          tell(true, {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy
+          }).then(function (r) {
+            row.classList.remove('busy');
+            if (r.ok && r.on) {
+              box.checked = true;
+              row.classList.add('on');
+              say(r.message || t('atGate'), true);
+            } else {
+              box.checked = false;
+              row.classList.remove('on');
+              say(r.message || t('notAtGate'));
+            }
+          }).catch(function () {
+            row.classList.remove('busy');
             box.checked = false;
-            row.classList.remove('on');
-            say(r.message || t('notAtGate'));
+            say(t('gateErr'));
+          });
+        }, function (err) {
+          if (!box.checked) { row.classList.remove('busy'); return; }
+          var refused = err && err.code === 1;
+          if (attempt < (refused ? 2 : 3)) {
+            say(t('checkingGate'));
+            setTimeout(function () { if (box.checked) locate(); }, attempt === 1 ? 1500 : 2500);
+            return;
           }
-        }).catch(function () {
           row.classList.remove('busy');
           box.checked = false;
-          say(t('gateErr'));
+          say(refused ? t('locOff') : t('locUnread'));
+        }, {
+          enableHighAccuracy: true,
+          timeout: attempt === 1 ? 15000 : 20000,
+          /* A position remembered from before the switch was turned on is no use. */
+          maximumAge: attempt === 1 ? 30000 : 0
         });
-      }, function (err) {
-        row.classList.remove('busy');
-        box.checked = false;
-        say(err && err.code === 1 ? t('locOff') : t('locUnread'));
-      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+      };
+      locate();
     });
 
     return { reset: reset };

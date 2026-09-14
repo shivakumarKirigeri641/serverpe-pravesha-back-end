@@ -9,3 +9,5 @@ src/images/marketingsite/.resized/
 .env_prod
 server.log
 server.err.log
+sandbox.log
+sandbox.err.log
