@@ -359,8 +359,14 @@ function details(v) {
   const cleaned = String(v.model || '')
     .replace(/^\s*[A-Z]{1,3}\/[A-Z]{1,3}\.?\s*/i, '')
     .trim();
-  const words = cleaned.split(/\s+/).filter(Boolean)
+  let words = cleaned.split(/\s+/).filter(Boolean)
     .filter((w, i) => i === 0 || !BODY_WORDS.has(w.toUpperCase()));
+
+  /* The maker's name again at the front of the model — "TATA MOTORS LTD" with
+     "TATA ZEST XM QJET" — is not the model. Dropped, or the screen reads
+     "Tata · Zest XM Qjet" and the model everybody uses becomes the variant. */
+  const makerWords = String(v.maker || '').replace(CORPORATE, ' ').trim().split(/\s+/).filter(Boolean).map((w) => w.toUpperCase());
+  while (words.length > 1 && makerWords.includes(words[0].toUpperCase())) words = words.slice(1);
   const model = words.length ? titleCase(words[0]) : null;
 
   /* Trim codes are acronyms, not words: HTX, VXI, ZXI, LXI, AT, MT. A short

@@ -40,7 +40,8 @@ const LIST_COLUMNS = `
   s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label,
   s.label_kn AS slot_label_kn, s.starts_at, s.ends_at,
   c.code AS category_code, c.label AS category_label, c.label_kn AS category_label_kn,
-  v.maker, v.model, cu.name AS customer_name, cu.wa_profile_name`;
+  v.maker, v.model, v.vehicle_class, v.body_type, v.vehicle_category, v.colour, v.fuel, v.seats,
+  cu.name AS customer_name, cu.wa_profile_name`;
 
 const LIST_FROM = `
   FROM tickets t
@@ -63,6 +64,14 @@ const shape = (r) => ({
   slot: { code: r.slot_code, label: r.slot_label, startsAt: r.starts_at, endsAt: r.ends_at },
   category: { code: r.category_code, label: r.category_label },
   vehicle: [r.maker, r.model].filter(Boolean).join(' ') || null,
+  /*
+   * What a person at a barrier recognises as the vehicle: make, model, variant
+   * and what the register calls it. The fare category ("Car / Jeep / SUV") is
+   * what it costs, not what it is — a staff member comparing the screen with the
+   * vehicle in front of them needs "Kia Seltos HTX Plus", not the price band.
+   * Parsed by the same code the booking form uses, so the two never disagree.
+   */
+  details: require('./vehicle').details(r),
   visitor: r.customer_name || r.wa_profile_name || null,
   mobile: r.mobile ? `••••${String(r.mobile).slice(-4)}` : null,
   amount: (r.total_paise / 100).toFixed(0),
@@ -171,9 +180,12 @@ function detail(t) {
  * the visitor the date is wrong would send them back tomorrow to the same wrong
  * gate.
  */
-function verdictFor(checkpost, t) {
+function verdictFor(checkpost, t, at = new Date()) {
+  /* `at` is when the vehicle was at the barrier. Normally that is now; for an
+     entry recorded on a phone with no signal and sent later, it is the moment
+     the phone recorded it — the slot and the date are judged as they were then. */
   const block = (verdict, message) => ({ verdict, blocking: true, message });
-  const today = slotTime.nowIST().date;
+  const today = slotTime.nowIST(at).date;
   const travelDate = t.travel_date instanceof Date
     ? t.travel_date.toISOString().slice(0, 10) : String(t.travel_date);
 
@@ -211,7 +223,7 @@ function verdictFor(checkpost, t) {
 
   /* Inside the slot? The same window the booking sold: entry closes an hour
      before the slot ends, and the slot has not started yet if they are early. */
-  const mins = slotTime.nowIST().minutes;
+  const mins = slotTime.nowIST(at).minutes;
   const startsAt = slotTime.toMinutes(String(t.starts_at).slice(0, 5));
   const lastEntry = slotTime.toMinutes(String(t.ends_at).slice(0, 5)) - slotTime.LAST_ENTRY_BUFFER_MIN;
 
@@ -241,6 +253,16 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
   if (!t) {
     await logScan({ session, checkpost, ticket: null, ticketNo, regNo, verdict: 'unknown_ticket', rawPayload, durationMs });
     return { ok: false, verdict: 'unknown_ticket', message: 'No pass found with that number.' };
+  }
+
+  /* On the watchlist as blocked: stopped whatever the pass says. */
+  const watchlist = require('./watchlist');
+  const watched = await watchlist.levelFor(t.reg_no);
+  if (watched && watched.level === 'block') {
+    await logScan({ session, checkpost, ticket: t, verdict: 'watch_blocked', rawPayload, durationMs });
+    require('../log').gate('watch_blocked', `watchlist — ${t.ticket_no} · ${t.reg_no}`);
+    return { ok: false, verdict: 'watch_blocked', blocking: true, watch: watched,
+      message: watchlist.gateMessage(watched), pass: detail(t) };
   }
 
   const v = verdictFor(checkpost, t);
@@ -302,6 +324,116 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
   return { ok: true, verdict: override ? 'valid_override' : 'valid', usedAt: claimed,
     message: selfDeclared ? 'Checked. Their own entry is now confirmed by you.' : 'Entry recorded.',
     pass: { ...detail(t), status: 'used', usedAt: claimed } };
+}
+
+/**
+ * An entry the phone recorded with no signal, arriving now.
+ *
+ * THE VEHICLE HAS ALREADY GONE IN. This does not ask whether it may — the staff
+ * member decided at the barrier from the list saved on the phone. What it does:
+ *
+ *   * records the entry at the moment the phone recorded it, not the moment the
+ *     signal came back, and judges the date and slot as they were then;
+ *   * records it once, however many times a dropping signal makes the phone
+ *     send it (the phone's own id for the entry is the key);
+ *   * reports what the phone could not have known — the pass used at another
+ *     gate meanwhile, cancelled, never paid — as a refusal the staff member is
+ *     shown and every report sees, marked as an offline entry.
+ *
+ * Outside the slot is recorded as the staff member's decision: there was no
+ * signal to ask anybody else.
+ */
+async function recordOffline({ session, checkpost, ticketNo, clientId, at, override = false, rawPayload = null, durationMs = null }) {
+  const id = String(clientId || '');
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+    return { ok: false, error: 'bad_client_id', message: 'This saved entry has no id and cannot be recorded.' };
+  }
+
+  /* Sent twice because a reply was lost: recorded the first time only. */
+  const seen = await one(
+    `SELECT sc.verdict, sc.scanned_at, t.used_at
+       FROM scans sc LEFT JOIN tickets t ON t.id = sc.ticket_id
+      WHERE sc.was_offline AND sc.raw_payload LIKE $1
+      LIMIT 1`, [`%"clientId":"${id}"%`]);
+  if (seen) {
+    const ok = seen.verdict === 'valid' || seen.verdict === 'valid_override';
+    return { ok, duplicate: true, verdict: seen.verdict, usedAt: seen.used_at || seen.scanned_at,
+      message: ok ? 'Already recorded.' : 'Already sent, and it was not accepted.' };
+  }
+
+  /* When it happened, by the phone's clock — kept within reason, so a phone set
+     to the wrong year cannot put an entry anywhere it likes. */
+  const nowMs = Date.now();
+  let when = new Date(at);
+  if (!Number.isFinite(when.getTime()) || when.getTime() > nowMs + 5 * 60 * 1000 || when.getTime() < nowMs - 36 * 3600 * 1000) {
+    when = new Date(nowMs);
+  }
+
+  const payload = (extra = {}) => JSON.stringify({ typed: rawPayload, clientId: id, offline: true, recordedAt: when.toISOString(), ...extra });
+  const INSERT = `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, session_id, verdict, raw_payload,
+                                     duration_ms, scanned_at, synced_at, was_offline)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), true)`;
+  const logOffline = (ticket, verdict) => query(INSERT,
+    [ticket ? ticket.id : null, ticket ? ticket.ticket_no : (ticketNo || null), ticket ? ticket.reg_no : null,
+      checkpost.id, session.staff_id, session.session_id, verdict, payload(), sane(durationMs), when]);
+
+  const t = await booking.byTicketNo(ticketNo);
+  if (!t) {
+    await logOffline(null, 'unknown_ticket');
+    return { ok: false, verdict: 'unknown_ticket', message: 'No pass found with that number.' };
+  }
+
+  /* Blocked on the watchlist: not accepted, even though it went through — the
+     staff member is shown it, and so is the office. */
+  const offWatch = await require('./watchlist').levelFor(t.reg_no);
+  if (offWatch && offWatch.level === 'block') {
+    await logOffline(t, 'watch_blocked');
+    require('../log').gate('watch_blocked', `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · watchlist`);
+    return { ok: false, verdict: 'watch_blocked', watch: offWatch,
+      message: require('./watchlist').gateMessage(offWatch), pass: detail(t) };
+  }
+
+  const v = verdictFor(checkpost, t, when);
+  if (v.blocking) {
+    await logOffline(t, v.verdict);
+    require('../log').gate(v.verdict, `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · ${v.verdict}`);
+    return { ok: false, verdict: v.verdict, message: v.message, usedAt: v.usedAt || null, pass: detail(t) };
+  }
+
+  const asOverride = override || v.verdict === 'wrong_slot';
+  const selfDeclared = t.status === 'used' && t.entry_source === 'self';
+  const claimed = await tx(async (client) => {
+    const { rows } = selfDeclared
+      ? await client.query(
+        `UPDATE tickets SET entry_source = 'gate', modified_at = now()
+          WHERE id = $1 AND status = 'used' AND entry_source = 'self' RETURNING used_at`, [t.id])
+      : await client.query(
+        `UPDATE tickets SET status = 'used', used_at = $2, entry_source = 'gate', modified_at = now()
+          WHERE id = $1 AND status = 'paid' RETURNING used_at`, [t.id, when]);
+    if (!rows.length) return null;
+    await client.query(INSERT,
+      [t.id, t.ticket_no, t.reg_no, checkpost.id, session.staff_id, session.session_id,
+        asOverride ? 'valid_override' : 'valid',
+        payload({ override: asOverride || undefined, slotVerdict: v.verdict, confirmedSelfCheckin: selfDeclared || undefined }),
+        sane(durationMs), when]);
+    return rows[0].used_at;
+  });
+
+  if (!claimed) {
+    const fresh = await booking.byTicketNo(t.ticket_no);
+    await logOffline(t, 'already_used');
+    require('../log').gate('already_used', `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · used meanwhile`);
+    return { ok: false, verdict: 'already_used', usedAt: fresh ? fresh.used_at : null,
+      message: 'This pass was already used — probably at another gate while this phone had no signal.',
+      pass: detail(fresh || t) };
+  }
+
+  require('../log').gate(asOverride ? 'valid_override' : 'valid',
+    `${t.ticket_no}  ${t.reg_no} · ${checkpost.name} · recorded offline, sent later`);
+  notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
+
+  return { ok: true, offline: true, verdict: asOverride ? 'valid_override' : 'valid', usedAt: claimed,
+    message: 'Entry recorded.', pass: { ...detail(t), status: 'used', usedAt: claimed } };
 }
 
 /** The visitor's copy: the approved template, in the language they chose. */
@@ -540,7 +672,7 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
             t.moved_from_date, t.moved_at, t.entry_paise, t.platform_paise, t.gst_paise,
             regexp_replace(msl.label, '[[:space:]]+', ' ', 'g') AS moved_from_slot,
             cu.wa_id, cu.language,
-            v.identified_by, v.identity_kind, v.identity_note, v.colour,
+            v.identified_by, v.identity_kind, v.identity_note,
             pay.gateway, pay.payment_id, pay.paid_at, pay.status AS payment_status,
             g.kind AS grant_kind, g.payment_method, g.payment_reference, g.reason AS grant_reason,
             gs.name AS sold_by_staff, gu.name AS sold_by_admin,
@@ -623,4 +755,4 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
   };
 }
 
-module.exports = { arrivals, search, inspect, record, recent, history, passes, vehicle, verdictFor, notify };
+module.exports = { arrivals, search, inspect, record, recordOffline, recent, history, passes, vehicle, verdictFor, notify };

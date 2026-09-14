@@ -98,9 +98,27 @@ router.post(`${P}/session/verify`, json, safe(async (req, res) => {
 
 router.get(`${P}/session`, auth, safe(async (req, res) => res.json({ ok: true, ...me(req.session) })));
 
+/*
+ * End shift. The handover — what this shift checked, refused and collected — is
+ * worked out as the shift closes and kept with it, so the office sees exactly
+ * the figures the staff member was shown when they counted the cash.
+ */
 router.delete(`${P}/session`, auth, safe(async (req, res) => {
   await staff.signOut((req.get('authorization') || '').replace(/^Bearer\s+/i, '') || req.get('x-staff-token'));
-  res.json({ ok: true });
+  let summary = null;
+  try {
+    summary = await require('../gatepass/shiftSummary').save(req.session.session_id);
+  } catch (e) {
+    /* The shift has ended either way; a summary that failed is worked out later. */
+    console.error('[staffApi] handover for session %s: %s', req.session.session_id, e.message);
+  }
+  res.json({ ok: true, summary });
+}));
+
+/* The shift so far — shown on the End shift sheet before anybody confirms. */
+router.get(`${P}/shift/summary`, auth, safe(async (req, res) => {
+  const summary = await require('../gatepass/shiftSummary').forSession(req.session.session_id);
+  res.set('Cache-Control', 'no-store').json({ ok: true, summary });
 }));
 
 /*
@@ -118,20 +136,42 @@ router.get(`${P}/pulse`, auth, safe(async (req, res) => {
 /* Today's expected vehicles, and how many have come through. */
 router.get(`${P}/arrivals`, auth, safe(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
-  res.json({ ok: true, ...(await checkin.arrivals(req.checkpost, date)) });
+  const out = await checkin.arrivals(req.checkpost, date);
+  /* The watchlist travels with the list, so a phone that loses signal still
+     knows which plates to stop. */
+  out.passes = await withWatch(out.passes);
+  res.json({ ok: true, ...out });
 }));
 
 /* Plate or pass number, typed at the gate. */
 router.get(`${P}/search`, auth, safe(async (req, res) => {
   const out = await checkin.search(req.checkpost, req.query.q);
+  if (out.passes) out.passes = await withWatch(out.passes);
   res.status(out.ok ? 200 : 400).json(out);
 }));
 
 /* One pass, with its verdict here and now — shown before anything is recorded. */
 router.get(`${P}/pass/:ticketNo`, auth, safe(async (req, res) => {
   const out = await checkin.inspect(req.checkpost, req.params.ticketNo);
+  if (out.found && out.pass) {
+    const watchlist = require('../gatepass/watchlist');
+    const w = await watchlist.levelFor(out.pass.regNo);
+    if (w) {
+      out.pass.watch = w;
+      out.watch = w;
+      /* Blocked outranks every other verdict: the pass does not matter. */
+      if (w.level === 'block') Object.assign(out, { verdict: 'watch_blocked', blocking: true, message: watchlist.gateMessage(w) });
+    }
+  }
   res.status(out.found ? 200 : 404).json({ ok: out.found, ...out });
 }));
+
+/* Each pass, with its plate's watchlist entry if it has one. */
+async function withWatch(passes) {
+  if (!Array.isArray(passes) || !passes.length) return passes;
+  const map = await require('../gatepass/watchlist').forPlates(passes.map((p) => p.regNo));
+  return passes.map((p) => (map.has(p.regNo) ? { ...p, watch: map.get(p.regNo) } : p));
+}
 
 /* Record the entry. `override: true` is the staff member accepting a warning. */
 router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
@@ -143,6 +183,26 @@ router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
     /* How long the staff member spent on this pass, measured by their phone —
        the only place that knows when the pass was opened. */
     durationMs: elapsedMs,
+  });
+  res.json(out);
+}));
+
+/*
+ * An entry recorded on a phone with no signal, sent when the signal came back.
+ *
+ * The vehicle is already through the barrier, so this does not ask whether it
+ * may go in — it records that it did, at the time the phone says, and reports
+ * back anything the phone could not have known: the same pass used at another
+ * gate while this one was offline, a pass cancelled in the meantime. Sending the
+ * same entry twice records it once.
+ */
+router.post(`${P}/entry/offline`, json, auth, safe(async (req, res) => {
+  const { ticketNo, clientId, recordedAt, override, typed, elapsedMs } = req.body || {};
+  if (!ticketNo) return res.status(400).json({ error: 'missing_pass', message: 'Choose a pass first.' });
+  const out = await checkin.recordOffline({
+    session: req.session, checkpost: req.checkpost,
+    ticketNo, clientId, at: recordedAt, override: override === true,
+    rawPayload: typed || null, durationMs: elapsedMs,
   });
   res.json(out);
 }));
@@ -218,6 +278,8 @@ router.post(`${P}/onspot/lookup`, json, auth, safe(async (req, res) => {
       vehicle: [vehicle.maker, vehicle.model].filter(Boolean).join(' ') || null,
       colour: vehicle.colour || null,
       price: price ? Math.round(price.totalPaise / 100) : null,
+      /* On the watchlist: said before anything is sold. */
+      watch: await require('../gatepass/watchlist').levelFor(vehicle.reg_no),
       alreadyBooked: held ? {
         ticketNo: held.ticket_no,
         slot: held.slot_label,
@@ -292,6 +354,15 @@ router.get(`${P}/photo/:id`, auth, safe(async (req, res) => {
 /* Take the money, issue the pass, and record the entry if the vehicle is here. */
 router.post(`${P}/onspot`, json, auth, safe(async (req, res) => {
   const tickets = require('../gatepass/adminTickets');
+  /* A plate the office blocked is not sold a pass at the barrier, whatever the
+     screen allowed — the phone may be showing a list from before it was added. */
+  if (req.body?.regNo) {
+    const watchlist = require('../gatepass/watchlist');
+    const w = await watchlist.levelFor(req.body.regNo);
+    if (w && w.level === 'block') {
+      return res.status(409).json({ error: 'watch_blocked', message: watchlist.gateMessage(w) });
+    }
+  }
   try {
     const out = await tickets.onspotTicket({
       body: { ...(req.body || {}), placeId: req.checkpost.place_id },
