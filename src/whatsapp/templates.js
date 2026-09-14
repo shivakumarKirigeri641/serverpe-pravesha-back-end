@@ -157,8 +157,60 @@ function periodReport({ header, body }) {
  */
 const sendPeriodReport = (to, vars) => send.post(to, periodReport(vars));
 
+/* ── A notice about a pass: a slot closed or changed on the day ────────────── */
+
+/**
+ * "An update about your pass", sent when a slot is closed from live monitoring.
+ *
+ * A TEMPLATE, because the people it is for booked days ago and are outside the
+ * 24-hour window; a free message would reach only the few who wrote recently.
+ * Until Meta approves it, the sender falls back to a chat message for those few
+ * and counts the rest as not reached — nothing needs switching when it is
+ * approved.
+ *
+ * WHAT THE OFFICE WROTE GOES IN AS ONE PARAMETER, in the visitor's language when
+ * a Kannada version was written. WhatsApp refuses a parameter with a line break
+ * or a run of spaces, so it is flattened here.
+ *
+ *   body {{1}} name  {{2}} pass number  {{3}} place  {{4}} date  {{5}} slot  {{6}} the notice
+ */
+const SLOT_NOTICE = {
+  en: { name: 'pv_slotnotice_en_v1', language: 'en' },
+  kn: { name: 'pv_slotnotice_kn_v1', language: 'kn' },
+};
+
+const flat = (s) => String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/ {4,}/g, '   ').trim().slice(0, 700);
+
+function slotNoticeParams(t, notice, lang) {
+  return [
+    t.customer_name || t.wa_profile_name || (lang === 'kn' ? 'ಸಂದರ್ಶಕರೇ' : 'Visitor'), // {{1}}
+    t.ticket_no,                                                                      // {{2}}
+    L.placeName(t, lang),                                                             // {{3}}
+    L.longDate(t.travel_date, lang),                                                  // {{4}}
+    L.slotLabel(t, lang) || (lang === 'kn' ? 'ಅನ್ವಯಿಸುವುದಿಲ್ಲ' : 'Not applicable'),  // {{5}}
+    flat(notice),                                                                     // {{6}}
+  ];
+}
+
+function slotNotice(t, notice, lang) {
+  const tpl = SLOT_NOTICE[lang === 'kn' ? 'kn' : 'en'];
+  return {
+    type: 'template',
+    template: {
+      name: tpl.name,
+      language: { code: tpl.language },
+      components: [
+        { type: 'body', parameters: slotNoticeParams(t, notice, lang).map((text) => ({ type: 'text', text: String(text) })) },
+      ],
+    },
+  };
+}
+
+const sendSlotNotice = (to, t, notice, lang) => send.post(to, slotNotice(t, notice, lang));
+
 module.exports = {
   entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
   feedbackRequest, feedbackParams, sendFeedbackRequest, FEEDBACK_REQUEST,
   periodReport, sendPeriodReport, PERIOD_REPORT,
+  slotNotice, slotNoticeParams, sendSlotNotice, SLOT_NOTICE,
 };

@@ -519,6 +519,124 @@ async function staff(from, to) {
   });
 }
 
+/* ───────────────────────────────────────────────────── when they come ── */
+
+const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * Entries by hour and day of the week.
+ *
+ * WHY BOTH AT ONCE. "Busiest at eleven" and "busiest on Sunday" are each half an
+ * answer; the useful one is "Sunday at eleven", which is when staff are needed
+ * and when a slot sells out. A grid says that in one look.
+ *
+ * COUNTED PER OCCURRENCE, NOT PER RANGE. Thirty days holds four Sundays and five
+ * Mondays, so a plain total makes Monday look busier. The average for each
+ * weekday-hour is what a rota is planned from, and it is what the screen shows;
+ * the totals come with it for anybody who wants the raw count.
+ */
+async function heatmap(from, to) {
+  const cells = await rowsOf(
+    `SELECT extract(dow FROM (s.scanned_at AT TIME ZONE 'Asia/Kolkata'))::int  AS dow,
+            extract(hour FROM (s.scanned_at AT TIME ZONE 'Asia/Kolkata'))::int AS hour,
+            count(*) AS entries
+       FROM scans s
+      WHERE s.verdict IN ('valid', 'valid_override')
+        AND (s.scanned_at AT TIME ZONE 'Asia/Kolkata')::date BETWEEN $1::date AND $2::date
+      GROUP BY 1, 2`, [from, to]);
+
+  /* How many of each weekday the range actually holds, so an average means
+     something. Counted from the calendar, not from the entries. */
+  const occurrences = await rowsOf(
+    `SELECT extract(dow FROM d)::int AS dow, count(*) AS days
+       FROM generate_series($1::date, $2::date, interval '1 day') d
+      GROUP BY 1`, [from, to]);
+  const daysOf = Object.fromEntries(occurrences.map((o) => [n(o.dow), n(o.days)]));
+
+  const grid = new Map(cells.map((c) => [`${n(c.dow)}:${n(c.hour)}`, n(c.entries)]));
+  const total = cells.reduce((s, c) => s + n(c.entries), 0);
+  let busiest = null;
+  const rows = DOW.map((label, dow) => {
+    const hours = [];
+    for (let hour = 0; hour < 24; hour += 1) {
+      const entries = grid.get(`${dow}:${hour}`) || 0;
+      const days = daysOf[dow] || 0;
+      const average = days ? Math.round((entries / days) * 10) / 10 : 0;
+      hours.push({ hour, label: hourLabel(hour), entries, average });
+      if (entries && (!busiest || entries > busiest.entries)) busiest = { dow, day: label, hour, label: hourLabel(hour), entries, average };
+    }
+    return {
+      dow, day: label, days: daysOf[dow] || 0,
+      entries: hours.reduce((s, h) => s + h.entries, 0),
+      hours,
+    };
+  });
+
+  const byHour = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    byHour.push({ hour, label: hourLabel(hour), entries: rows.reduce((s, r) => s + r.hours[hour].entries, 0) });
+  }
+
+  return {
+    from, to, total,
+    max: Math.max(0, ...cells.map((c) => n(c.entries))),
+    maxAverage: Math.max(0, ...rows.flatMap((r) => r.hours.map((h) => h.average))),
+    busiest,
+    busiestDay: rows.reduce((best, r) => (!best || r.entries > best.entries ? r : best), null),
+    rows,
+    byHour,
+  };
+}
+
+/**
+ * Each staff member, day by day: how much they checked and how long it took.
+ *
+ * The staff table says what somebody did across a whole range, which hides the
+ * thing worth seeing — a person getting faster, or a day where checks took twice
+ * as long because the queue was in the rain. Shaped for a chart: one row per day,
+ * one column per person.
+ */
+async function staffTrend(from, to) {
+  const rows = await rowsOf(
+    `SELECT st.id, st.name,
+            (sc.scanned_at AT TIME ZONE 'Asia/Kolkata')::date AS day,
+            count(*)                                                             AS checks,
+            count(*) FILTER (WHERE sc.verdict IN ('valid', 'valid_override'))    AS entries,
+            count(*) FILTER (WHERE sc.verdict = 'valid_override')                AS admitted_anyway,
+            avg(sc.duration_ms) FILTER (WHERE sc.duration_ms IS NOT NULL)        AS avg_ms
+       FROM scans sc JOIN staff st ON st.id = sc.staff_id
+      WHERE (sc.scanned_at AT TIME ZONE 'Asia/Kolkata')::date BETWEEN $1::date AND $2::date
+      GROUP BY st.id, st.name, 3
+      ORDER BY 3`, [from, to]);
+
+  const people = [];
+  const seen = new Set();
+  for (const r of rows) {
+    if (seen.has(String(r.id))) continue;
+    seen.add(String(r.id));
+    people.push({ id: String(r.id), name: r.name });
+  }
+
+  const byDay = new Map();
+  for (const r of rows) {
+    const day = asDate(r.day);
+    if (!byDay.has(day)) byDay.set(day, { day, entries: { day }, seconds: { day }, checks: { day } });
+    const slot = byDay.get(day);
+    slot.entries[r.name] = n(r.entries);
+    slot.checks[r.name] = n(r.checks);
+    slot.seconds[r.name] = r.avg_ms === null ? null : Math.round(n(r.avg_ms) / 100) / 10;
+  }
+
+  const days = [...byDay.values()].sort((a, b) => String(a.day).localeCompare(String(b.day)));
+  return {
+    from, to,
+    staff: people,
+    entries: days.map((d) => d.entries),
+    seconds: days.map((d) => d.seconds),
+    checks: days.map((d) => d.checks),
+  };
+}
+
 /* ─────────────────────────────────────────────────────────── bundle ── */
 
 /** The analytics screen's opening state: one range, everything about it. */
@@ -538,5 +656,6 @@ async function overview({ from, to } = {}) {
 }
 
 module.exports = {
-  overview, traffic, daily, compare, presets, staff, visitors, visitorBands, visitorVisits, vehicle, classify, frequency, shiftDay,
+  overview, traffic, daily, compare, presets, staff, staffTrend, heatmap,
+  visitors, visitorBands, visitorVisits, vehicle, classify, frequency, shiftDay,
 };

@@ -536,6 +536,10 @@ async function pulse(date = null) {
             (SELECT COALESCE(floor(extract(epoch FROM max(modified_at)) * 1000), 0) FROM tickets
               WHERE travel_date = $1::date
                  OR (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS pass_changed,
+            /* Capacity changed or a slot closed for today: every screen showing
+               places left must catch up, the booking form's numbers included. */
+            (SELECT COALESCE(floor(extract(epoch FROM max(modified_at)) * 1000), 0) FROM slot_inventory
+              WHERE travel_date = $1::date)                                         AS capacity_changed,
             (SELECT count(*) FROM staff_sessions
               WHERE (started_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS shifts,
             (SELECT count(*) FROM staff_sessions
@@ -545,7 +549,7 @@ async function pulse(date = null) {
   /* One short string the screen can compare with the last one it saw. Its shape
      is nobody's business but this file's — it is an "is it still the same?",
      not a report. */
-  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.pass_changed, row.shifts, row.on_duty].join('.');
+  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.pass_changed, row.capacity_changed, row.shifts, row.on_duty].join('.');
   return {
     date: today,
     pulse: beat,
@@ -618,6 +622,12 @@ async function slotEntries(today) {
       GROUP BY slot_id`, [today]);
   const bookedBy = Object.fromEntries(booked.map((b) => [String(b.slot_id), n(b.n)]));
 
+  /* Closed for today from live monitoring, or by an announcement's closure. */
+  const openness = await rowsOf(
+    `SELECT slot_id, bool_and(is_open) AS open, max(closed_note) AS note
+       FROM slot_inventory WHERE travel_date = $1::date GROUP BY slot_id`, [today]);
+  const closedBy = Object.fromEntries(openness.map((o) => [String(o.slot_id), { closed: o.open === false, note: o.note }]));
+
   const shape = (r) => (r ? {
     at: r.scanned_at,
     regNo: r.reg_no,
@@ -647,6 +657,8 @@ async function slotEntries(today) {
       startsAt: slotTime.hhmm(starts),
       endsAt: slotTime.hhmm(ends),
       state: now.minutes < starts ? 'upcoming' : now.minutes >= ends ? 'over' : 'open',
+      closed: Boolean((closedBy[String(s.id)] || {}).closed),
+      closedNote: (closedBy[String(s.id)] || {}).note || null,
       booked: bookedBy[String(s.id)] || 0,
       entered: first ? n(first.entered) : 0,
       first: shape(first),

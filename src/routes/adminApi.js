@@ -226,6 +226,26 @@ router.get(`${P}/analytics`, auth, needs('analytics.view'), safe(async (req, res
   res.json({ ok: true, ...money(req, 'analytics', await analytics.overview({ from, to })) });
 }));
 
+/* When vehicles come: entries by hour across the days of the week. */
+router.get(`${P}/analytics/patterns`, auth, needs('analytics.view'), safe(async (req, res) => {
+  const to = String(req.query.to || '').slice(0, 10);
+  const from = String(req.query.from || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: 'bad_range', message: 'Choose a start and end date.' });
+  }
+  res.set('Cache-Control', 'no-store').json({ ok: true, heatmap: await analytics.heatmap(from, to) });
+}));
+
+/* Each staff member day by day: how much they checked, and how long it took. */
+router.get(`${P}/analytics/staff-trend`, auth, needs('analytics.view'), safe(async (req, res) => {
+  const to = String(req.query.to || '').slice(0, 10);
+  const from = String(req.query.from || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: 'bad_range', message: 'Choose a start and end date.' });
+  }
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await analytics.staffTrend(from, to)) });
+}));
+
 /* The visitor list: searchable by number, name or vehicle. */
 router.get(`${P}/analytics/visitors`, auth, needs('analytics.view'), safe(async (req, res) => {
   const rows = await analytics.visitors({

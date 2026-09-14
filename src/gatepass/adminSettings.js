@@ -446,12 +446,19 @@ async function staffActivity(staffId) {
        FROM scans sc LEFT JOIN checkposts cp ON cp.id = sc.checkpost_id
       WHERE sc.staff_id = $1 ORDER BY sc.scanned_at DESC LIMIT 50`, [staffId]);
   const shifts = await rowsOf(
-    `SELECT ss.started_at, ss.ended_at, ss.ended_reason, cp.name AS checkpost
+    `SELECT ss.id, ss.started_at, ss.ended_at, ss.ended_reason, ss.handover, cp.name AS checkpost
        FROM staff_sessions ss LEFT JOIN checkposts cp ON cp.id = ss.checkpost_id
       WHERE ss.staff_id = $1 ORDER BY ss.started_at DESC LIMIT 20`, [staffId]);
+  /* The handover the staff member saw when they ended the shift; for a shift
+     that ended any other way, the same figures worked out from the records. */
+  const shiftSummary = require('./shiftSummary');
+  const summaries = await Promise.all(shifts.map((s) => (s.handover ? s.handover : shiftSummary.forSession(s.id))));
   return {
     checks: rows.map((r) => ({ verdict: r.verdict, at: r.scanned_at, ticketNo: r.ticket_no, regNo: r.reg_no, durationMs: r.duration_ms, checkpost: r.checkpost })),
-    shifts: shifts.map((s) => ({ startedAt: s.started_at, endedAt: s.ended_at, endedReason: s.ended_reason, checkpost: s.checkpost })),
+    shifts: shifts.map((s, i) => ({
+      startedAt: s.started_at, endedAt: s.ended_at, endedReason: s.ended_reason, checkpost: s.checkpost,
+      summary: summaries[i], handedOver: Boolean(s.handover),
+    })),
   };
 }
 

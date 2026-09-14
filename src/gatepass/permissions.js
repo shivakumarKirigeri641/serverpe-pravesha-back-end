@@ -34,6 +34,9 @@ const CAPABILITIES = {
      here, how often, and what it paid. Money is still redacted for anybody
      without finance.view, the same as everywhere else. */
   'vehicles.view': 'Look up any vehicle and its history',
+  /* A blocked plate is a vehicle turned away at a barrier with a paid pass in
+     its hand. Putting one there is a decision, kept apart from looking. */
+  'watchlist.manage': 'Put number plates on the watchlist, and take them off',
   /* Money taken at a barrier reconciles itself against nothing: cash in a hand,
      a UPI reference off a stranger's phone. Whoever counts it needs to see it. */
   'onspot.view': 'See passes sold at the gate and the money taken for them',
@@ -53,6 +56,10 @@ const CAPABILITIES = {
   'destinations.manage': 'Add and change destinations and checkposts',
   'settings.pricing': 'Change prices and the service fee',
   'settings.slots': 'Create, change and remove slots and capacity',
+  /* The day itself, from live monitoring: fewer places because of the weather,
+     a slot shut because the road is. Smaller than settings.slots on purpose —
+     it touches today and nothing after, and it tells the visitors affected. */
+  'capacity.today': "Change today's capacity and close or reopen a slot from live monitoring",
   'settings.staff': 'Manage checkpost staff',
   'settings.users': 'Manage panel users and their roles',
   'settings.gst': 'Change GST and business details',
@@ -85,7 +92,7 @@ const ROLES = {
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
       'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view',
-      'unverified.view', 'vehicles.view', 'onspot.view', 'feedback.view', 'health.view'],
+      'unverified.view', 'vehicles.view', 'watchlist.manage', 'capacity.today', 'onspot.view', 'feedback.view', 'health.view'],
   },
   finance: {
     label: 'Finance',
