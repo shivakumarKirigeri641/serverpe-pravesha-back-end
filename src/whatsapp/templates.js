@@ -19,6 +19,33 @@
 const L = require('../localize');
 const send = require('./send');
 
+/*
+ * A VISITOR MUST NOT BE LEFT WITH NOTHING BECAUSE OF OUR PAPERWORK.
+ *
+ * Every template has to be created and approved in Meta's console before it can
+ * be sent, and each language is a separate approval. Until a Kannada one is
+ * through review, asking for it comes back as error 132001 — "Template name
+ * does not exist in the translation" — and the visitor receives nothing at all.
+ * Somebody who chose Kannada then walks through the barrier with no
+ * confirmation, which is worse than reading it in English.
+ *
+ * So a template refused for that one reason is sent again in English. Only for
+ * that reason: a wrong parameter count or a blocked number must keep failing
+ * loudly rather than quietly sending a second message. Both attempts are in the
+ * transcript, so the gap is visible for as long as it lasts — and the moment
+ * review finishes, the first attempt succeeds and this never runs again.
+ */
+const NO_TRANSLATION = /132001|does not exist in the translation/i;
+
+async function sendInLanguage(to, build, lang) {
+  const first = await send.post(to, build(lang));
+  if (first.ok || lang === 'en' || !NO_TRANSLATION.test(String(first.error || ''))) return first;
+
+  console.warn('[wa] %s is not approved yet — sending the English one instead', build(lang).template?.name);
+  const second = await send.post(to, build('en'));
+  return { ...second, fellBackToEnglish: true, originalError: first.error };
+}
+
 const ENTRY_RECORDED = {
   en: { name: 'pv_checkpostentry_en_v2', language: 'en' },
   /* v3: v2 was registered with the wrong language (English), and a template's
@@ -67,7 +94,8 @@ function entryRecorded(t, opts, lang) {
 }
 
 /** Send it. Used by the checkpost view when an entry is recorded. */
-const sendEntryRecorded = (to, t, opts, lang) => send.post(to, entryRecorded(t, opts, lang));
+const sendEntryRecorded = (to, t, opts, lang) =>
+  sendInLanguage(to, (l) => entryRecorded(t, opts, l), lang);
 
 /* ── The feedback request ───────────────────────────────────────────────── */
 
@@ -116,7 +144,8 @@ function feedbackRequest(t, token, lang) {
   };
 }
 
-const sendFeedbackRequest = (to, t, token, lang) => send.post(to, feedbackRequest(t, token, lang));
+const sendFeedbackRequest = (to, t, token, lang) =>
+  sendInLanguage(to, (l) => feedbackRequest(t, token, l), lang);
 
 /* ── The period report ──────────────────────────────────────────────────── */
 
@@ -206,9 +235,11 @@ function slotNotice(t, notice, lang) {
   };
 }
 
-const sendSlotNotice = (to, t, notice, lang) => send.post(to, slotNotice(t, notice, lang));
+const sendSlotNotice = (to, t, notice, lang) =>
+  sendInLanguage(to, (l) => slotNotice(t, notice, l), lang);
 
 module.exports = {
+  sendInLanguage,
   entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
   feedbackRequest, feedbackParams, sendFeedbackRequest, FEEDBACK_REQUEST,
   periodReport, sendPeriodReport, PERIOD_REPORT,
