@@ -172,8 +172,12 @@ router.get(`${P}/live`, auth, needs('live.view'), safe(async (req, res) => {
  * screen asks this often and rebuilds itself only when the answer differs from
  * the last one, so an idle gate costs almost nothing and a barrier that has just
  * checked a vehicle shows it within a couple of seconds.
+ *
+ * Every screen that shows bookings asks it — the dashboard, passes, payments,
+ * on-spot sales — so any signed-in user may ask. It carries counts and a
+ * change marker, nothing a role could be kept from.
  */
-router.get(`${P}/live/pulse`, auth, needs('live.view'), safe(async (req, res) => {
+router.get(`${P}/live/pulse`, auth, safe(async (req, res) => {
   res.set('Cache-Control', 'no-store').json({ ok: true, ...(await liveStats.pulse()) });
 }));
 

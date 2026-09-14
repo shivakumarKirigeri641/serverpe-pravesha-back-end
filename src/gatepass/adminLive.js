@@ -530,6 +530,12 @@ async function pulse(date = null) {
             (SELECT COALESCE(max(id), 0) FROM tickets
               WHERE travel_date = $1::date
                  OR (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS last_pass,
+            /* A booking succeeds by a held pass turning paid, which adds no row
+               and no id — so the newest change to any of today's passes is part
+               of the answer too. Paid, used, released and expired all move it. */
+            (SELECT COALESCE(floor(extract(epoch FROM max(modified_at)) * 1000), 0) FROM tickets
+              WHERE travel_date = $1::date
+                 OR (created_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS pass_changed,
             (SELECT count(*) FROM staff_sessions
               WHERE (started_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS shifts,
             (SELECT count(*) FROM staff_sessions
@@ -539,7 +545,7 @@ async function pulse(date = null) {
   /* One short string the screen can compare with the last one it saw. Its shape
      is nobody's business but this file's — it is an "is it still the same?",
      not a report. */
-  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.shifts, row.on_duty].join('.');
+  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.pass_changed, row.shifts, row.on_duty].join('.');
   return {
     date: today,
     pulse: beat,

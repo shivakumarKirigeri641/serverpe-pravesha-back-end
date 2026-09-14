@@ -103,6 +103,18 @@ router.delete(`${P}/session`, auth, safe(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/*
+ * Has anything happened? The same cheap question live monitoring asks: a pass
+ * booked or paid by any route, a vehicle checked at any gate, a shift started or
+ * ended. The gate screen asks it every few seconds and reloads only when the
+ * answer changes, so a visitor who books at the barrier appears on the list
+ * straight away instead of up to half a minute later.
+ */
+router.get(`${P}/pulse`, auth, safe(async (req, res) => {
+  const { pulse } = await require('../gatepass/adminLive').pulse();
+  res.set('Cache-Control', 'no-store').json({ ok: true, pulse });
+}));
+
 /* Today's expected vehicles, and how many have come through. */
 router.get(`${P}/arrivals`, auth, safe(async (req, res) => {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
