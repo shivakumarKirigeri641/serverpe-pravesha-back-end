@@ -499,7 +499,10 @@ async function main() {
     process.stdout.write(`  ${date} ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weekday(date)]}${holidays.has(date) ? ' (holiday)' : ''}  ${String(insertedTickets.length).padStart(5)} passes  ${String(occupancyPct).padStart(3)}% of capacity\n`);
   }
 
-  await conversations(madeForConversation.slice(0, CONVERSATIONS), place, slots);
+  /* Conversations are the slowest part and the least looked at; --no-conversations
+     leaves the Conversations screen empty and everything else exactly as it is. */
+  if (has('no-conversations')) console.log('conversations: skipped (--no-conversations)');
+  else await conversations(madeForConversation.slice(0, CONVERSATIONS), place, slots);
 
   console.log(`\n${totals.tickets} passes · ${totals.entries} entries · ${totals.refusals} refusals at the gate · ${totals.failed} failed payments · ${totals.days} days`);
   console.log(`took ${Math.round((Date.now() - started) / 1000)}s`);
