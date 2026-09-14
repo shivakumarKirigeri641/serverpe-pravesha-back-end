@@ -16,9 +16,9 @@ const slotTime = require('./slotTime');
 
 async function list() {
   const r = await query(
-    `SELECT p.id, p.code, p.name, p.district, p.booking_days_ahead, p.is_active,
+    `SELECT p.id, p.code, p.name, p.name_kn, p.district, p.district_kn, p.booking_days_ahead, p.is_active,
             COALESCE(json_agg(json_build_object(
-              'id', s.id, 'code', s.code, 'label', s.label,
+              'id', s.id, 'code', s.code, 'label', s.label, 'label_kn', s.label_kn,
               'starts_at', s.starts_at, 'ends_at', s.ends_at,
               'valid_from', s.valid_from, 'valid_to', s.valid_to
             ) ORDER BY s.sort_order) FILTER (WHERE s.id IS NOT NULL), '[]') AS slots
@@ -94,10 +94,11 @@ async function bookableDates(place, slots = [], at = new Date()) {
     const isToday = i === 0;
     if (isToday && !slotTime.anyBookable(slots, value, at)) continue; // finished for the day
 
-    const d = new Date(`${value}T00:00:00Z`);
+    const { shortDate } = require('../localize');
     out.push({
       value,
-      label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }),
+      label: shortDate(value, 'en'),
+      labelKn: shortDate(value, 'kn'),
       isToday,
     });
   }

@@ -62,6 +62,22 @@ function longDate(yyyyMmDd, lang = 'en') {
 }
 
 /**
+ * "Sat, 12 Sep" / "ಶನಿ, 12 ಸೆಪ್ಟೆಂ" from a DATE — the short form a date list
+ * or a one-line refusal needs, day before month in both languages.
+ */
+function shortDate(yyyyMmDd, lang = 'en') {
+  const [y, m, d] = String(yyyyMmDd).slice(0, 10).split('-').map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d));
+  if (lang !== 'kn') {
+    return at.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+  const p = Object.fromEntries(new Intl.DateTimeFormat('kn-IN', {
+    timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short',
+  }).formatToParts(at).map((x) => [x.type, x.value]));
+  return `${p.weekday}, ${p.day} ${p.month}`;
+}
+
+/**
  * "12 Sep 2026, 12:42 PM IST" / "12 ಸೆಪ್ಟೆಂಬರ್ 2026, ಮಧ್ಯಾಹ್ನ 12:42".
  *
  * Kannada does not say AM and PM; it says which part of the day. kn-IN's own
@@ -103,5 +119,5 @@ const status = (key, lang) => (STATUS[key] ? pick(lang, STATUS[key].kn, STATUS[k
 
 module.exports = {
   placeName, district, state, placeWithDistrict, slotLabel, vehicleType, checkpostName,
-  longDate, dateTime, clock, status,
+  longDate, shortDate, dateTime, clock, status,
 };

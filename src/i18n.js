@@ -6,10 +6,9 @@
  * switches language halfway because one reply was written inline in English.
  * Anything the visitor sees is defined here or it is a bug.
  *
- * KANNADA IS THE DEFAULT, AND THAT IS DELIBERATE. The column defaults to 'kn':
- * this is a Karnataka Tourism service and the larger share of visitors read
- * Kannada first. English is a choice people make, not the baseline everyone
- * else is measured against.
+ * ENGLISH UNTIL THEY CHOOSE. Every visitor is asked which language they want,
+ * and that choice is kept. Somebody who has not chosen yet — a pass sold at the
+ * gate to a number that never messaged us — is written to in English (049).
  *
  * WHATSAPP BUTTON TITLES ARE CAPPED AT 20 CHARACTERS and Meta rejects the whole
  * message when one is longer -- not the button, the message. Kannada runs longer

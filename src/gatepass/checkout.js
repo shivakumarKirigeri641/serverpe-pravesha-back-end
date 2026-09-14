@@ -88,11 +88,14 @@ async function byToken(token) {
   if (!p) return null;
   const ticketId = p.raw?.ticket_id;
   const t = ticketId ? await one(
-    `SELECT t.*, pl.name AS place_name, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, c.label AS category_label
+    `SELECT t.*, pl.name AS place_name, pl.name_kn AS place_name_kn,
+            regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, s.label_kn AS slot_label_kn,
+            c.label AS category_label, cu.language AS customer_language
        FROM tickets t
        JOIN places pl ON pl.id = t.place_id
        JOIN place_slots s ON s.id = t.slot_id
        JOIN vehicle_categories c ON c.id = t.category_id
+       LEFT JOIN customers cu ON cu.id = t.customer_id
       WHERE t.id = $1`, [ticketId]) : null;
   return { payment: p, ticket: t };
 }

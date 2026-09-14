@@ -9,6 +9,11 @@
  * on a "payment successful" web page is how people end up unsure whether they
  * have a ticket — the ticket arrives in the chat, so that is where they should
  * be looking.
+ *
+ * In the visitor's language, like the booking form before it. A page that
+ * cannot name the visitor (a dead link, the address left behind after paying)
+ * says it in both. Razorpay's own sheet, and what reaches a card statement, stay
+ * in English: that text belongs to the bank, not to the visitor's chat.
  */
 
 const express = require('express');
@@ -18,6 +23,8 @@ const deliver = require('../whatsapp/deliver');
 const pricing = require('../gatepass/pricing');
 const { query } = require('../gatepass/db');
 const { PREFIX } = require('../config/paths');
+const { langOf } = require('../i18n');
+const L = require('../localize');
 
 const router = express.Router();
 
@@ -27,35 +34,77 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 const WA_LINK = () => `https://wa.me/${String(process.env.WHATSAPP_BUSINESS_PHONENUMBER || '').replace(/\D/g, '')}`;
 
+/* Every sentence on these pages, in both languages. */
+const COPY = {
+  en: {
+    doneT: 'Payment successful', done: 'Your entry pass has been sent to you on WhatsApp.<br>You can close this page.',
+    notFoundT: 'Link not found', notFound: 'This payment link is not valid. Please start again on WhatsApp.',
+    usedT: 'Link already used', used: 'This payment link has already been used and is no longer valid.<br>Your entry pass is in the WhatsApp chat.',
+    expiredT: 'This booking expired', expired: 'The slot was released because payment was not completed in time. Please book again on WhatsApp.',
+    downT: 'Payment temporarily unavailable', down: 'We could not start the payment just now. Please try the link again in a minute.',
+    back: 'Back to WhatsApp',
+    title: (no) => `Pay for pass ${no}`,
+    head: (place) => `Pravesha · ${place} entry pass`, pass: 'Pass',
+    opening: 'Opening payment…', pay: (amt) => `Pay Rs. ${amt}`,
+    note: 'Your entry pass arrives on WhatsApp as soon as payment succeeds. At the checkpost, just drive up &mdash; staff will record your vehicle number digitally.',
+    foot: 'Powered by ServerPe App Solutions',
+    sent: 'Your entry pass has been sent to you on WhatsApp.', going: 'Taking you back to WhatsApp…',
+    open: 'Open WhatsApp', ifNot: 'If WhatsApp does not open by itself, tap the button. This page can be closed.',
+    tapReturn: 'Tap below to return to WhatsApp.', confirming: 'Confirming...',
+    confirmFailed: 'Confirming failed - tap to retry', payFailed: 'Payment failed - try again',
+    didNotGo: 'That payment did not go through.', tapToPay: 'Tap below to pay.',
+  },
+  kn: {
+    doneT: 'ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಿದೆ', done: 'ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ಅನ್ನು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಕಳುಹಿಸಲಾಗಿದೆ.<br>ನೀವು ಈ ಪುಟವನ್ನು ಮುಚ್ಚಬಹುದು.',
+    notFoundT: 'ಲಿಂಕ್ ಸಿಗಲಿಲ್ಲ', notFound: 'ಈ ಪಾವತಿ ಲಿಂಕ್ ಮಾನ್ಯವಲ್ಲ. ದಯವಿಟ್ಟು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಮತ್ತೆ ಆರಂಭಿಸಿ.',
+    usedT: 'ಲಿಂಕ್ ಈಗಾಗಲೇ ಬಳಸಲಾಗಿದೆ', used: 'ಈ ಪಾವತಿ ಲಿಂಕ್ ಈಗಾಗಲೇ ಬಳಸಲಾಗಿದೆ ಮತ್ತು ಇನ್ನು ಮಾನ್ಯವಲ್ಲ.<br>ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ವಾಟ್ಸ್‌ಆ್ಯಪ್ ಚಾಟ್‌ನಲ್ಲಿದೆ.',
+    expiredT: 'ಈ ಬುಕಿಂಗ್‌ನ ಅವಧಿ ಮುಗಿದಿದೆ', expired: 'ಸಮಯಕ್ಕೆ ಪಾವತಿ ಪೂರ್ಣಗೊಳ್ಳದ ಕಾರಣ ಸ್ಲಾಟ್ ಬಿಡುಗಡೆಯಾಗಿದೆ. ದಯವಿಟ್ಟು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಮತ್ತೆ ಬುಕ್ ಮಾಡಿ.',
+    downT: 'ಪಾವತಿ ತಾತ್ಕಾಲಿಕವಾಗಿ ಲಭ್ಯವಿಲ್ಲ', down: 'ಈಗ ಪಾವತಿ ಆರಂಭಿಸಲಾಗಲಿಲ್ಲ. ಒಂದು ನಿಮಿಷದ ನಂತರ ಲಿಂಕ್ ಅನ್ನು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    back: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ಗೆ ಹಿಂತಿರುಗಿ',
+    title: (no) => `ಪಾಸ್ ${no} ಗೆ ಪಾವತಿಸಿ`,
+    head: (place) => `ಪ್ರವೇಶ · ${place} ಪ್ರವೇಶ ಪಾಸ್`, pass: 'ಪಾಸ್',
+    opening: 'ಪಾವತಿ ತೆರೆಯಲಾಗುತ್ತಿದೆ…', pay: (amt) => `Rs. ${amt} ಪಾವತಿಸಿ`,
+    note: 'ಪಾವತಿ ಯಶಸ್ವಿಯಾದ ತಕ್ಷಣ ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಬರುತ್ತದೆ. ಚೆಕ್‌ಪೋಸ್ಟ್‌ಗೆ ನೇರವಾಗಿ ಬನ್ನಿ &mdash; ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ಡಿಜಿಟಲ್ ಆಗಿ ದಾಖಲಿಸುತ್ತಾರೆ.',
+    foot: 'ಸೇವೆ ಒದಗಿಸುವವರು: ServerPe App Solutions',
+    sent: 'ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ಅನ್ನು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಕಳುಹಿಸಲಾಗಿದೆ.', going: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ಗೆ ಹಿಂತಿರುಗಿಸಲಾಗುತ್ತಿದೆ…',
+    open: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್ ತೆರೆಯಿರಿ', ifNot: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್ ತಾನಾಗಿ ತೆರೆಯದಿದ್ದರೆ, ಬಟನ್ ಒತ್ತಿ. ಈ ಪುಟವನ್ನು ಮುಚ್ಚಬಹುದು.',
+    tapReturn: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ಗೆ ಹಿಂತಿರುಗಲು ಕೆಳಗೆ ಒತ್ತಿ.', confirming: 'ದೃಢೀಕರಿಸಲಾಗುತ್ತಿದೆ…',
+    confirmFailed: 'ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ - ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಲು ಒತ್ತಿ', payFailed: 'ಪಾವತಿ ವಿಫಲವಾಗಿದೆ - ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ',
+    didNotGo: 'ಆ ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಲಿಲ್ಲ.', tapToPay: 'ಪಾವತಿಸಲು ಕೆಳಗೆ ಒತ್ತಿ.',
+  },
+};
+
+/* A page for somebody we cannot name: English first, Kannada under it. */
+const bothPage = (key, link) => page(
+  `${COPY.en[`${key}T`]} · ${COPY.kn[`${key}T`]}`,
+  `${COPY.en[key]}<br><br><span lang="kn">${COPY.kn[key]}</span>`,
+  link, 'en', true);
+
 /* ────────────────────────────────────────────────────────────── the page */
 
 /* Where the address bar points once a payment succeeds. The success screen
    rewrites the URL to this, so the token is no longer in the address bar, the
    history, or a screenshot; reloading lands here, not on the payment page. */
 router.get('/pay/done', (req, res) => {
-  res.set('Cache-Control', 'no-store').send(page('Payment successful',
-    'Your entry pass has been sent to you on WhatsApp.<br>You can close this page.', WA_LINK()));
+  res.set('Cache-Control', 'no-store').send(bothPage('done', WA_LINK()));
 });
 
 router.get('/pay/:token', async (req, res) => {
   const found = await checkout.byToken(req.params.token);
-  if (!found?.ticket) return res.status(404).send(page('Link not found',
-    'This payment link is not valid. Please start again on WhatsApp.'));
+  if (!found?.ticket) return res.status(404).send(bothPage('notFound'));
 
   const { payment, ticket } = found;
+  const lang = langOf({ language: ticket.customer_language });
+  const C = COPY[lang];
 
   /* A payment link dies with the payment. It used to open an "Already paid"
      page naming the pass, which made a forwarded or screenshotted link a way
      to read someone's pass number. Now it says only that the link is used. */
   if (payment.status === 'paid') {
-    return res.status(410).send(page('Link already used',
-      'This payment link has already been used and is no longer valid.<br>Your entry pass is in the WhatsApp chat.',
-      WA_LINK()));
+    return res.status(410).send(page(C.usedT, C.used, WA_LINK(), lang));
   }
   if (ticket.status === 'expired' || ticket.status === 'cancelled') {
-    return res.send(page('This booking expired',
-      'The slot was released because payment was not completed in time. Please book again on WhatsApp.',
-      WA_LINK()));
+    return res.send(page(C.expiredT, C.expired, WA_LINK(), lang));
   }
 
   let orderId;
@@ -63,12 +112,11 @@ router.get('/pay/:token', async (req, res) => {
     orderId = await checkout.ensureOrder(payment, ticket);
   } catch (e) {
     console.error('[checkout] order creation failed:', e.message);
-    return res.status(503).send(page('Payment temporarily unavailable',
-      'We could not start the payment just now. Please try the link again in a minute.'));
+    return res.status(503).send(page(C.downT, C.down, null, lang));
   }
 
   const k = checkout.keys();
-  res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token }));
+  res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token, lang }));
 });
 
 /* ────────────────────────────────────────────── path 1: browser callback */
@@ -200,27 +248,35 @@ async function settle(payment, ticket, rzpPaymentId, raw) {
 
 /* ───────────────────────────────────────────────────────────────── pages */
 
-function page(title, message, link) {
-  return `<!doctype html><html><head><meta charset="utf-8">
+function page(title, message, link, lang = 'en', bilingualButton = false) {
+  const button = bilingualButton ? `${COPY.en.back} · ${COPY.kn.back}` : (COPY[lang] || COPY.en).back;
+  return `<!doctype html><html lang="${lang === 'kn' ? 'kn' : 'en'}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title><style>
-body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Kannada",sans-serif;
 background:#efeae2;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
 .card{background:#fff;border-radius:16px;padding:32px 28px;max-width:380px;width:100%;
 box-shadow:0 1px 3px rgba(0,0,0,.08);text-align:center}
 h1{font-size:20px;margin:0 0 12px}p{color:#4b5563;margin:0 0 20px}
 a.btn{display:block;background:#008069;color:#fff;text-decoration:none;padding:14px;border-radius:10px;font-weight:600}
 </style></head><body><div class="card"><h1>${esc(title)}</h1><p>${message}</p>
-${link ? `<a class="btn" href="${esc(link)}">Back to WhatsApp</a>` : ''}</div></body></html>`;
+${link ? `<a class="btn" href="${esc(link)}">${esc(button)}</a>` : ''}</div></body></html>`;
 }
 
-function payPage({ ticket, payment, orderId, keyId, token }) {
+function payPage({ ticket, payment, orderId, keyId, token, lang = 'en' }) {
   const rs = (p) => pricing.rs(p);
-  return `<!doctype html><html><head><meta charset="utf-8">
+  const C = COPY[lang] || COPY.en;
+  /* The words the script below draws, handed over once rather than spliced in. */
+  const words = {
+    sentHtml: C.sent, going: C.going, open: C.open, ifNot: C.ifNot, tapReturn: C.tapReturn,
+    doneT: C.doneT, confirming: C.confirming, confirmFailed: C.confirmFailed,
+    payFailed: C.payFailed, didNotGo: C.didNotGo, tapToPay: C.tapToPay, pay: C.pay(rs(ticket.total_paise)),
+  };
+  return `<!doctype html><html lang="${lang === 'kn' ? 'kn' : 'en'}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pay for pass ${esc(ticket.ticket_no)}</title><style>
+<title>${esc(C.title(ticket.ticket_no))}</title><style>
 :root{color-scheme:light}
-body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Kannada",sans-serif;
 background:#efeae2;color:#111827;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px}
 .card{background:#fff;border-radius:18px;max-width:400px;width:100%;overflow:hidden;
 box-shadow:0 4px 24px rgba(15,23,42,.10)}
@@ -239,8 +295,8 @@ button:disabled{opacity:.6}
 .foot{text-align:center;font-size:11px;color:#9ca3af;padding:0 24px 20px}
 </style></head><body>
 <div class="card">
-  <div class="head"><h1>Pravesha · ${esc(ticket.place_name)} entry pass</h1>
-    <p>Pass ${esc(ticket.ticket_no)} &middot; ${esc(ticket.reg_no)}</p></div>
+  <div class="head"><h1>${esc(C.head(L.placeName(ticket, lang)))}</h1>
+    <p>${esc(C.pass)} ${esc(ticket.ticket_no)} &middot; ${esc(ticket.reg_no)}</p></div>
   <div class="body">
     <!-- NOT a summary of any kind. The visitor reviewed and agreed to all of
          this on the previous page and tapped Pay; this page exists only to
@@ -248,16 +304,16 @@ button:disabled{opacity:.6}
          summary standing between them and paying. The button below is a
          fallback for the case where a browser refuses to open the sheet
          without a tap. -->
-    <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">Opening payment…</p>
-    <button id="pay">Pay Rs. ${rs(ticket.total_paise)}</button>
-    <p class="note">Your entry pass arrives on WhatsApp as soon as payment succeeds.
-    At the checkpost, just drive up &mdash; staff will record your vehicle number digitally.</p>
+    <p id="msg" style="text-align:center;color:#4b5563;margin:4px 0 0">${esc(C.opening)}</p>
+    <button id="pay">${esc(words.pay)}</button>
+    <p class="note">${C.note}</p>
   </div>
-  <div class="foot">Powered by ServerPe App Solutions</div>
+  <div class="foot">${esc(C.foot)}</div>
 </div>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 var btn = document.getElementById('pay');
+var W = ${JSON.stringify(words).replace(/</g, '\\u003c')};
 
 /**
  * Get the visitor back into the WhatsApp conversation after paying.
@@ -280,16 +336,21 @@ function backToWhatsApp(httpsUrl) {
      longer carry a payment link — and that link is dead on the server anyway. */
   try { history.replaceState(null, '', '/pay/done'); } catch (e) { /* older browser */ }
 
-  document.querySelector('.card').innerHTML =
+  var card = document.querySelector('.card');
+  card.innerHTML =
     '<div style="padding:30px 24px 26px;text-align:center">'
     + '<div style="width:64px;height:64px;margin:0 auto 12px;border-radius:50%;background:#e7f8ef;'
     + 'display:grid;place-items:center;font-size:32px;color:#0b7a3f">&#10003;</div>'
-    + '<h1 style="margin:0 0 6px;font-size:20px">Payment successful</h1>'
-    + '<p style="margin:0 0 18px;color:#4b5563">Your entry pass has been sent to you on WhatsApp.<br>'
-    + '<span id="goingMsg">Taking you back to WhatsApp…</span></p>'
-    + '<button id="back">Open WhatsApp</button>'
-    + '<p style="margin:14px 0 0;font-size:12px;color:#9ca3af">If WhatsApp does not open by itself, tap the button. '
-    + 'This page can be closed.</p></div>';
+    + '<h1 id="doneT" style="margin:0 0 6px;font-size:20px"></h1>'
+    + '<p style="margin:0 0 18px;color:#4b5563"><span id="sent"></span><br>'
+    + '<span id="goingMsg"></span></p>'
+    + '<button id="back"></button>'
+    + '<p id="ifNot" style="margin:14px 0 0;font-size:12px;color:#9ca3af"></p></div>';
+  document.getElementById('doneT').textContent = W.doneT;
+  document.getElementById('sent').textContent = W.sentHtml;
+  document.getElementById('goingMsg').textContent = W.going;
+  document.getElementById('back').textContent = W.open;
+  document.getElementById('ifNot').textContent = W.ifNot;
 
   /* HOW TO GET BACK, PER ENVIRONMENT, AT ONCE — no waiting.
 
@@ -325,7 +386,7 @@ function backToWhatsApp(httpsUrl) {
     setTimeout(function () {
       if (document.hidden) return; // the app took over
       var m = document.getElementById('goingMsg');
-      if (m) m.textContent = 'Tap below to return to WhatsApp.';
+      if (m) m.textContent = W.tapReturn;
       if (inWhatsApp || ios || android) window.location.replace(httpsUrl);
     }, 1500);
   };
@@ -350,17 +411,17 @@ var opts = {
   prefill: { contact: ${JSON.stringify(ticket.mobile)} },
   theme: { color: '#008069' },
   handler: function (r) {
-    btn.disabled = true; btn.textContent = 'Confirming...';
+    btn.disabled = true; btn.textContent = W.confirming;
     fetch('/pay/' + ${JSON.stringify(token)} + '/confirm', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r)
     }).then(function (x) { return x.json(); }).then(function (j) {
       backToWhatsApp(j.whatsapp || ${JSON.stringify(WA_LINK())});
     }).catch(function () {
-      btn.disabled = false; btn.textContent = 'Confirming failed - tap to retry';
+      btn.disabled = false; btn.textContent = W.confirmFailed;
     });
   },
-  modal: { ondismiss: function () { btn.disabled = false; btn.textContent = 'Pay Rs. ${rs(ticket.total_paise)}'; } }
+  modal: { ondismiss: function () { btn.disabled = false; btn.textContent = W.pay; } }
 };
 function openPayment() {
   btn.disabled = true;
@@ -370,8 +431,8 @@ function openPayment() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: (e.error && e.error.description) || 'failed' })
     });
-    btn.disabled = false; btn.textContent = 'Payment failed - try again';
-    document.getElementById('msg').textContent = 'That payment did not go through.';
+    btn.disabled = false; btn.textContent = W.payFailed;
+    document.getElementById('msg').textContent = W.didNotGo;
   });
   rz.open();
 }
@@ -383,7 +444,7 @@ btn.onclick = openPayment;
    without a gesture, the button is right there. */
 window.addEventListener('load', function () {
   try { openPayment(); } catch (e) {
-    document.getElementById('msg').textContent = 'Tap below to pay.';
+    document.getElementById('msg').textContent = W.tapToPay;
     btn.disabled = false;
   }
 });
@@ -391,3 +452,5 @@ window.addEventListener('load', function () {
 }
 
 module.exports = router;
+/* The page builders, for rendering a page without opening a payment order. */
+module.exports.pages = { page, payPage, COPY };

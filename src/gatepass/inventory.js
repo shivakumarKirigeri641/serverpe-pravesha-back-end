@@ -73,7 +73,7 @@ async function available(placeId, slotId, categoryId, travelDate) {
 async function forDate(placeId, categoryId, travelDate) {
   const slots = await query(
     /* A slot with opening or closing dates is only offered between them. */
-    `SELECT id, code, regexp_replace(label, '[[:space:]]+', ' ', 'g') AS label, starts_at, ends_at FROM place_slots
+    `SELECT id, code, regexp_replace(label, '[[:space:]]+', ' ', 'g') AS label, label_kn, starts_at, ends_at FROM place_slots
       WHERE place_id=$1 AND is_active
         AND (valid_from IS NULL OR valid_from <= $2::date)
         AND (valid_to IS NULL OR valid_to >= $2::date)
@@ -84,7 +84,7 @@ async function forDate(placeId, categoryId, travelDate) {
     const a = await available(placeId, s.id, categoryId, travelDate);
     const t = slotTime.check(s, travelDate);
     out.push(Object.assign({
-      slotId: String(s.id), code: s.code, label: s.label,
+      slotId: String(s.id), code: s.code, label: s.label, labelKn: s.label_kn || null,
       lastEntry: t.lastEntry,
       timeClosed: !t.bookable,
       timeReason: t.reason || null,

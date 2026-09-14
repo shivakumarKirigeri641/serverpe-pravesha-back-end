@@ -65,16 +65,46 @@ function metresBetween(lat1, lon1, lat2, lon2) {
   return Math.round(2 * R * Math.asin(Math.sqrt(a)));
 }
 
-const far = (m) => (m > 1500 ? `${(m / 1000).toFixed(1)} km` : `${m} m`);
+const far = (m, lang = 'en') => (m > 1500
+  ? `${(m / 1000).toFixed(1)} ${lang === 'kn' ? 'ಕಿ.ಮೀ' : 'km'}`
+  : `${m} ${lang === 'kn' ? 'ಮೀ' : 'm'}`);
+
+/* What the visitor reads, in the language they chose. The gate's name comes
+   through localize, so a Kannada sentence does not carry an English gate. */
+const SAY = {
+  no_gate_location: {
+    en: () => 'This gate cannot confirm arrivals yet. The staff member will check you in.',
+    kn: () => 'ಈ ಗೇಟ್ ಇನ್ನೂ ಆಗಮನವನ್ನು ದೃಢೀಕರಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ. ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ಪ್ರವೇಶ ದಾಖಲಿಸುತ್ತಾರೆ.',
+  },
+  no_position: {
+    en: () => 'We could not read your location. The staff member will check you in.',
+    kn: () => 'ನಿಮ್ಮ ಸ್ಥಳವನ್ನು ಓದಲಾಗಲಿಲ್ಲ. ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ಪ್ರವೇಶ ದಾಖಲಿಸುತ್ತಾರೆ.',
+  },
+  too_vague: {
+    en: () => 'Your phone is not sure enough where it is. The staff member will check you in.',
+    kn: () => 'ನಿಮ್ಮ ಫೋನ್‌ಗೆ ತನ್ನ ಸ್ಥಳದ ಬಗ್ಗೆ ಸಾಕಷ್ಟು ಖಚಿತತೆ ಇಲ್ಲ. ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ಪ್ರವೇಶ ದಾಖಲಿಸುತ್ತಾರೆ.',
+  },
+  too_far: {
+    en: (d, gate) => `You appear to be about ${d} from ${gate}. Your pass will be checked when you arrive.`,
+    kn: (d, gate) => `ನೀವು ${gate} ನಿಂದ ಸುಮಾರು ${d} ದೂರದಲ್ಲಿರುವಂತೆ ತೋರುತ್ತದೆ. ನೀವು ಬಂದಾಗ ನಿಮ್ಮ ಪಾಸ್ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.`,
+  },
+  at_gate: {
+    en: (d, gate) => `You are at ${gate}. Your entry will be recorded when you pay.`,
+    kn: (d, gate) => `ನೀವು ${gate} ನಲ್ಲಿದ್ದೀರಿ. ಪಾವತಿಸಿದಾಗ ನಿಮ್ಮ ಪ್ರವೇಶ ದಾಖಲಾಗುತ್ತದೆ.`,
+  },
+};
+const say = (key, lang, ...args) => (SAY[key][lang] || SAY[key].en)(...args);
 
 /** The gate a visitor to this place would be standing at. */
 async function gateFor(placeId) {
   return one(
-    `SELECT id, name, latitude, longitude, checkin_radius_m
-       FROM checkposts
-      WHERE place_id = $1 AND is_active AND latitude IS NOT NULL AND longitude IS NOT NULL
-      ORDER BY id LIMIT 1`, [placeId]);
+    `SELECT c.id, c.name, c.name_kn, c.latitude, c.longitude, c.checkin_radius_m, p.name_kn AS place_name_kn
+       FROM checkposts c JOIN places p ON p.id = c.place_id
+      WHERE c.place_id = $1 AND c.is_active AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+      ORDER BY c.id LIMIT 1`, [placeId]);
 }
+
+const gateName = (gate, lang) => require('../localize').checkpostName(gate, lang, gate);
 
 /**
  * Should the box be shown at all?
@@ -84,7 +114,7 @@ async function gateFor(placeId) {
  * entered today whatever the visitor ticks, and offering the box there is an
  * invitation to exactly the mistake this guards against.
  */
-async function offered({ placeId, slotId, travelDate }) {
+async function offered({ placeId, slotId, travelDate, lang = 'en' }) {
   const gate = await gateFor(placeId);
   if (!gate) return { offered: false, reason: 'no_gate_location' };
   if (String(travelDate).slice(0, 10) !== slotTime.nowIST().date) return { offered: false, reason: 'not_today' };
@@ -94,7 +124,7 @@ async function offered({ placeId, slotId, travelDate }) {
   const window = enterableNow(slot);
   if (!window.ok) return { offered: false, reason: window.reason };
 
-  return { offered: true, gate: gate.name, radiusM: gate.checkin_radius_m };
+  return { offered: true, gate: gateName(gate, lang), radiusM: gate.checkin_radius_m };
 }
 
 /**
@@ -104,33 +134,27 @@ async function offered({ placeId, slotId, travelDate }) {
  * anywhere within half a kilometre cannot show somebody is within three hundred
  * metres, and accepting it would make the check theatre.
  */
-async function verify({ placeId, latitude, longitude, accuracy = null }) {
+async function verify({ placeId, latitude, longitude, accuracy = null, lang = 'en' }) {
   const gate = await gateFor(placeId);
-  if (!gate) {
-    return { ok: false, reason: 'no_gate_location',
-      message: 'This gate cannot confirm arrivals yet. The staff member will check you in.' };
-  }
+  if (!gate) return { ok: false, reason: 'no_gate_location', message: say('no_gate_location', lang) };
 
   const lat = Number(latitude);
   const lng = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    return { ok: false, reason: 'no_position',
-      message: 'We could not read your location. The staff member will check you in.' };
+    return { ok: false, reason: 'no_position', message: say('no_position', lang) };
   }
 
   const distance = metresBetween(lat, lng, Number(gate.latitude), Number(gate.longitude));
   const margin = Number(accuracy) || 0;
   if (margin > gate.checkin_radius_m) {
-    return { ok: false, reason: 'too_vague', distance,
-      message: 'Your phone is not sure enough where it is. The staff member will check you in.' };
+    return { ok: false, reason: 'too_vague', distance, message: say('too_vague', lang) };
   }
   if (distance > gate.checkin_radius_m) {
     return { ok: false, reason: 'too_far', distance,
-      message: `You appear to be about ${far(distance)} from ${gate.name}. Your pass will be checked when you arrive.` };
+      message: say('too_far', lang, far(distance, lang), gateName(gate, lang)) };
   }
 
-  return { ok: true, gate, distance,
-    message: `You are at ${gate.name}. Your entry will be recorded when you pay.` };
+  return { ok: true, gate, distance, message: say('at_gate', lang, far(distance, lang), gateName(gate, lang)) };
 }
 
 /**

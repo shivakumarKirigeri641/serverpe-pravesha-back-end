@@ -15,6 +15,12 @@
  * vehicle's. A slot picked first is kept if it is still open for the vehicle,
  * and cleared with a reason if it is not. The server re-checks all of it at
  * Continue to payment regardless.
+ *
+ * IN THE LANGUAGE THE VISITOR CHOSE. The link belongs to a customer, and the
+ * customer chose English or Kannada in the chat. The page and every sentence
+ * this route sends back to it follow that choice, so a Kannada visitor is not
+ * handed an English form halfway through a Kannada conversation. When the link
+ * itself is bad nobody is known yet, and the answer is given in both.
  */
 
 const express = require('express');
@@ -25,9 +31,73 @@ const inventory = require('../gatepass/inventory');
 const vehicles = require('../gatepass/vehicle');
 const eligibility = require('../gatepass/eligibility');
 const { one } = require('../gatepass/db');
+const { langOf } = require('../i18n');
+const L = require('../localize');
 const page = require('../web/bookingPage');
 
 const router = express.Router();
+
+/* Every sentence this route can send the form, in both languages. */
+const COPY = {
+  en: {
+    serverError: 'We could not complete that just now. Please try again.',
+    linkExpired: 'This booking link has expired. Send hi on WhatsApp to start again.',
+    linkExpiredShort: 'This booking link has expired.',
+    checkTitle: 'Check the vehicle number',
+    invalidFormat: (err) => String(err || 'Please enter a valid registration number, for example KA01AB1234.').replace(/\*/g, ''),
+    placeUnavailable: 'Bookings for this destination are not open yet.',
+    notFound: 'We could not find that registration number. Please check it and try again.',
+    unclassified: 'We could not determine the vehicle type for that number. Please check it and try again.',
+    inProgressTitle: 'Booking already in progress',
+    inProgress: (reg, when) => `A booking for ${reg} on ${when} is already in progress. Complete it, or try again in a few minutes.`,
+    oneTitle: 'Only one pass per vehicle per day',
+    alreadyOn: (reg, when, slot) => `${reg} already has an entry pass for ${when} (${slot}). Please choose another date.`,
+    noPrice: 'No fare is configured for this vehicle at this destination.',
+    checkNumber: 'Please check the vehicle number.',
+    slotInvalid: 'Please choose a time slot again.',
+    dateInvalid: 'That date can no longer be booked. Please choose another date.',
+    slotClosed: 'That time slot has closed for today. Please choose another slot or date.',
+    notVerified: 'We could not verify that vehicle number. Please check it and try again.',
+    unclassifiedShort: 'We could not determine the vehicle type for that number.',
+    alreadyThisDate: (reg, slot) => `${reg} already has an entry pass for this date (${slot}). Only one pass is allowed per vehicle per day.`,
+    inProgressThisDate: (reg) => `A booking for ${reg} on this date is already in progress. Please complete it or try again in a few minutes.`,
+    soldOut: 'That slot has just sold out for your vehicle type. Please choose another slot or date.',
+    alreadyBooked: (reg) => `${reg} already has an entry pass for this date. Only one pass is allowed per vehicle per day.`,
+    cantHold: 'We could not hold your place. Please try again.',
+    noHold: 'Please choose your slot again.',
+  },
+  kn: {
+    serverError: 'ಈಗ ಅದನ್ನು ಪೂರ್ಣಗೊಳಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    linkExpired: 'ಈ ಬುಕಿಂಗ್ ಲಿಂಕ್‌ನ ಅವಧಿ ಮುಗಿದಿದೆ. ಮತ್ತೆ ಆರಂಭಿಸಲು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ hi ಕಳುಹಿಸಿ.',
+    linkExpiredShort: 'ಈ ಬುಕಿಂಗ್ ಲಿಂಕ್‌ನ ಅವಧಿ ಮುಗಿದಿದೆ.',
+    checkTitle: 'ವಾಹನ ಸಂಖ್ಯೆ ಪರಿಶೀಲಿಸಿ',
+    invalidFormat: () => 'ಇದು ಸರಿಯಾದ ವಾಹನ ಸಂಖ್ಯೆಯಂತೆ ಕಾಣುತ್ತಿಲ್ಲ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ, ಉದಾಹರಣೆಗೆ KA01AB1234.',
+    placeUnavailable: 'ಈ ತಾಣಕ್ಕೆ ಬುಕಿಂಗ್ ಇನ್ನೂ ಆರಂಭವಾಗಿಲ್ಲ.',
+    notFound: 'ಆ ನೋಂದಣಿ ಸಂಖ್ಯೆ ನಮಗೆ ಸಿಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    unclassified: 'ಆ ಸಂಖ್ಯೆಯ ವಾಹನದ ಪ್ರಕಾರವನ್ನು ಗುರುತಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    inProgressTitle: 'ಬುಕಿಂಗ್ ಈಗಾಗಲೇ ಪ್ರಗತಿಯಲ್ಲಿದೆ',
+    inProgress: (reg, when) => `${when} ರಂದು ${reg} ಗಾಗಿ ಬುಕಿಂಗ್ ಈಗಾಗಲೇ ಪ್ರಗತಿಯಲ್ಲಿದೆ. ಅದನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ, ಅಥವಾ ಕೆಲವು ನಿಮಿಷಗಳ ನಂತರ ಪ್ರಯತ್ನಿಸಿ.`,
+    oneTitle: 'ಒಂದು ವಾಹನಕ್ಕೆ ದಿನಕ್ಕೆ ಒಂದೇ ಪಾಸ್',
+    alreadyOn: (reg, when, slot) => `${reg} ಗೆ ${when} ರಂದು ಈಗಾಗಲೇ ಪ್ರವೇಶ ಪಾಸ್ ಇದೆ (${slot}). ದಯವಿಟ್ಟು ಬೇರೆ ದಿನಾಂಕ ಆಯ್ಕೆಮಾಡಿ.`,
+    noPrice: 'ಈ ತಾಣದಲ್ಲಿ ಈ ವಾಹನಕ್ಕೆ ಶುಲ್ಕ ನಿಗದಿಯಾಗಿಲ್ಲ.',
+    checkNumber: 'ದಯವಿಟ್ಟು ವಾಹನ ಸಂಖ್ಯೆ ಪರಿಶೀಲಿಸಿ.',
+    slotInvalid: 'ದಯವಿಟ್ಟು ಮತ್ತೆ ಸಮಯದ ಸ್ಲಾಟ್ ಆಯ್ಕೆಮಾಡಿ.',
+    dateInvalid: 'ಆ ದಿನಾಂಕವನ್ನು ಈಗ ಬುಕ್ ಮಾಡಲಾಗದು. ದಯವಿಟ್ಟು ಬೇರೆ ದಿನಾಂಕ ಆಯ್ಕೆಮಾಡಿ.',
+    slotClosed: 'ಇಂದಿನ ಆ ಸ್ಲಾಟ್ ಮುಚ್ಚಿದೆ. ದಯವಿಟ್ಟು ಬೇರೆ ಸ್ಲಾಟ್ ಅಥವಾ ದಿನಾಂಕ ಆಯ್ಕೆಮಾಡಿ.',
+    notVerified: 'ಆ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    unclassifiedShort: 'ಆ ಸಂಖ್ಯೆಯ ವಾಹನದ ಪ್ರಕಾರವನ್ನು ಗುರುತಿಸಲಾಗಲಿಲ್ಲ.',
+    alreadyThisDate: (reg, slot) => `${reg} ಗೆ ಈ ದಿನಾಂಕಕ್ಕೆ ಈಗಾಗಲೇ ಪ್ರವೇಶ ಪಾಸ್ ಇದೆ (${slot}). ಒಂದು ವಾಹನಕ್ಕೆ ದಿನಕ್ಕೆ ಒಂದೇ ಪಾಸ್.`,
+    inProgressThisDate: (reg) => `ಈ ದಿನಾಂಕಕ್ಕೆ ${reg} ಗಾಗಿ ಬುಕಿಂಗ್ ಈಗಾಗಲೇ ಪ್ರಗತಿಯಲ್ಲಿದೆ. ಅದನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ ಅಥವಾ ಕೆಲವು ನಿಮಿಷಗಳ ನಂತರ ಪ್ರಯತ್ನಿಸಿ.`,
+    soldOut: 'ನಿಮ್ಮ ವಾಹನ ಪ್ರಕಾರಕ್ಕೆ ಆ ಸ್ಲಾಟ್ ಈಗಷ್ಟೇ ಭರ್ತಿಯಾಗಿದೆ. ದಯವಿಟ್ಟು ಬೇರೆ ಸ್ಲಾಟ್ ಅಥವಾ ದಿನಾಂಕ ಆಯ್ಕೆಮಾಡಿ.',
+    alreadyBooked: (reg) => `${reg} ಗೆ ಈ ದಿನಾಂಕಕ್ಕೆ ಈಗಾಗಲೇ ಪ್ರವೇಶ ಪಾಸ್ ಇದೆ. ಒಂದು ವಾಹನಕ್ಕೆ ದಿನಕ್ಕೆ ಒಂದೇ ಪಾಸ್.`,
+    cantHold: 'ನಿಮ್ಮ ಸ್ಥಾನ ಕಾಯ್ದಿರಿಸಲಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+    noHold: 'ದಯವಿಟ್ಟು ಮತ್ತೆ ನಿಮ್ಮ ಸ್ಲಾಟ್ ಆಯ್ಕೆಮಾಡಿ.',
+  },
+};
+
+/* Nobody is known yet (the link itself failed): say it in both. */
+const both = (key) => `${COPY.en[key]} ${COPY.kn[key]}`;
+const slotName = (row, lang) => (lang === 'kn' && row.slot_label_kn ? row.slot_label_kn : row.slot_label);
 
 /* The page script, addressed by a hash of its contents.
 
@@ -82,7 +152,7 @@ const safe = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
   if (res.headersSent) return;
   if (req.method === 'GET') return res.status(500).type('html').send(page.expired('unknown'));
   return res.status(500).json({ ok: false, error: 'server_error',
-    message: 'We could not complete that just now. Please try again.' });
+    message: req.lang ? COPY[req.lang].serverError : both('serverError') });
 });
 
 /** Every route below needs a live token; refusing early keeps that in one place. */
@@ -93,6 +163,7 @@ const gate = safe(async (req, res, next) => {
     return next();
   }
   req.customer = await one('SELECT * FROM customers WHERE id = $1', [check.customerId]);
+  req.lang = langOf(req.customer);
   req.tokenValue = req.params.token;
   return next();
 });
@@ -116,6 +187,7 @@ router.get('/book/:token', gate, safe(async (req, res) => {
     tariff: tariffRows,
     feePercent: await pricing.platformPercent(),
     releaseInfo,
+    lang: req.lang,
   }));
 }));
 
@@ -128,22 +200,22 @@ router.get('/book/:token', gate, safe(async (req, res) => {
  */
 router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) => {
   if (req.tokenError) return res.status(410).json({ error: req.tokenError });
+  const lang = req.lang;
+  const C = COPY[lang];
 
   /* The same parser the ULIP lookup uses: spaces, dots and hyphens removed,
      letter O typed for zero repaired, and a state code that does not exist
      refused here — before a lookup is spent on it. */
   const parsed = require('../ulip/plate').parse(req.body.regNo);
   if (!parsed.ok) {
-    return res.json({ ok: false, error: 'invalid_format', title: 'Check the vehicle number',
-      message: String(parsed.error || 'Please enter a valid registration number, for example KA01AB1234.').replace(/\*/g, '') });
+    return res.json({ ok: false, error: 'invalid_format', title: C.checkTitle, message: C.invalidFormat(parsed.error) });
   }
   const regNo = parsed.regNo;
 
   const placeId = req.body.placeId;
   const place = await places.byId(placeId);
   if (!place || !place.is_active) {
-    return res.json({ ok: false, error: 'place_unavailable',
-      message: 'Bookings for this destination are not open yet.' });
+    return res.json({ ok: false, error: 'place_unavailable', message: C.placeUnavailable });
   }
 
   const resolved = await vehicles.resolve(regNo, { customerId: req.customer.id });
@@ -154,22 +226,23 @@ router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) 
      path -- that path exists and is tested (see 017 and eligibility.decide),
      it is simply not surfaced yet. */
   if (!resolved.ok || !resolved.vehicle || !vehicles.isClassified(resolved.vehicle)) {
-    return res.json({ ok: false, error: 'not_found',
-      message: 'We could not find that registration number. Please check it and try again.' });
+    return res.json({ ok: false, error: 'not_found', message: C.notFound });
   }
 
   const verdict = await eligibility.decide(resolved.vehicle);
   await eligibility.remember(resolved.vehicle.id, verdict);
 
   if (!verdict.allowed) {
+    /* English readers also see the Kannada line under it, as before; a Kannada
+       reader gets the Kannada reason alone rather than English on top. */
     return res.json({ ok: false, error: 'not_permitted', denyCode: verdict.denyCode,
-      message: verdict.reason, messageKn: verdict.reasonKn,
+      message: lang === 'kn' ? (verdict.reasonKn || verdict.reason) : verdict.reason,
+      messageKn: lang === 'kn' ? undefined : verdict.reasonKn,
       vehicle: vehicles.describe(resolved.vehicle) });
   }
 
   if (verdict.unclassified) {
-    return res.json({ ok: false, error: 'unclassified',
-      message: 'We could not determine the vehicle type for that number. Please check it and try again.' });
+    return res.json({ ok: false, error: 'unclassified', message: C.unclassified });
   }
 
   /* ONE PASS PER VEHICLE PER DAY, told at the vehicle step. Waiting until
@@ -186,21 +259,17 @@ router.post('/book/:token/vehicle', express.json(), gate, safe(async (req, res) 
         `SELECT 1 FROM web_tokens WHERE token_hash = $1 AND ticket_id = $2`,
         [require('crypto').createHash('sha256').update(req.params.token).digest('hex'), existing.id]);
       if (!mine) {
-        const when = new Date(`${travelDate}T00:00:00Z`)
-          .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+        const when = L.shortDate(travelDate, lang);
         return res.json(existing.status === 'held'
-          ? { ok: false, error: 'booking_in_progress', title: 'Booking already in progress',
-            message: `A booking for ${regNo} on ${when} is already in progress. Complete it, or try again in a few minutes.` }
-          : { ok: false, error: 'already_booked', title: 'Only one pass per vehicle per day',
-            message: `${regNo} already has an entry pass for ${when} (${existing.slot_label}). Please choose another date.` });
+          ? { ok: false, error: 'booking_in_progress', title: C.inProgressTitle, message: C.inProgress(regNo, when) }
+          : { ok: false, error: 'already_booked', title: C.oneTitle, message: C.alreadyOn(regNo, when, slotName(existing, lang)) });
       }
     }
   }
 
   const price = await pricing.forPlaceCategory(place.id, verdict.categoryId);
   if (!price) {
-    return res.json({ ok: false, error: 'no_price',
-      message: 'No fare is configured for this vehicle at this destination.' });
+    return res.json({ ok: false, error: 'no_price', message: C.noPrice });
   }
 
   const details = vehicles.details(resolved.vehicle);
@@ -253,7 +322,7 @@ router.post('/book/:token/slots', express.json(), gate, safe(async (req, res) =>
       remaining: byCat[k][i].remaining, capacity: byCat[k][i].capacity,
     }));
     return {
-      slotId: s.slotId, code: s.code, label: s.label, lastEntry: s.lastEntry,
+      slotId: s.slotId, code: s.code, label: s.label, labelKn: s.labelKn, lastEntry: s.lastEntry,
       timeClosed: s.timeClosed, timeReason: s.timeReason, isOpen: s.isOpen, closedNote: s.closedNote,
       types,
       bookable: s.isOpen && !s.timeClosed && types.some((x) => x.remaining > 0),
@@ -273,8 +342,9 @@ router.post('/book/:token/slots', express.json(), gate, safe(async (req, res) =>
  * re-established from the database before a single place is held.
  */
 router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) => {
-  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError,
-    message: 'This booking link has expired. Send hi on WhatsApp to start again.' });
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError, message: both('linkExpired') });
+  const lang = req.lang;
+  const C = COPY[lang];
 
   const booking = require('../gatepass/booking');
   const checkout = require('../gatepass/checkout');
@@ -283,39 +353,38 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
   const fail = (error, message, extra = {}) => res.json({ ok: false, error, message, ...extra });
 
   const parsedPlate = require('../ulip/plate').parse(req.body.regNo);
-  if (!parsedPlate.ok) return res.json({ ok: false, error: 'invalid_format', message: 'Please check the vehicle number.' });
+  if (!parsedPlate.ok) return res.json({ ok: false, error: 'invalid_format', message: C.checkNumber });
   const regNo = parsedPlate.regNo;
   const { placeId, slotId, travelDate } = req.body;
 
   const place = await places.byId(placeId);
-  if (!place || !place.is_active) return fail('place_unavailable', 'Bookings for this destination are not open yet.');
+  if (!place || !place.is_active) return fail('place_unavailable', C.placeUnavailable);
 
   /* Refused if the slot is closed for that date, whatever the form was showing. */
   const slot = await one(
     `SELECT * FROM place_slots WHERE id = $1 AND place_id = $2 AND is_active
         AND (valid_from IS NULL OR valid_from <= $3::date) AND (valid_to IS NULL OR valid_to >= $3::date)`,
     [slotId, place.id, travelDate]);
-  if (!slot) return fail('slot_invalid', 'Please choose a time slot again.');
+  if (!slot) return fail('slot_invalid', C.slotInvalid);
 
   const allowedDates = (await places.bookableDates(place, (await places.list()).find((p) => String(p.id) === String(place.id)).slots))
     .map((d) => d.value);
-  if (!allowedDates.includes(String(travelDate))) return fail('date_invalid', 'That date can no longer be booked. Please choose another date.');
+  if (!allowedDates.includes(String(travelDate))) return fail('date_invalid', C.dateInvalid);
 
   const timing = slotTime.check(slot, travelDate);
-  if (!timing.bookable) return fail('slot_closed', 'That time slot has closed for today. Please choose another slot or date.');
+  if (!timing.bookable) return fail('slot_closed', C.slotClosed);
 
   const resolved = await vehicles.resolve(regNo, { customerId: req.customer.id });
   if (!resolved.ok || !vehicles.isClassified(resolved.vehicle)) {
-    return fail('not_found', 'We could not verify that vehicle number. Please check it and try again.');
+    return fail('not_found', C.notVerified);
   }
   const verdict = await eligibility.decide(resolved.vehicle);
-  if (!verdict.allowed) return fail('not_permitted', verdict.reason);
-  if (verdict.unclassified) return fail('unclassified', 'We could not determine the vehicle type for that number.');
+  if (!verdict.allowed) return fail('not_permitted', lang === 'kn' ? (verdict.reasonKn || verdict.reason) : verdict.reason);
+  if (verdict.unclassified) return fail('unclassified', C.unclassifiedShort);
 
   const existing = await booking.existingForDate(resolved.vehicle.id, travelDate);
   if (existing && existing.status !== 'held') {
-    return fail('already_booked',
-      `${regNo} already has an entry pass for this date (${existing.slot_label}). Only one pass is allowed per vehicle per day.`);
+    return fail('already_booked', C.alreadyThisDate(regNo, slotName(existing, lang)));
   }
 
   /* The same visitor tapping Continue twice, or going back and changing the
@@ -327,8 +396,7 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
     [require('crypto').createHash('sha256').update(req.params.token).digest('hex')]);
   if (prior) await booking.releaseHold(prior.id);
   if (existing && existing.status === 'held' && (!prior || String(prior.id) !== String(existing.id))) {
-    return fail('already_booked',
-      `A booking for ${regNo} on this date is already in progress. Please complete it or try again in a few minutes.`);
+    return fail('already_booked', C.inProgressThisDate(regNo));
   }
 
   const held = await booking.hold({
@@ -337,10 +405,10 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
   });
   if (!held.ok) {
     const msg = {
-      sold_out: 'That slot has just sold out for your vehicle type. Please choose another slot or date.',
-      already_booked: `${regNo} already has an entry pass for this date. Only one pass is allowed per vehicle per day.`,
-      no_price: 'No fare is configured for this vehicle at this destination.',
-    }[held.reason] || 'We could not hold your place. Please try again.';
+      sold_out: C.soldOut,
+      already_booked: C.alreadyBooked(regNo),
+      no_price: C.noPrice,
+    }[held.reason] || C.cantHold;
     return fail(held.reason, msg);
   }
 
@@ -361,7 +429,7 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
     /* Whether to offer "I am already at the checkpost" on the payment sheet.
        Only for a pass that could be driven through the barrier this minute, at
        a gate whose position somebody has recorded. */
-    selfCheckin: await require('../gatepass/selfCheckin').offered({ placeId: place.id, slotId: slot.id, travelDate }),
+    selfCheckin: await require('../gatepass/selfCheckin').offered({ placeId: place.id, slotId: slot.id, travelDate, lang }),
   });
 }));
 
@@ -379,7 +447,7 @@ router.post('/book/:token/confirm', express.json(), gate, safe(async (req, res) 
  * happened anyway.
  */
 router.post('/book/:token/atgate', express.json(), gate, safe(async (req, res) => {
-  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError, message: 'This booking link has expired.' });
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError, message: both('linkExpiredShort') });
 
   const selfCheckin = require('../gatepass/selfCheckin');
   const { query: q2 } = require('../gatepass/db');
@@ -388,7 +456,7 @@ router.post('/book/:token/atgate', express.json(), gate, safe(async (req, res) =
   const held = await one(
     `SELECT t.* FROM web_tokens w JOIN tickets t ON t.id = w.ticket_id
       WHERE w.token_hash = $1 AND t.status = 'held'`, [hash]);
-  if (!held) return res.json({ ok: false, error: 'no_hold', message: 'Please choose your slot again.' });
+  if (!held) return res.json({ ok: false, error: 'no_hold', message: COPY[req.lang].noHold });
 
   if (req.body?.on !== true) {
     await q2(`UPDATE tickets SET self_checkin_asked = false, self_checkin_m = NULL WHERE id = $1`, [held.id]);
@@ -400,6 +468,7 @@ router.post('/book/:token/atgate', express.json(), gate, safe(async (req, res) =
     latitude: req.body.latitude,
     longitude: req.body.longitude,
     accuracy: req.body.accuracy,
+    lang: req.lang,
   });
 
   if (!verdict.ok) {

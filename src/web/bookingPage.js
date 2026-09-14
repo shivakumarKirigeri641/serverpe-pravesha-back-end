@@ -8,16 +8,85 @@
  * No framework. The whole page is smaller than the JavaScript a framework would
  * need before it rendered anything, and this is opened from a chat by someone
  * who wants a ticket, not an application.
+ *
+ * IN THE VISITOR'S LANGUAGE. Every word on the page comes from COPY below, in
+ * the language they chose in the chat; <html lang> carries it to the page
+ * script, which holds its own copy of the words it draws. Place, district, slot
+ * and vehicle-type names come from the *_kn columns. The vehicle number, the
+ * make and model from the register, and amounts are left as they are.
  */
+
+const L = require('../localize');
 
 const esc = (s) => String(s === null || s === undefined ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-const SHELL = (title, body) => `<!doctype html>
-<html lang="en"><head>
+const COPY = {
+  en: {
+    brand: 'Pravesha',
+    dept: 'Karnataka Tourism Department',
+    footer: 'Entry passes are issued for two-wheelers, cars, Toofans and Tempo Travellers only.',
+    title: 'Book entry pass',
+    step1: 'Your details', name: 'Name', mobile: 'WhatsApp number', fromWa: 'Taken from your WhatsApp account.',
+    step2: 'Where, when and time slot', place: 'Destination',
+    soon: 'Bookings for this destination are not open yet. Please choose Mullayanagiri.',
+    comingSoon: 'coming soon', date: 'Date of visit', today: 'today', slot: 'Time slot',
+    fees: 'Entry fees', thVehicle: 'Vehicle', thFee: 'Fee', thTotal: 'Total', platformFee: 'platform fee',
+    note: 'Please note',
+    rules: [
+      'The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.',
+      'Vehicles without a clear, readable number plate will not be allowed entry.',
+      'One pass per vehicle for a date and slot. Repeat or duplicate bookings will be cancelled.',
+      'Editing, copying or reselling a pass is illegal. Legal action will be taken against the vehicle and its owner.',
+    ],
+    step3: 'Your vehicle', reg: 'Enter vehicle number', regHint: 'We look this up to set the correct entry fee.',
+    check: 'Check vehicle', verified: 'Vehicle verified',
+    nudgeT: 'Next: choose a time slot', nudge: 'Pick a slot in the grid above to see your review and pay.', toSlots: 'Choose slot',
+    step4: 'Review', atCheckpost: 'At the checkpost',
+    atCheckpostP: 'No printout needed. Just drive up to the checkpost &mdash; staff will read your vehicle number and record your entry digitally. That&rsquo;s it.',
+    pay: 'Continue to payment', payHint: 'Secure payment by Razorpay &middot; your pass arrives on WhatsApp',
+    heldT: 'Your place is held', heldSub: 'Reserved for this vehicle until you pay', timeLeft: 'Time left to pay',
+    atGate: 'I am already at the checkpost', atGateHint: 'Your entry will be recorded now, so you can drive through without waiting.',
+    confirmPay: 'Confirm &amp; pay', cancel: 'Cancel and release place', secure: 'Secure payment by Razorpay',
+    release: (d, today, time) => `Bookings open up to 2 weeks ahead. The next date, <b>${d}</b>, opens ${today ? 'today' : 'tomorrow'} at ${time}.`,
+  },
+  kn: {
+    brand: 'ಪ್ರವೇಶ',
+    dept: 'ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ',
+    footer: 'ದ್ವಿಚಕ್ರ ವಾಹನಗಳು, ಕಾರುಗಳು, ಟೂಫಾನ್ ಮತ್ತು ಟೆಂಪೋ ಟ್ರಾವೆಲರ್‌ಗಳಿಗೆ ಮಾತ್ರ ಪ್ರವೇಶ ಪಾಸ್ ನೀಡಲಾಗುತ್ತದೆ.',
+    title: 'ಪ್ರವೇಶ ಪಾಸ್ ಬುಕ್ ಮಾಡಿ',
+    step1: 'ನಿಮ್ಮ ವಿವರಗಳು', name: 'ಹೆಸರು', mobile: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್ ಸಂಖ್ಯೆ', fromWa: 'ನಿಮ್ಮ ವಾಟ್ಸ್‌ಆ್ಯಪ್ ಖಾತೆಯಿಂದ ಪಡೆಯಲಾಗಿದೆ.',
+    step2: 'ಸ್ಥಳ, ದಿನಾಂಕ ಮತ್ತು ಸಮಯ', place: 'ಪ್ರವಾಸಿ ತಾಣ',
+    soon: 'ಈ ತಾಣಕ್ಕೆ ಬುಕಿಂಗ್ ಇನ್ನೂ ಆರಂಭವಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಮುಳ್ಳಯ್ಯನಗಿರಿ ಆಯ್ಕೆಮಾಡಿ.',
+    comingSoon: 'ಶೀಘ್ರದಲ್ಲೇ', date: 'ಭೇಟಿಯ ದಿನಾಂಕ', today: 'ಇಂದು', slot: 'ಸಮಯದ ಸ್ಲಾಟ್',
+    fees: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thVehicle: 'ವಾಹನ', thFee: 'ಶುಲ್ಕ', thTotal: 'ಒಟ್ಟು', platformFee: 'ಪ್ಲಾಟ್‌ಫಾರ್ಮ್ ಶುಲ್ಕ',
+    note: 'ದಯವಿಟ್ಟು ಗಮನಿಸಿ',
+    rules: [
+      'ನಮೂದಿಸಿದ ವಾಹನ ಸಂಖ್ಯೆಗೆ ಮಾತ್ರ ಪಾಸ್ ಮಾನ್ಯ. ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ವಾಹನ ಬದಲಾಯಿಸಲು ಅವಕಾಶವಿಲ್ಲ.',
+      'ಸ್ಪಷ್ಟವಾಗಿ ಓದಬಹುದಾದ ನಂಬರ್ ಪ್ಲೇಟ್ ಇಲ್ಲದ ವಾಹನಗಳಿಗೆ ಪ್ರವೇಶವಿಲ್ಲ.',
+      'ಒಂದು ದಿನಾಂಕ ಮತ್ತು ಸ್ಲಾಟ್‌ಗೆ ಒಂದು ವಾಹನಕ್ಕೆ ಒಂದೇ ಪಾಸ್. ಪುನರಾವರ್ತಿತ ಅಥವಾ ನಕಲಿ ಬುಕಿಂಗ್‌ಗಳನ್ನು ರದ್ದುಗೊಳಿಸಲಾಗುತ್ತದೆ.',
+      'ಪಾಸ್ ಅನ್ನು ತಿದ್ದುವುದು, ನಕಲು ಮಾಡುವುದು ಅಥವಾ ಮರುಮಾರಾಟ ಮಾಡುವುದು ಕಾನೂನುಬಾಹಿರ. ವಾಹನ ಮತ್ತು ಅದರ ಮಾಲೀಕರ ವಿರುದ್ಧ ಕಾನೂನು ಕ್ರಮ ಕೈಗೊಳ್ಳಲಾಗುವುದು.',
+    ],
+    step3: 'ನಿಮ್ಮ ವಾಹನ', reg: 'ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ', regHint: 'ಸರಿಯಾದ ಪ್ರವೇಶ ಶುಲ್ಕ ನಿಗದಿಪಡಿಸಲು ನಾವು ಇದನ್ನು ಪರಿಶೀಲಿಸುತ್ತೇವೆ.',
+    check: 'ವಾಹನ ಪರಿಶೀಲಿಸಿ', verified: 'ವಾಹನ ಪರಿಶೀಲಿಸಲಾಗಿದೆ',
+    nudgeT: 'ಮುಂದೆ: ಸಮಯದ ಸ್ಲಾಟ್ ಆಯ್ಕೆಮಾಡಿ', nudge: 'ವಿವರ ನೋಡಲು ಮತ್ತು ಪಾವತಿಸಲು ಮೇಲಿನ ಸ್ಲಾಟ್ ಆಯ್ಕೆಮಾಡಿ.', toSlots: 'ಸ್ಲಾಟ್ ಆಯ್ಕೆ',
+    step4: 'ಪರಿಶೀಲನೆ', atCheckpost: 'ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ',
+    atCheckpostP: 'ಮುದ್ರಿತ ಪ್ರತಿ ಬೇಕಿಲ್ಲ. ನೇರವಾಗಿ ಚೆಕ್‌ಪೋಸ್ಟ್‌ಗೆ ಬನ್ನಿ &mdash; ಸಿಬ್ಬಂದಿ ನಿಮ್ಮ ವಾಹನ ಸಂಖ್ಯೆಯನ್ನು ಓದಿ ಪ್ರವೇಶವನ್ನು ಡಿಜಿಟಲ್ ಆಗಿ ದಾಖಲಿಸುತ್ತಾರೆ. ಅಷ್ಟೇ.',
+    pay: 'ಪಾವತಿಗೆ ಮುಂದುವರಿಯಿರಿ', payHint: 'Razorpay ಮೂಲಕ ಸುರಕ್ಷಿತ ಪಾವತಿ &middot; ನಿಮ್ಮ ಪಾಸ್ ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಬರುತ್ತದೆ',
+    heldT: 'ನಿಮ್ಮ ಸ್ಥಾನ ಕಾಯ್ದಿರಿಸಲಾಗಿದೆ', heldSub: 'ಪಾವತಿಸುವವರೆಗೆ ಈ ವಾಹನಕ್ಕಾಗಿ ಕಾಯ್ದಿರಿಸಲಾಗಿದೆ', timeLeft: 'ಪಾವತಿಸಲು ಉಳಿದ ಸಮಯ',
+    atGate: 'ನಾನು ಈಗಾಗಲೇ ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿದ್ದೇನೆ', atGateHint: 'ನಿಮ್ಮ ಪ್ರವೇಶ ಈಗಲೇ ದಾಖಲಾಗುತ್ತದೆ, ಕಾಯದೆ ಒಳಗೆ ಹೋಗಬಹುದು.',
+    confirmPay: 'ದೃಢೀಕರಿಸಿ ಮತ್ತು ಪಾವತಿಸಿ', cancel: 'ರದ್ದುಮಾಡಿ, ಸ್ಥಾನ ಬಿಡುಗಡೆ ಮಾಡಿ', secure: 'Razorpay ಮೂಲಕ ಸುರಕ್ಷಿತ ಪಾವತಿ',
+    release: (d, today, time) => `ಗರಿಷ್ಠ 2 ವಾರಗಳ ಮುಂಚಿತವಾಗಿ ಬುಕ್ ಮಾಡಬಹುದು. ಮುಂದಿನ ದಿನಾಂಕ <b>${d}</b> ${today ? 'ಇಂದು' : 'ನಾಳೆ'} ${time}ಕ್ಕೆ ತೆರೆಯುತ್ತದೆ.`,
+  },
+};
+
+const SHELL = (title, body, lang = 'en') => {
+  const c = COPY[lang] || COPY.en;
+  return `<!doctype html>
+<html lang="${lang === 'kn' ? 'kn' : 'en'}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,interactive-widget=resizes-content">
-<title>${title} · Pravesha</title>
+<title>${title} · ${c.brand}</title>
 <style>
   /* WhatsApp's own palette. The form opens inside WhatsApp's browser straight
      from the chat, so it should look like part of it rather than a different
@@ -31,7 +100,7 @@ const SHELL = (title, body) => `<!doctype html>
         --okbg:#0d2f22;--badbg:#3a1414;--warnbg:#3a2c10;--ok:#00d97e}}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Kannada",sans-serif;
        -webkit-text-size-adjust:100%}
   /* Room below the last field, so a field near the bottom can still be scrolled
      up above an on-screen keyboard instead of being pinned under it. */
@@ -225,27 +294,47 @@ const SHELL = (title, body) => `<!doctype html>
   .sub{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
        color:var(--muted);margin:4px 0 4px}
   .sub.gap{margin-top:16px}
+  /* Kannada is not set in capitals, and the letter-spacing that makes an
+     English overline readable pulls Kannada conjuncts apart. */
+  :lang(kn) .step,:lang(kn) .vhead,:lang(kn) .fees th,:lang(kn) .checkpost-h,:lang(kn) .rules-h,
+  :lang(kn) .inner caption,:lang(kn) .rev>thead>tr>th{letter-spacing:0;text-transform:none}
   footer{text-align:center;color:var(--muted);font-size:12px;padding:22px 16px}
 </style></head><body><div class="wrap">
-<header><div class="brand">Pravesha</div>
-<div class="dept">Karnataka Tourism Department</div></header>
+<header><div class="brand">${c.brand}</div>
+<div class="dept">${c.dept}</div></header>
 ${body}
-<footer>Entry passes are issued for two-wheelers, cars, Toofans and Tempo Travellers only.</footer>
+<footer>${c.footer}</footer>
 </div></body></html>`;
+};
 
+/* A link that cannot be trusted names nobody, so it is explained in both. */
 function expired(reason) {
   const copy = {
-    already_used: ['This link has already been used', 'Each booking link works once. Send <b>hi</b> on WhatsApp to start a new booking.'],
-    expired: ['This link has expired', 'Booking links are valid for two hours. Send <b>hi</b> on WhatsApp to get a new one.'],
-    bad_signature: ['This link is not valid', 'Please use the link exactly as it was sent to you on WhatsApp.'],
-    malformed: ['This link is not valid', 'Please use the link exactly as it was sent to you on WhatsApp.'],
-    unknown: ['This link is not valid', 'Send <b>hi</b> on WhatsApp to start a new booking.'],
-  }[reason] || ['This link is not valid', 'Send <b>hi</b> on WhatsApp to start a new booking.'];
+    already_used: [
+      ['This link has already been used', 'Each booking link works once. Send <b>hi</b> on WhatsApp to start a new booking.'],
+      ['ಈ ಲಿಂಕ್ ಈಗಾಗಲೇ ಬಳಸಲಾಗಿದೆ', 'ಪ್ರತಿ ಬುಕಿಂಗ್ ಲಿಂಕ್ ಒಮ್ಮೆ ಮಾತ್ರ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ಹೊಸ ಬುಕಿಂಗ್‌ಗಾಗಿ ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ <b>hi</b> ಕಳುಹಿಸಿ.'],
+    ],
+    expired: [
+      ['This link has expired', 'Booking links are valid for two hours. Send <b>hi</b> on WhatsApp to get a new one.'],
+      ['ಈ ಲಿಂಕ್‌ನ ಅವಧಿ ಮುಗಿದಿದೆ', 'ಬುಕಿಂಗ್ ಲಿಂಕ್‌ಗಳು ಎರಡು ಗಂಟೆಗಳವರೆಗೆ ಮಾನ್ಯ. ಹೊಸ ಲಿಂಕ್‌ಗಾಗಿ ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ <b>hi</b> ಕಳುಹಿಸಿ.'],
+    ],
+    bad_signature: [
+      ['This link is not valid', 'Please use the link exactly as it was sent to you on WhatsApp.'],
+      ['ಈ ಲಿಂಕ್ ಮಾನ್ಯವಲ್ಲ', 'ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಕಳುಹಿಸಿದಂತೆಯೇ ಲಿಂಕ್ ಬಳಸಿ.'],
+    ],
+  };
+  copy.malformed = copy.bad_signature;
+  const [en, kn] = copy[reason] || [
+    ['This link is not valid', 'Send <b>hi</b> on WhatsApp to start a new booking.'],
+    ['ಈ ಲಿಂಕ್ ಮಾನ್ಯವಲ್ಲ', 'ಹೊಸ ಬುಕಿಂಗ್‌ಗಾಗಿ ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ <b>hi</b> ಕಳುಹಿಸಿ.'],
+  ];
 
   return SHELL('Link expired', `<div class="card">
     <div style="font-size:34px;text-align:center;margin-bottom:6px">&#8987;</div>
-    <h2 style="margin:0 0 8px;text-align:center;font-size:19px">${copy[0]}</h2>
-    <p style="text-align:center;color:var(--muted);font-size:14.5px;margin:0">${copy[1]}</p>
+    <h2 style="margin:0 0 8px;text-align:center;font-size:19px">${en[0]}</h2>
+    <p style="text-align:center;color:var(--muted);font-size:14.5px;margin:0">${en[1]}</p>
+    <h2 lang="kn" style="margin:18px 0 8px;text-align:center;font-size:18px">${kn[0]}</h2>
+    <p lang="kn" style="text-align:center;color:var(--muted);font-size:14.5px;margin:0">${kn[1]}</p>
   </div>`);
 }
 
@@ -259,7 +348,7 @@ function expired(reason) {
 function mask(mobile) {
   const d = String(mobile || '').replace(/\D/g, '');
   if (d.length <= 4) return d;
-  return '\u2022'.repeat(d.length - 4) + d.slice(-4);
+  return '•'.repeat(d.length - 4) + d.slice(-4);
 }
 
 /**
@@ -268,26 +357,29 @@ function mask(mobile) {
  * Without it the list simply ends, and somebody looking for a date a fortnight
  * out cannot tell whether it is sold out, not allowed, or just not open yet.
  */
-function releaseNote(w) {
+function releaseNote(w, lang = 'en') {
   if (!w) return '';
   const h = w.releaseHour % 12 === 0 ? 12 : w.releaseHour % 12;
-  const time = `${h}:00 ${w.releaseHour < 12 ? 'AM' : 'PM'}`;
-  const d = new Date(`${w.next.date}T00:00:00Z`)
-    .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-  return `Bookings open up to 2 weeks ahead. The next date, <b>${esc(d)}</b>, opens `
-    + `${w.next.opensToday ? 'today' : 'tomorrow'} at ${time}.`;
+  const time = lang === 'kn'
+    ? L.clock(`${w.releaseHour}:00`, 'kn')
+    : `${h}:00 ${w.releaseHour < 12 ? 'AM' : 'PM'}`;
+  return (COPY[lang] || COPY.en).release(esc(L.shortDate(w.next.date, lang)), w.next.opensToday, time);
 }
 
-function render({ token, customer, places, dates, tariff, feePercent, scriptVersion, releaseInfo }) {
+function render({ token, customer, places, dates, tariff, feePercent, scriptVersion, releaseInfo, lang = 'en' }) {
+  const c = COPY[lang] || COPY.en;
+  const kn = lang === 'kn';
   const name = esc((customer && (customer.name || customer.wa_profile_name)) || '');
   const mobile = esc((customer && customer.mobile) || '');
+  const pn = (p) => (kn && p.name_kn ? p.name_kn : p.name);
+  const dn = (p) => (kn && p.district_kn ? p.district_kn : p.district);
 
   const placeOpts = places.map((p) => (p.is_active
-    ? `<option value="${p.id}">${esc(p.name)} &mdash; ${esc(p.district)}</option>`
-    : `<option value="${p.id}" data-soon="1">${esc(p.name)} &mdash; coming soon</option>`)).join('');
+    ? `<option value="${p.id}">${esc(pn(p))} &mdash; ${esc(dn(p))}</option>`
+    : `<option value="${p.id}" data-soon="1">${esc(pn(p))} &mdash; ${c.comingSoon}</option>`)).join('');
 
   const dateOpts = dates.map((d) =>
-    `<option value="${d.value}">${esc(d.label)}${d.isToday ? ' (today)' : ''}</option>`).join('');
+    `<option value="${d.value}">${esc(kn && d.labelKn ? d.labelKn : d.label)}${d.isToday ? ` (${c.today})` : ''}</option>`).join('');
 
   /* A picture of the vehicle beside each fare, because the label alone is not
      how people recognise themselves: "Toofan / Maxi Cab" means nothing to
@@ -296,17 +388,18 @@ function render({ token, customer, places, dates, tariff, feePercent, scriptVers
   const rs = (paise) => '&#8377;' + (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
   const pct = feePercent === null || feePercent === undefined ? '' : `${feePercent}%`;
   const feeRows = tariff.map((t) => `<tr data-cat="${esc(t.categoryId)}">
-        <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(t.label)}</td>
-        <td class="calc">${rs(t.entryPaise)} <span class="plus">+ ${pct} platform fee</span></td>
+        <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(kn && t.labelKn ? t.labelKn : t.label)}</td>
+        <td class="calc">${rs(t.entryPaise)} <span class="plus">+ ${pct} ${c.platformFee}</span></td>
         <td class="tot">${rs(t.totalPaise)}</td></tr>`).join('');
   const live = places.find((p) => p.is_active);
-  const placeName = esc(live ? live.name : '');
+  const placeName = esc(live ? pn(live) : '');
 
-  return SHELL('Book entry pass', BODY({
+  return SHELL(c.title, BODY({
+    c,
     token: esc(token), name, maskedMobile: esc(mask(mobile)),
     placeOpts, dateOpts, feeRows, placeName, scriptVersion: esc(scriptVersion || ''),
-    releaseNote: releaseNote(releaseInfo),
-  }));
+    releaseNote: releaseNote(releaseInfo, lang),
+  }), lang);
 }
 
 const BODY = (v) => `
@@ -314,72 +407,68 @@ const BODY = (v) => `
   <input type="hidden" id="tok" value="${v.token}">
 
   <div class="card">
-    <div class="step"><span class="num">1</span>Your details</div>
-    <label for="name">Name</label>
+    <div class="step"><span class="num">1</span>${v.c.step1}</div>
+    <label for="name">${v.c.name}</label>
     <div class="locked"><input id="name" value="${v.name}" readonly></div>
-    <label for="mobile">WhatsApp number</label>
+    <label for="mobile">${v.c.mobile}</label>
     <div class="locked"><input id="mobile" class="masked" value="${v.maskedMobile}" readonly></div>
-    <div class="hint">Taken from your WhatsApp account.</div>
+    <div class="hint">${v.c.fromWa}</div>
   </div>
 
   <div class="card">
-    <div class="step"><span class="num">2</span>Where, when and time slot</div>
-    <label for="place">Destination</label>
+    <div class="step"><span class="num">2</span>${v.c.step2}</div>
+    <label for="place">${v.c.place}</label>
     <select id="place">${v.placeOpts}</select>
-    <div class="msg warn" id="soon">Bookings for this destination are not open yet. Please choose Mullayanagiri.</div>
-    <label for="date">Date of visit</label>
+    <div class="msg warn" id="soon">${v.c.soon}</div>
+    <label for="date">${v.c.date}</label>
     <select id="date">${v.dateOpts}</select>
     <div class="hint">${v.releaseNote}</div>
-    <label for="slots" style="margin-top:16px">Time slot</label>
+    <label for="slots" style="margin-top:16px">${v.c.slot}</label>
     <div id="slots"></div>
   </div>
 
   <div class="card">
-    <div class="step"><span class="num">&#8377;</span>Entry fees &middot; ${v.placeName}</div>
+    <div class="step"><span class="num">&#8377;</span>${v.c.fees} &middot; ${v.placeName}</div>
     <table class="fees" id="fees">
-      <thead><tr><th>Vehicle</th><th>Fee</th><th>Total</th></tr></thead>
+      <thead><tr><th>${v.c.thVehicle}</th><th>${v.c.thFee}</th><th>${v.c.thTotal}</th></tr></thead>
       <tbody>${v.feeRows}</tbody>
     </table>
     <div class="rules">
-      <div class="rules-h">Please note</div>
+      <div class="rules-h">${v.c.note}</div>
       <ul>
-        <li>The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.</li>
-        <li>Vehicles without a clear, readable number plate will not be allowed entry.</li>
-        <li>One pass per vehicle for a date and slot. Repeat or duplicate bookings will be cancelled.</li>
-        <li>Editing, copying or reselling a pass is illegal. Legal action will be taken against the vehicle and its owner.</li>
+        ${v.c.rules.map((r) => `<li>${r}</li>`).join('\n        ')}
       </ul>
     </div>
   </div>
 
   <div class="card">
-    <div class="step"><span class="num">3</span>Your vehicle</div>
-    <label for="reg">Enter vehicle number</label>
+    <div class="step"><span class="num">3</span>${v.c.step3}</div>
+    <label for="reg">${v.c.reg}</label>
     <input id="reg" class="plate" placeholder="KA01AB1234" maxlength="14" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go" inputmode="text">
-    <div class="hint">We look this up to set the correct entry fee.</div>
-    <div style="margin-top:12px"><button type="button" id="check">Check vehicle</button></div>
+    <div class="hint">${v.c.regHint}</div>
+    <div style="margin-top:12px"><button type="button" id="check">${v.c.check}</button></div>
     <div class="msg bad" id="verr"></div>
     <div class="vcard" id="vok">
-      <div class="vhead"><span class="vcheck">&#10003;</span>Vehicle verified<span class="vreg" id="vreg"></span></div>
+      <div class="vhead"><span class="vcheck">&#10003;</span>${v.c.verified}<span class="vreg" id="vreg"></span></div>
       <dl class="vgrid" id="vgrid"></dl>
       <div class="vfee" id="vfee"></div>
     </div>
     <div class="nudge hide" id="slotNudge">
-      <div><b>Next: choose a time slot</b><span>Pick a slot in the grid above to see your review and pay.</span></div>
-      <button type="button" class="mini" id="toSlots">Choose slot &#8593;</button>
+      <div><b>${v.c.nudgeT}</b><span>${v.c.nudge}</span></div>
+      <button type="button" class="mini" id="toSlots">${v.c.toSlots} &#8593;</button>
     </div>
   </div>
 
   <div class="card hide" id="revCard">
-    <div class="step"><span class="num">4</span>Review</div>
+    <div class="step"><span class="num">4</span>${v.c.step4}</div>
     <div id="review"></div>
     <div class="checkpost">
-      <div class="checkpost-h">&#128706; At the checkpost</div>
-      <p>No printout needed. Just drive up to the checkpost &mdash; staff will read your vehicle
-      number and record your entry digitally. That&rsquo;s it.</p>
+      <div class="checkpost-h">&#128706; ${v.c.atCheckpost}</div>
+      <p>${v.c.atCheckpostP}</p>
     </div>
     <div class="msg bad" id="payerr"></div>
-    <div style="margin-top:14px"><button type="button" id="pay">Continue to payment</button></div>
-    <div class="hint" style="text-align:center">Secure payment by Razorpay &middot; your pass arrives on WhatsApp</div>
+    <div style="margin-top:14px"><button type="button" id="pay">${v.c.pay}</button></div>
+    <div class="hint" style="text-align:center">${v.c.payHint}</div>
   </div>
 </form>
 <div class="modal hide" id="holdModal" role="dialog" aria-modal="true" aria-labelledby="holdTitle">
@@ -387,12 +476,12 @@ const BODY = (v) => `
     <div class="sheet-head">
       <div class="hold-icon">&#128274;</div>
       <div>
-        <div class="sheet-title" id="holdTitle">Your place is held</div>
-        <div class="sheet-sub">Reserved for this vehicle until you pay</div>
+        <div class="sheet-title" id="holdTitle">${v.c.heldT}</div>
+        <div class="sheet-sub">${v.c.heldSub}</div>
       </div>
     </div>
     <div class="timer" id="holdTimer">
-      <span>Time left to pay</span><b id="holdClock">10:00</b>
+      <span>${v.c.timeLeft}</span><b id="holdClock">10:00</b>
     </div>
     <div id="holdSummary"></div>
 
@@ -408,18 +497,18 @@ const BODY = (v) => `
     <label class="atgate hide" id="atGateRow">
       <input type="checkbox" id="atGate">
       <span>
-        <b>I am already at the checkpost</b>
-        <small id="atGateHint">Your entry will be recorded now, so you can drive through without waiting.</small>
+        <b>${v.c.atGate}</b>
+        <small id="atGateHint">${v.c.atGateHint}</small>
       </span>
     </label>
     <div class="msg" id="atGateMsg"></div>
 
     <div class="msg bad" id="holdErr"></div>
-    <button type="button" id="holdPay">Confirm &amp; pay</button>
-    <button type="button" class="ghost" id="holdCancel">Cancel and release place</button>
-    <div class="hint" style="text-align:center;margin-top:10px">Secure payment by Razorpay</div>
+    <button type="button" id="holdPay">${v.c.confirmPay}</button>
+    <button type="button" class="ghost" id="holdCancel">${v.c.cancel}</button>
+    <div class="hint" style="text-align:center;margin-top:10px">${v.c.secure}</div>
   </div>
 </div>
 <script src="/book/app.js?v=${v.scriptVersion}"></script>`;
 
-module.exports = { render, expired };
+module.exports = { render, expired, COPY };

@@ -68,7 +68,7 @@ function referenceId({ placeCode, mobile, regNo, travelDate, slotCode }) {
 /** Has this vehicle already got a live pass for this date? */
 function existingForDate(vehicleId, travelDate) {
   return one(
-    `SELECT t.*, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label
+    `SELECT t.*, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label, s.label_kn AS slot_label_kn
        FROM tickets t JOIN place_slots s ON s.id = t.slot_id
       WHERE t.vehicle_id = $1 AND t.travel_date = $2
         AND t.status IN ('held', 'paid', 'used')

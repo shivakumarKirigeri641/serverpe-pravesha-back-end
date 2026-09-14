@@ -33,13 +33,13 @@ async function forPlaceCategory(placeId, categoryId) {
 /** Every category's price at one place — for showing the tariff up front. */
 async function tariff(placeId) {
   const r = await query(
-    `SELECT c.id, c.code, c.label, p.entry_paise, p.platform_paise
+    `SELECT c.id, c.code, c.label, c.label_kn, p.entry_paise, p.platform_paise
        FROM place_pricing p
        JOIN vehicle_categories c ON c.id = p.category_id
       WHERE p.place_id = $1 AND p.is_active AND c.is_active
       ORDER BY c.sort_order`, [placeId]);
   return r.rows.map((x) => ({
-    categoryId: String(x.id), code: x.code, label: x.label,
+    categoryId: String(x.id), code: x.code, label: x.label, labelKn: x.label_kn || null,
     entryPaise: Number(x.entry_paise),
     platformPaise: Number(x.platform_paise),
     totalPaise: Number(x.entry_paise) + Number(x.platform_paise),
