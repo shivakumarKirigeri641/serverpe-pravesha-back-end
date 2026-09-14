@@ -120,10 +120,10 @@ router.post(`${P}/run`, express.json(), auth, needs('demo.simulate'), onlyWhereA
      a mis-click must not be able to empty the database. */
   if (definition.destructive) {
     if (!admin.can(req.admin.role, 'demo.reset')) {
-      return res.status(403).json({ error: 'not_allowed', message: 'Removing test data needs the reset permission.' });
+      return res.status(403).json({ error: 'not_allowed', message: 'Cleaning the database needs the reset permission.' });
     }
-    if (String(req.body?.confirm || '').trim().toUpperCase() !== 'REMOVE TEST DATA') {
-      return res.status(400).json({ error: 'confirm_required', message: 'Type REMOVE TEST DATA to confirm.' });
+    if (String(req.body?.confirm || '').trim().toUpperCase() !== 'CLEAN DATABASE') {
+      return res.status(400).json({ error: 'confirm_required', message: 'Type CLEAN DATABASE to confirm.' });
     }
   }
 

@@ -70,11 +70,11 @@ const ACTIONS = {
     args: (o) => ['--failures-only', ...(o.from ? [`--from=${o.from}`] : [])],
   },
   reset: {
-    label: 'Remove every piece of test data',
-    script: 'scripts/temp-seed-occupancy.js',
+    label: 'Clean the database',
+    script: 'scripts/reset-all.js',
     destructive: true,
-    blurb: 'Deletes test passes, payments, invoices, scans, vehicles, visitors and conversations, and resets the slot counters. Real rows and the one real conversation are left alone.',
-    args: () => ['--remove'],
+    blurb: 'Empties everything — passes, payments, invoices, gate checks, shifts, staff, visitors, conversations, the watchlist, the vehicle cache and the other destinations — and restarts the counters. Keeps the policies, the default destination with its pricing and the default checkpost (both enabled), panel users, settings and the audit trail.',
+    args: () => ['--yes'],
   },
 };
 
