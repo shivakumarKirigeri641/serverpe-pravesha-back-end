@@ -164,9 +164,9 @@ async function request({ mobile, ip = null }) {
 
   const testing = isTest(m);
   const code = testing ? TEST_CODE : mint();
-  /* The same scrypt hashing the PINs used, rather than a second scheme and a new
-     dependency for the sake of four digits. */
-  const hash = await staffModule.hashPin(code);
+  /* Scrypt from staff.js, rather than a second scheme and a new dependency for
+     the sake of four digits. */
+  const hash = await staffModule.hashSecret(code);
 
   /* One live code at a time: whatever was outstanding stops being valid the
      moment a new one is asked for. */
@@ -226,7 +226,7 @@ async function verify({ mobile, code, checkpostId = null, deviceToken = null }) 
   if (new Date(otp.expires_at) <= new Date()) return { ok: false, error: 'expired', ...say('expired') };
   if (otp.attempts >= MAX_ATTEMPTS) return { ok: false, error: 'dead', ...say('dead') };
 
-  const good = await staffModule.pinMatches(typed, otp.code_hash);
+  const good = await staffModule.secretMatches(typed, otp.code_hash);
   if (!good) {
     const left = await one(
       `UPDATE staff_otps SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts`, [otp.id]);

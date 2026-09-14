@@ -1,27 +1,20 @@
 #!/usr/bin/env node
 /**
- * staff.js — create checkpost staff and issue their PIN.
+ * staff.js — add checkpost staff from the command line.
  *
- * Until the admin panel exists this is how a person gets onto a gate. A PIN is
- * issued here, never chosen by the holder, and is printed once: it is stored
- * only as a scrypt hash, so a forgotten PIN is reset, never recovered.
+ * The admin panel is the usual place for this. Staff have no PIN: once their
+ * mobile number is added and enabled they sign in to the gate app with a code
+ * sent to that number, and disabling them is how access is taken away.
  *
  *   node scripts/staff.js list
  *   node scripts/staff.js checkposts
  *   node scripts/staff.js add "Ramesh K" 9886122415 1        # checkpost id 1
- *   node scripts/staff.js add "Ramesh K" 9886122415 1 424242 # with a chosen PIN
- *   node scripts/staff.js reset 9886122415                   # new PIN, clears lock
  *   node scripts/staff.js disable 9886122415
  */
 
 require('dotenv').config();
-const crypto = require('crypto');
 const { pool: getPool, query, one } = require('../src/gatepass/db');
 const staff = require('../src/gatepass/staff');
-
-/* Six digits, uniformly random, never starting 0 so it reads as six characters
-   on a phone screen and over a phone call. */
-const newPin = () => String(crypto.randomInt(100000, 1000000));
 
 const [cmd, ...args] = process.argv.slice(2);
 
@@ -37,7 +30,7 @@ async function main() {
 
     case 'list': {
       const { rows } = await query(
-        `SELECT s.id, s.name, s.mobile, s.is_active, s.locked_until,
+        `SELECT s.id, s.name, s.mobile, s.is_active,
                 COALESCE(string_agg(c.name, ', ' ORDER BY c.name), '—') AS posts,
                 (SELECT started_at FROM staff_sessions ss WHERE ss.staff_id = s.id AND ss.ended_at IS NULL) AS on_duty_since
            FROM staff s
@@ -48,34 +41,19 @@ async function main() {
       rows.forEach((r) => console.log(
         `${String(r.id).padStart(3)}  ${r.name.padEnd(22)} ${r.mobile}  ${r.posts}` +
         `${r.is_active ? '' : '  [disabled]'}` +
-        `${r.locked_until && new Date(r.locked_until) > new Date() ? '  [locked]' : ''}` +
         `${r.on_duty_since ? `  [on duty since ${new Date(r.on_duty_since).toLocaleString('en-IN')}]` : ''}`));
       return;
     }
 
     case 'add': {
-      const [name, mobile, checkpostId, givenPin] = args;
-      if (!name || !mobile || !checkpostId) throw new Error('usage: add "Name" <mobile> <checkpostId> [pin]');
+      const [name, mobile, checkpostId] = args;
+      if (!name || !mobile || !checkpostId) throw new Error('usage: add "Name" <mobile> <checkpostId>');
       const post = await one('SELECT c.id, c.name, p.name AS place FROM checkposts c JOIN places p ON p.id = c.place_id WHERE c.id = $1', [checkpostId]);
       if (!post) throw new Error(`no checkpost with id ${checkpostId} — run: node scripts/staff.js checkposts`);
-      const pin = givenPin || newPin();
-      const row = await staff.upsert({ name, mobile, pin, checkpostIds: [post.id] });
+      const row = await staff.upsert({ name, mobile, checkpostIds: [post.id] });
       console.log(`\n  ${row.name} — ${row.mobile}`);
       console.log(`  posted to ${post.place} — ${post.name}`);
-      console.log(`  PIN ${pin}      (shown once; it is stored hashed)\n`);
-      return;
-    }
-
-    case 'reset': {
-      const [mobile, givenPin] = args;
-      if (!mobile) throw new Error('usage: reset <mobile> [pin]');
-      const m = staff.localMobile(mobile);
-      const existing = await one('SELECT * FROM staff WHERE mobile = $1', [m]);
-      if (!existing) throw new Error(`no staff with mobile ${m}`);
-      const pin = givenPin || newPin();
-      await query('UPDATE staff SET pin_hash = $2, failed_attempts = 0, locked_until = NULL, modified_at = now() WHERE id = $1',
-        [existing.id, await staff.hashPin(pin)]);
-      console.log(`\n  ${existing.name} — new PIN ${pin}\n`);
+      console.log('  enabled: they sign in to the gate app with a code sent to this number\n');
       return;
     }
 

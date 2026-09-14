@@ -10,8 +10,9 @@
  *   * writes an audit row with who, what, when, the value before, the value
  *     after, the reason, the IP address and the session.
  *
- * A PIN or a password generated here is returned once in the response and never
+ * A panel password generated here is returned once in the response and never
  * written to the audit log: the log records that it was reset, not what to.
+ * Gate staff have no secret to issue — enabling their number is their access.
  */
 
 const express = require('express');
@@ -87,9 +88,6 @@ router.put(`${P}/settings/staff/:id`, json, auth, needs('settings.staff'),
   change('staff_updated', (req) => settingsAdmin.updateStaff({ staffId: req.params.id, body: req.body, reason: req.body.reason })));
 router.post(`${P}/settings/staff/:id/active`, json, auth, needs('settings.staff'),
   change('staff_access_changed', (req) => settingsAdmin.setStaffActive({ staffId: req.params.id, active: req.body.active === true, reason: req.body.reason })));
-router.post(`${P}/settings/staff/:id/reset-pin`, json, auth, needs('settings.staff'),
-  change('staff_pin_reset', (req) => settingsAdmin.resetStaffPin({ staffId: req.params.id, reason: req.body.reason })));
-
 /* ── Panel users and roles ─────────────────────────────────────────────── */
 router.get(`${P}/settings/users`, auth, needs('settings.users'), read(() => settingsAdmin.users()));
 router.post(`${P}/settings/users`, json, auth, needs('settings.users'),

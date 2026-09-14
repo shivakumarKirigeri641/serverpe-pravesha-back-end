@@ -354,7 +354,8 @@ async function deleteSlot({ slotId, reason }) {
 
 /* ─────────────────────────────────────────────────────── checkpost staff ── */
 
-const newPin = () => String(crypto.randomInt(100000, 1000000));
+/* No PIN is issued. An enabled mobile number is the access: the gate app sends
+   a code only to an active staff member's number (staffOtp.js). */
 
 async function staffList() {
   const today = slotTime.nowIST().date;
@@ -398,9 +399,8 @@ async function addStaff({ body, reason }) {
   if (mobile.length !== 10) refuse('The mobile number must be ten digits.');
   if (await one(`SELECT 1 FROM staff WHERE mobile = $1`, [mobile])) refuse('Staff with that mobile number already exist.', { status: 409, code: 'exists' });
   const checkpostIds = await validateCheckposts(body.checkpostIds);
-  const pin = newPin();
-  const row = await staffModule.upsert({ name, mobile, pin, checkpostIds });
-  return { reason: why, pin, staff: { id: String(row.id), name: row.name },
+  const row = await staffModule.upsert({ name, mobile, checkpostIds });
+  return { reason: why, staff: { id: String(row.id), name: row.name },
     audit: { subject: `staff:${row.id}`, before: null, after: { name, mobile: `••••${mobile.slice(-4)}`, checkpostIds } } };
 }
 
@@ -438,20 +438,6 @@ async function setStaffActive({ staffId, active, reason }) {
     if (!active) await client.query(`UPDATE staff_sessions SET ended_at = now(), ended_reason = 'signed_out' WHERE staff_id = $1 AND ended_at IS NULL`, [staffId]);
   });
   return { reason: why, audit: { subject: `staff:${staffId}`, before: { active: s.is_active }, after: { active } } };
-}
-
-async function resetStaffPin({ staffId, reason }) {
-  const why = requireReason(reason);
-  const s = await one(`SELECT id FROM staff WHERE id = $1`, [staffId]);
-  if (!s) refuse('No such staff member.', { status: 404, code: 'not_found' });
-  const pin = newPin();
-  await tx(async (client) => {
-    await client.query(`UPDATE staff SET pin_hash = $2, failed_attempts = 0, locked_until = NULL, modified_at = now() WHERE id = $1`,
-      [staffId, await staffModule.hashPin(pin)]);
-    await client.query(`UPDATE staff_sessions SET ended_at = now(), ended_reason = 'signed_out' WHERE staff_id = $1 AND ended_at IS NULL`, [staffId]);
-  });
-  /* The PIN is returned once and never logged: the audit records that it was reset, not what to. */
-  return { reason: why, pin, audit: { subject: `staff:${staffId}`, before: null, after: { pinReset: true } } };
 }
 
 async function staffActivity(staffId) {
@@ -671,6 +657,6 @@ async function auditLog({ q = null, action = null, adminId = null, from = null, 
 
 module.exports = {
   Refusal, pricing, updatePricing, slots, createSlot, updateSlot, deleteSlot,
-  staffList, addStaff, updateStaff, setStaffActive, resetStaffPin, staffActivity,
+  staffList, addStaff, updateStaff, setStaffActive, staffActivity,
   users, addUser, updateUser, setUserActive, resetUserPassword, gst, updateGst, auditLog, feeFor,
 };

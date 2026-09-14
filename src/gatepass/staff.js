@@ -6,20 +6,19 @@
  * "unlocked" — somebody signs in to it, and every row they create carries their
  * id and their session.
  *
- * A PIN, NOT A PASSWORD. Staff enter a six-digit PIN on a phone, in the rain,
- * wearing gloves. What makes that safe enough is not its length:
+ * HOW THEY PROVE WHO THEY ARE. A four-digit code sent by SMS to the mobile number
+ * an administrator enabled (staffOtp.js). There is no PIN: access is the number
+ * being enabled in the panel, and switching it off is how access is taken away.
+ * What keeps a gate honest after that:
  *
- *   * the PIN is issued by an administrator, never chosen (a chosen PIN is 1234);
- *   * five wrong tries locks the account for a quarter of an hour, on the staff
- *     row, so trying a different phone does not reset the count;
  *   * a shift ends after a set idle time, so a phone left in a jeep is signed out;
  *   * one live session per person AND one per checkpost — signing in anywhere
  *     ends the previous shift, which is how a handover is recorded rather than
  *     two people sharing one login.
  *
- * The PIN is stored as a scrypt hash with a per-staff salt. Node's crypto does
- * this without another dependency, and scrypt is deliberately slow, which is
- * what a six-digit secret needs.
+ * Codes are stored as a scrypt hash with a per-code salt. Node's crypto does this
+ * without another dependency, and scrypt is deliberately slow, which is what a
+ * short secret needs.
  */
 
 const crypto = require('crypto');
@@ -27,87 +26,36 @@ const { query, one, tx } = require('./db');
 const settings = require('./settings');
 
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
-const MAX_ATTEMPTS = 5;
 
-const scrypt = (pin, salt) =>
+const scrypt = (secret, salt) =>
   new Promise((resolve, reject) =>
-    crypto.scrypt(String(pin), salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p },
+    crypto.scrypt(String(secret), salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p },
       (err, key) => (err ? reject(err) : resolve(key))));
 
 /** 'scrypt$<salt hex>$<key hex>' — self-describing, so the format can change later. */
-async function hashPin(pin) {
+async function hashSecret(secret) {
   const salt = crypto.randomBytes(16);
-  const key = await scrypt(pin, salt);
+  const key = await scrypt(secret, salt);
   return `scrypt$${salt.toString('hex')}$${key.toString('hex')}`;
 }
 
-async function pinMatches(pin, stored) {
+async function secretMatches(secret, stored) {
   const [scheme, saltHex, keyHex] = String(stored || '').split('$');
   if (scheme !== 'scrypt' || !saltHex || !keyHex) return false;
-  const key = await scrypt(pin, Buffer.from(saltHex, 'hex'));
+  const key = await scrypt(secret, Buffer.from(saltHex, 'hex'));
   const want = Buffer.from(keyHex, 'hex');
   return key.length === want.length && crypto.timingSafeEqual(key, want);
 }
-
-const isPin = (pin) => /^\d{6}$/.test(String(pin || ''));
 
 /* Mobile numbers are stored as ten digits (see 001); a staff member may type
    their number with +91 or spaces. */
 const localMobile = (m) => String(m || '').replace(/\D/g, '').replace(/^(?:0|91)(\d{10})$/, '$1');
 
 /**
- * Sign in and open a shift.
+ * Open the shift, once the code has proved who this is.
  *
- * Returns { ok: false, error } for every refusal, with a message the gate
- * screen can show as-is. The refusals deliberately do not distinguish "no such
- * mobile" from "wrong PIN": at a gate, the person who mistypes is far more
- * common than the person probing, and both need the same instruction.
- */
-async function signIn({ mobile, pin, checkpostId, deviceToken }) {
-  const m = localMobile(mobile);
-  if (m.length !== 10 || !isPin(pin)) {
-    return { ok: false, error: 'bad_credentials', message: 'Check the mobile number and the 6-digit PIN.' };
-  }
-
-  const staff = await one(
-    `SELECT * FROM staff WHERE mobile = $1 AND is_active`, [m]);
-
-  /* A hash is computed even when there is no such staff member, so a wrong
-     mobile answers in the same time as a wrong PIN. */
-  const stored = staff ? staff.pin_hash : await hashPin('000000');
-  const good = await pinMatches(pin, stored);
-
-  if (!staff || !good) {
-    if (staff) {
-      const lockMinutes = await settings.num('staff_lock_minutes', 15);
-      await query(
-        `UPDATE staff
-            SET failed_attempts = failed_attempts + 1,
-                locked_until = CASE WHEN failed_attempts + 1 >= $2
-                                    THEN now() + ($3 || ' minutes')::interval ELSE locked_until END,
-                modified_at = now()
-          WHERE id = $1`, [staff.id, MAX_ATTEMPTS, String(lockMinutes)]);
-    }
-    return { ok: false, error: 'bad_credentials', message: 'That mobile number and PIN do not match.' };
-  }
-
-  if (staff.locked_until && new Date(staff.locked_until) > new Date()) {
-    return { ok: false, error: 'locked', lockedUntil: staff.locked_until,
-      message: 'Too many wrong PINs. Please wait a few minutes, or ask the administrator to reset it.' };
-  }
-
-  return signInVerified({ staffId: staff.id, checkpostId, deviceToken });
-}
-
-/**
- * Open the shift, once we are satisfied who this is.
- *
- * Split out of signIn because there is now more than one way to prove it: a PIN
- * the administrator issued, or a code sent to the staff member's own phone.
- * Everything after that proof is identical, and must stay identical — one shift
- * per gate, one per person, a handover recorded rather than a session silently
- * replaced — so it lives in one place instead of being written twice and
- * drifting apart.
+ * One shift per gate, one per person, a handover recorded rather than a session
+ * silently replaced.
  */
 async function signInVerified({ staffId, checkpostId = null, deviceToken = null }) {
   const staff = await one(`SELECT * FROM staff WHERE id = $1 AND is_active`, [staffId]);
@@ -158,8 +106,6 @@ async function signInVerified({ staffId, checkpostId = null, deviceToken = null 
     const { rows } = await client.query(
       `INSERT INTO staff_sessions (staff_id, checkpost_id, device_id, token)
        VALUES ($1, $2, $3, $4) RETURNING *`, [staff.id, post.id, device ? device.id : null, token]);
-    await client.query(
-      `UPDATE staff SET failed_attempts = 0, locked_until = NULL, modified_at = now() WHERE id = $1`, [staff.id]);
     if (device) await client.query(`UPDATE devices SET last_seen_at = now() WHERE id = $1`, [device.id]);
     return rows[0];
   });
@@ -197,20 +143,21 @@ const signOut = (token) =>
   query(`UPDATE staff_sessions SET ended_at = now(), ended_reason = 'signed_out'
           WHERE token = $1 AND ended_at IS NULL`, [token]);
 
-/** Administration, used by scripts/staff.js — never exposed to the gate. */
-async function upsert({ name, mobile, pin, checkpostIds = [] }) {
+/**
+ * Add a staff member, or re-enable one with that number. Used by the admin panel
+ * and scripts/staff.js — never exposed to the gate. Nothing secret is created:
+ * the number being enabled is what lets them ask for a code.
+ */
+async function upsert({ name, mobile, checkpostIds = [] }) {
   const m = localMobile(mobile);
   if (m.length !== 10) throw new Error('mobile must be 10 digits');
-  if (!isPin(pin)) throw new Error('pin must be exactly 6 digits');
 
-  const pin_hash = await hashPin(pin);
   const row = await one(
-    `INSERT INTO staff (name, mobile, pin_hash)
-     VALUES ($1, $2, $3)
+    `INSERT INTO staff (name, mobile)
+     VALUES ($1, $2)
      ON CONFLICT (mobile) DO UPDATE
-        SET name = EXCLUDED.name, pin_hash = EXCLUDED.pin_hash, is_active = true,
-            failed_attempts = 0, locked_until = NULL, modified_at = now()
-     RETURNING *`, [name, m, pin_hash]);
+        SET name = EXCLUDED.name, is_active = true, modified_at = now()
+     RETURNING *`, [name, m]);
 
   for (const id of checkpostIds) {
     await query(`INSERT INTO staff_checkposts (staff_id, checkpost_id) VALUES ($1, $2)
@@ -219,4 +166,4 @@ async function upsert({ name, mobile, pin, checkpostIds = [] }) {
   return row;
 }
 
-module.exports = { signIn, signInVerified, signOut, sessionFor, upsert, hashPin, pinMatches, localMobile };
+module.exports = { signInVerified, signOut, sessionFor, upsert, hashSecret, secretMatches, localMobile };

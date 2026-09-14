@@ -96,27 +96,6 @@ router.post(`${P}/session/verify`, json, safe(async (req, res) => {
   res.json({ ok: true, token: out.token, ...me(session) });
 }));
 
-/*
- * The old way in: a mobile number and the six-digit PIN an administrator issued.
- *
- * Kept working while the codes bed in, because a gate that cannot open because
- * the SMS gateway is having a bad morning is a worse failure than an old login
- * route existing for another week. It is the fallback, not the front door.
- */
-router.post(`${P}/session`, json, safe(async (req, res) => {
-  const { mobile, pin, checkpostId } = req.body || {};
-  const out = await staff.signIn({ mobile, pin, checkpostId });
-  if (!out.ok) {
-    /* Being asked which gate is not a failure: the app shows a picker and asks
-       again with the choice. A locked account gets its own status so the app can
-       show the wait rather than "wrong PIN" one more time. */
-    const status = out.error === 'choose_checkpost' ? 200 : out.error === 'locked' ? 423 : 401;
-    return res.status(status).json(out);
-  }
-  const session = await staff.sessionFor(out.token);
-  res.json({ ok: true, token: out.token, ...me(session) });
-}));
-
 router.get(`${P}/session`, auth, safe(async (req, res) => res.json({ ok: true, ...me(req.session) })));
 
 router.delete(`${P}/session`, auth, safe(async (req, res) => {
