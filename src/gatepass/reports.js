@@ -84,7 +84,7 @@ async function build(period) {
   const buffer = slotTime.LAST_ENTRY_BUFFER_MIN;
 
   const [dayRows, gateRows, moneyRows, slotRows, catRevenue, traffic, staff, visitorsNow, visitorsBefore,
-    refundRows, feePercent, gstPercent] = await Promise.all([
+    refundRows, feePercent, gstPercent, origins, patterns, staffDaily] = await Promise.all([
 
     /* Operations, per travel date, by vehicle type. */
     rowsOf(
@@ -192,6 +192,18 @@ async function build(period) {
 
     settings.num('platform_fee_percent', 13),
     settings.num('gst_percent_on_platform', 18),
+
+    /*
+     * The three the analytics screens show and the report used not to.
+     *
+     * Each is period-scoped like everything else here — a figure covering all
+     * time, printed inside a report headed with two dates, is read as being
+     * about those dates. They are the same functions the screens call, so the
+     * printed page and the screen cannot drift apart.
+     */
+    analytics.origins(from, to),
+    analytics.heatmap(from, to),
+    analytics.staffTrend(from, to),
   ]);
 
   const gateOf = Object.fromEntries(gateRows.map((g) => [asDate(g.day), g]));
@@ -331,7 +343,10 @@ async function build(period) {
     vehicles,
     slots,
     staff: staff.filter((s) => s.checks > 0),
+    staffDaily,
     visitors,
+    origins,
+    patterns,
     finance,
   };
 
@@ -403,6 +418,30 @@ function csv(report, { reportNo, generatedAt }) {
   section('Staff', ['Staff', 'Checks', 'Valid', 'Invalid', 'Duplicate', 'Admitted outside slot', 'Average check (sec)', 'Peak hour'],
     report.staff.map((x) => [x.name, x.checks, x.valid, x.invalid, x.duplicate, x.admittedAnyway,
       x.averageMs === null ? '' : (x.averageMs / 1000).toFixed(1), x.peakHour ? x.peakHour.label : '']));
+
+  const sd = report.staffDaily;
+  if (sd && sd.staff.length && sd.entries.length) {
+    const people = sd.staff.map((x) => x.name);
+    section('Staff day by day — vehicles admitted', ['Date', ...people],
+      sd.entries.map((r) => [r.day, ...people.map((name) => r[name] || 0)]));
+    section('Staff day by day — average check (sec)', ['Date', ...people],
+      sd.seconds.map((r) => [r.day, ...people.map((name) => (r[name] === undefined || r[name] === null ? '' : r[name]))]));
+  }
+
+  const pat = report.patterns;
+  if (pat && pat.total > 0) {
+    const hours = pat.byHour.filter((h) => h.entries > 0);
+    section('When they arrive — average admitted per hour, by weekday', ['Weekday', 'Days in period', ...hours.map((h) => h.label), 'Total admitted'],
+      pat.rows.map((r) => [r.day, r.days, ...hours.map((h) => r.hours[h.hour].average), r.entries]));
+  }
+
+  const org = report.origins;
+  if (org && org.vehicles > 0) {
+    section('Where they come from — by state / UT (counted by vehicle)', ['State / UT', 'Code', 'Vehicles', 'Arrivals', 'Share of vehicles %'],
+      org.states.map((x) => [x.name, x.code, x.vehicles, x.entries, x.share]));
+    section('Where they come from — by district / registering office', ['Place', 'RTO code', 'State / UT', 'Vehicles', 'Arrivals', 'Share of vehicles %'],
+      org.places.map((x) => [x.place || 'Office not known', x.rtoCode, x.stateName, x.vehicles, x.entries, x.share]));
+  }
 
   const f = report.finance;
   section('Financial split (by payment date)', ['Line', '₹'], [

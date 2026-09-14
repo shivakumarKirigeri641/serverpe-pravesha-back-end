@@ -12,7 +12,10 @@
  *   6. Negative activity  — no-shows, invalid and duplicate passes, overrides
  *   7. Financial summary  — collection and how it divides
  *   8. Graphs             — traffic over the period and by hour
- *   9. Detailed tables    — day by day
+ *   9. When they arrive   — weekday by hour, as a heat map
+ *  10. Where they come from — state and registering district of every vehicle
+ *  11. Staff day by day   — who admitted how many, each day
+ *  12. Detailed tables    — day by day
  *
  * CHARTS ARE VECTOR, drawn with PDFKit's own primitives rather than pasted as
  * images of a web chart: they stay sharp when printed or zoomed, and add almost
@@ -214,6 +217,55 @@ function makeKit(doc) {
       kit.y += Math.ceil(parts.length / 3) * 24 + 10;
     },
 
+    /**
+     * A grid of shaded cells — weekday down, hour across.
+     *
+     * Printed rather than plotted, because the question it answers is "when do
+     * we need people at the barrier?" and that is read off a grid at a glance.
+     * Shading is one colour at varying strength rather than a rainbow: a report
+     * is photocopied in black and white more often than anybody admits, and a
+     * single hue still reads correctly in grey.
+     */
+    heat({ title, rows, hours, max, valueOf, format = num }) {
+      const labelW = 62;
+      const cellW = (CW - labelW) / hours.length;
+      const cellH = 15;
+      kit.ensure(34 + rows.length * cellH + 26);
+      doc.font('B').fontSize(9).fillColor(C.ink).text(title, M, kit.y, { width: CW, lineBreak: false });
+      kit.y += 14;
+
+      /* The hours across the top. */
+      hours.forEach((h, i) => {
+        doc.font('R').fontSize(6).fillColor(C.muted)
+           .text(h.short, M + labelW + i * cellW, kit.y, { width: cellW, align: 'center', lineBreak: false });
+      });
+      kit.y += 10;
+
+      rows.forEach((r) => {
+        doc.font('R').fontSize(7.5).fillColor(C.muted).text(r.label, M, kit.y + 4, { width: labelW - 4, lineBreak: false });
+        hours.forEach((h, i) => {
+          const v = valueOf(r, h);
+          const strength = max > 0 ? v / max : 0;
+          const x = M + labelW + i * cellW;
+          if (strength > 0) {
+            doc.save().opacity(0.12 + strength * 0.88).rect(x, kit.y, cellW - 1, cellH - 1).fill(C.accent).restore();
+          } else {
+            doc.save().rect(x, kit.y, cellW - 1, cellH - 1).fill('#f2f5f5').restore();
+          }
+          if (v > 0 && cellW > 17) {
+            /* Dark on a pale cell, white once the cell is too dark to read through. */
+            doc.font('R').fontSize(5.5).fillColor(strength > 0.55 ? '#ffffff' : C.ink)
+               .text(format(v), x, kit.y + 5, { width: cellW - 1, align: 'center', lineBreak: false });
+          }
+        });
+        kit.y += cellH;
+      });
+      kit.y += 6;
+      doc.font('R').fontSize(7).fillColor(C.muted)
+         .text('Darker means busier. Each cell is the average number of vehicles admitted in that hour on that weekday.', M, kit.y, { width: CW });
+      kit.y = doc.y + 8;
+    },
+
     note(text) {
       kit.ensure(24);
       doc.font('R').fontSize(7.5).fillColor(C.muted).text(text, M, kit.y, { width: CW });
@@ -411,9 +463,103 @@ async function render(report, { reportNo, generatedAt, generatedBy, settings = {
     });
   }
 
-  /* 9. Detailed tables */
+  /* 9. When vehicles actually arrive — the roster question. */
+  const pat = report.patterns;
+  if (pat && pat.total > 0) {
+    kit.section('9. When they arrive', 'Averages across this period, by weekday and hour. This is the shape a staff roster has to match.', { keep: 210 });
+    /* Only the hours the gates were actually used, so the grid is readable. */
+    const used = pat.byHour.filter((h) => h.entries > 0).map((h) => h.hour);
+    const lo = Math.min(6, ...used);
+    const hi = Math.max(18, ...used);
+    const hours = [];
+    for (let h = lo; h <= hi; h += 1) {
+      hours.push({ hour: h, short: `${((h + 11) % 12) + 1}${h < 12 ? 'a' : 'p'}` });
+    }
+    kit.heat({
+      title: 'Vehicles admitted — average per hour, by weekday',
+      rows: pat.rows.map((r) => ({ label: `${r.day.slice(0, 3)} (${r.days})`, hours: r.hours })),
+      hours,
+      max: pat.maxAverage,
+      valueOf: (r, h) => r.hours[h.hour]?.average || 0,
+      format: (v) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1)),
+    });
+    if (pat.busiest) {
+      kit.tiles([
+        { label: 'Busiest hour of the week', value: `${pat.busiest.day.slice(0, 3)} ${pat.busiest.label}`, sub: `${num(pat.busiest.entries)} admitted` },
+        { label: 'Busiest weekday', value: pat.busiestDay ? pat.busiestDay.day : '—',
+          sub: pat.busiestDay ? `${num(pat.busiestDay.entries)} across ${pat.busiestDay.days} such day(s)` : '' },
+      ], { cols: 2 });
+    }
+  }
+
+  /* 10. Where the vehicles are registered. */
+  const org = report.origins;
+  if (org && org.vehicles > 0) {
+    kit.section('10. Where they come from',
+      'From the number plate and, where a registration certificate has been fetched, the office that issued it. '
+      + 'Counted by vehicle: one that came up nine times counts once.', { keep: 200 });
+    kit.tiles([
+      { label: 'Distinct vehicles', value: num(org.vehicles), sub: `${num(org.entries)} arrivals between them` },
+      { label: 'Home state', value: org.home ? org.home.name : '—', sub: org.home ? `${pc(org.home.share)} of vehicles` : '' },
+      { label: 'From elsewhere', value: num(org.fromOutside),
+        sub: `${pc(org.vehicles ? (org.fromOutside / org.vehicles) * 100 : 0)} from another state or UT`, tone: '#e08700' },
+      { label: 'States and UTs', value: num(org.states.length), sub: 'with at least one vehicle' },
+    ]);
+    if (org.states.length > 1) {
+      kit.bars({
+        title: 'Vehicles by state (top 8)',
+        data: org.states.slice(0, 8).map((st) => ({ label: st.code, vehicles: st.vehicles })),
+        keys: ['vehicles'], colours: ['#075e54'], h: 110,
+      });
+    }
+    kit.table([
+      { h: 'State / UT', k: 'name', w: 0.3, v: (r) => r.name },
+      { h: 'Code', k: 'code', w: 0.1, v: (r) => r.code },
+      { h: 'Vehicles', k: 'vehicles', w: 0.2, right: true, v: (r) => num(r.vehicles) },
+      { h: 'Arrivals', k: 'entries', w: 0.2, right: true, v: (r) => num(r.entries) },
+      { h: 'Share', k: 'share', w: 0.2, right: true, v: (r) => pc(r.share) },
+    ], org.states, { fs: 8, rowH: 15 });
+
+    const named = org.places.filter((x) => x.named).slice(0, 20);
+    if (named.length) {
+      kit.section('10.1 By district and registering office',
+        org.named < org.vehicles
+          ? `${num(org.vehicles - org.named)} vehicle(s) have no registration certificate on file, so their district is not known and they are left out of this table.`
+          : null,
+        { keep: 120 });
+      kit.table([
+        { h: 'Place', k: 'place', w: 0.4, v: (r) => r.place },
+        { h: 'State / UT', k: 'stateName', w: 0.24, v: (r) => r.stateName },
+        { h: 'Vehicles', k: 'vehicles', w: 0.14, right: true, v: (r) => num(r.vehicles) },
+        { h: 'Arrivals', k: 'entries', w: 0.12, right: true, v: (r) => num(r.entries) },
+        { h: 'Share', k: 'share', w: 0.1, right: true, v: (r) => pc(r.share) },
+      ], named, { fs: 8, rowH: 15 });
+    }
+  }
+
+  /* 11. Each staff member, day by day. */
+  const sd = report.staffDaily;
+  if (sd && sd.staff.length && sd.entries.length) {
+    kit.section('11. Staff day by day', 'Vehicles admitted by each staff member on each day of the period.', { keep: 120 });
+    const cols = [{ h: 'Date', k: 'day', w: 0.16, v: (r) => r.day }];
+    /* At most six columns of people: beyond that the table stops being readable
+       on paper, and the workbook carries the rest. */
+    const people = sd.staff.slice(0, 6);
+    people.forEach((person) => {
+      cols.push({
+        h: person.name, k: person.name, w: (1 - 0.16) / people.length,
+        right: true, v: (r) => num(r[person.name] || 0),
+      });
+    });
+    kit.table(cols, sd.entries, { fs: 7.5, rowH: 14 });
+    if (sd.staff.length > people.length) {
+      kit.note(`${sd.staff.length - people.length} more staff member(s) worked in this period — every one of them is in the spreadsheet.`);
+    }
+  }
+
+  /* 12. Detailed tables */
   if (report.daily.length > 1) {
-    kit.section('9. Day by day', null, { keep: 120 });
+    kit.section('12. Day by day', null, { keep: 120 });
     const sumOf = (k) => report.daily.reduce((a, d) => a + Number(d[k] || 0), 0);
     kit.table([
       { h: 'Date', k: 'day', w: 0.13, v: (r) => r.day },

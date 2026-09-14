@@ -312,6 +312,99 @@ async function workbook(report, { reportNo, generatedAt, generatedBy }) {
     totals: { checks: 'sum', valid: 'sum', invalid: 'sum', duplicate: 'sum', admittedAnyway: 'sum' },
   });
 
+  /* ── Staff, day by day ───────────────────────────────────────────────── */
+  const sd = report.staffDaily;
+  if (sd && sd.staff.length && sd.entries.length) {
+    /* One column per person, every person — the PDF stops at six for paper,
+       this is where the rest are. */
+    const people = sd.staff.map((x) => x.name);
+    const perDay = (metric) => sd[metric].map((row) => ({ ...row }));
+    tableSheet(wb, {
+      name: 'StaffDaily',
+      title: 'Staff day by day — vehicles admitted',
+      note: 'Each staff member’s entries on each day of the period.',
+      columns: [
+        { header: 'Date', key: 'day', width: 12 },
+        ...people.map((name) => ({ header: name, key: name, format: COUNT, value: (r) => r[name] || 0, width: Math.max(12, name.length + 4) })),
+      ],
+      rows: perDay('entries'),
+      totals: Object.fromEntries(people.map((name) => [name, 'sum'])),
+    });
+    tableSheet(wb, {
+      name: 'StaffSpeed',
+      title: 'Staff day by day — average check time (seconds)',
+      note: 'From opening a pass to recording the verdict. Blank where the person did not work that day.',
+      columns: [
+        { header: 'Date', key: 'day', width: 12 },
+        ...people.map((name) => ({ header: name, key: name, format: '0.0', value: (r) => (r[name] === undefined ? null : r[name]), width: Math.max(12, name.length + 4) })),
+      ],
+      rows: perDay('seconds'),
+    });
+  }
+
+  /* ── When they arrive ────────────────────────────────────────────────── */
+  const pat = report.patterns;
+  if (pat && pat.total > 0) {
+    const hours = [];
+    for (let h = 0; h < 24; h += 1) if (pat.byHour[h].entries > 0) hours.push(h);
+    const hws = tableSheet(wb, {
+      name: 'Arrivals',
+      title: 'When they arrive — average vehicles admitted per hour, by weekday',
+      note: 'The number in brackets is how many of that weekday fall in the period. Darker is busier.',
+      columns: [
+        { header: 'Weekday', key: 'day', width: 16, value: (r) => `${r.day} (${r.days})` },
+        ...hours.map((h) => ({ header: pat.byHour[h].label, key: `h${h}`, format: '0.0', width: 9, value: (r) => r.hours[h].average })),
+        { header: 'Total admitted', key: 'entries', format: COUNT, width: 16 },
+      ],
+      rows: pat.rows,
+    });
+    /* The same heat as the printed page: a colour scale over every hour cell. */
+    if (hours.length) {
+      hws.addConditionalFormatting({
+        ref: `B5:${colLetter(hours.length + 1)}${4 + pat.rows.length}`,
+        rules: [{ type: 'colorScale', cfvo: [{ type: 'min' }, { type: 'max' }],
+          color: [{ argb: 'FFF2F5F5' }, { argb: 'FF00A884' }] }],
+      });
+    }
+  }
+
+  /* ── Where they come from ────────────────────────────────────────────── */
+  const org = report.origins;
+  if (org && org.vehicles > 0) {
+    tableSheet(wb, {
+      name: 'States',
+      title: 'Where they come from — by state and union territory',
+      note: `From the first two letters of the number plate. Counted by vehicle: ${org.vehicles} distinct vehicles made ${org.entries} arrivals.`,
+      columns: [
+        { header: 'State / UT', key: 'name', width: 34 },
+        { header: 'Code', key: 'code', width: 8 },
+        { header: 'Kind', key: 'kind', width: 16, value: (r) => ({ state: 'State', ut: 'Union territory', series: 'Bharat series' }[r.kind] || 'Not recognised') },
+        { header: 'Vehicles', key: 'vehicles', format: COUNT },
+        { header: 'Arrivals', key: 'entries', format: COUNT },
+        { header: 'Share of vehicles', key: 'share', format: PERCENT, value: (r) => r.share / 100, width: 18 },
+      ],
+      rows: org.states,
+      totals: { vehicles: 'sum', entries: 'sum' },
+      dataBarColumn: 'share',
+    });
+    tableSheet(wb, {
+      name: 'Districts',
+      title: 'Where they come from — by district and registering office',
+      note: 'From each vehicle’s registration certificate. Where none has been fetched, the RTO code on the plate is given and the office is marked not known.',
+      columns: [
+        { header: 'Place', key: 'place', width: 32, value: (r) => r.place || `${r.rtoCode} (office not known)` },
+        { header: 'RTO code', key: 'rtoCode', width: 10 },
+        { header: 'State / UT', key: 'stateName', width: 22 },
+        { header: 'Vehicles', key: 'vehicles', format: COUNT },
+        { header: 'Arrivals', key: 'entries', format: COUNT },
+        { header: 'Share of vehicles', key: 'share', format: PERCENT, value: (r) => r.share / 100, width: 18 },
+      ],
+      rows: org.places,
+      totals: { vehicles: 'sum', entries: 'sum' },
+      dataBarColumn: 'share',
+    });
+  }
+
   /* ── Finance ─────────────────────────────────────────────────────────── */
   const fin = wb.addWorksheet('Finance', { properties: { tabColor: { argb: BRAND } } });
   fin.columns = [{ width: 42 }, { width: 18 }, { width: 14 }];
