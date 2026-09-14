@@ -134,7 +134,7 @@ async function handle(msg, contact) {
   /* The language choice is stored on the customer, not the session: it is a
      fact about the person rather than about this conversation, and it has to
      survive a reset. language_asked_at is what separates "chose Kannada" from
-     "was never asked and the column defaults to Kannada" -- without it every
+     "was never asked and was given the default" (English, since 049) -- without it every
      visitor looks as though they had chosen. */
   if (action === 'LANG_EN' || action === 'LANG_KN') {
     const lang = action === 'LANG_KN' ? 'kn' : 'en';
