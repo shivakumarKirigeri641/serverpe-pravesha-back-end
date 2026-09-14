@@ -35,7 +35,7 @@ const rowsOf = async (text, params) => (await query(text, params)).rows;
 
 /* The gate is only ever interested in a pass that was paid for. */
 const LIST_COLUMNS = `
-  t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.mobile,
+  t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.mobile, t.customer_id,
   t.total_paise, t.place_id, t.entry_source,
   s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label,
   s.label_kn AS slot_label_kn, s.starts_at, s.ends_at,
@@ -49,6 +49,10 @@ const LIST_FROM = `
   JOIN vehicle_categories c ON c.id = t.category_id
   JOIN vehicles v ON v.id = t.vehicle_id
   JOIN customers cu ON cu.id = t.customer_id`;
+
+const groupKey = (customerId) => require('crypto')
+  .createHmac('sha256', process.env.STAFF_GROUP_SECRET || process.env.JWT_SECRET || 'pravesha-gate-groups')
+  .update(String(customerId)).digest('hex').slice(0, 16);
 
 const shape = (r) => ({
   id: String(r.id),
@@ -74,6 +78,10 @@ const shape = (r) => ({
   details: require('./vehicle').details(r),
   visitor: r.customer_name || r.wa_profile_name || null,
   mobile: r.mobile ? `••••${String(r.mobile).slice(-4)}` : null,
+  /* Passes booked by the same visitor share this key, so a convoy can be let
+     in together. Opaque on purpose: the gate needs to know "same person", not
+     who the person is. */
+  group: r.customer_id ? groupKey(r.customer_id) : null,
   amount: (r.total_paise / 100).toFixed(0),
 });
 
@@ -319,7 +327,7 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
   require('../log').gate(override ? 'valid_override' : 'valid',
     `${t.ticket_no}  ${t.reg_no} · ${checkpost.name}${durationMs ? ` · ${(sane(durationMs) / 1000).toFixed(1)}s` : ''}`);
 
-  notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
+  scheduleNotice(t, checkpost, claimed);
 
   return { ok: true, verdict: override ? 'valid_override' : 'valid', usedAt: claimed,
     message: selfDeclared ? 'Checked. Their own entry is now confirmed by you.' : 'Entry recorded.',
@@ -430,10 +438,118 @@ async function recordOffline({ session, checkpost, ticketNo, clientId, at, overr
 
   require('../log').gate(asOverride ? 'valid_override' : 'valid',
     `${t.ticket_no}  ${t.reg_no} · ${checkpost.name} · recorded offline, sent later`);
-  notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
+  scheduleNotice(t, checkpost, claimed);
 
   return { ok: true, offline: true, verdict: asOverride ? 'valid_override' : 'valid', usedAt: claimed,
     message: 'Entry recorded.', pass: { ...detail(t), status: 'used', usedAt: claimed } };
+}
+
+/*
+ * A MINUTE'S GRACE BEFORE THE VISITOR IS TOLD.
+ *
+ * A staff member who opens the wrong pass and taps the green button has let in
+ * a vehicle that is not there — and until now the owner of that pass received
+ * "your entry is recorded" on WhatsApp within a second, for a trip they have not
+ * made. An undo that cannot take that message back only fixes half the mistake.
+ *
+ * So the confirmation waits for the undo window to close. A minute is nothing to
+ * a visitor already driving up the hill, and everything to the one who was not.
+ *
+ * It lives in this process: a restart inside that minute loses the message,
+ * never the entry. That was judged a better failure than a queue table for a
+ * sixty-second wait.
+ */
+const UNDO_SECONDS = Math.max(0, Number(process.env.GATE_UNDO_SECONDS || 60));
+/* Seconds allowed on top, for the tap to travel over a poor signal. */
+const UNDO_GRACE_SECONDS = 20;
+const pendingNotices = new Map();
+
+function scheduleNotice(t, checkpost, recordedAt) {
+  const key = String(t.id);
+  clearTimeout(pendingNotices.get(key));
+  const fire = () => {
+    pendingNotices.delete(key);
+    notify(t, checkpost, recordedAt).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
+  };
+  if (!UNDO_SECONDS) { fire(); return; }
+  pendingNotices.set(key, setTimeout(fire, UNDO_SECONDS * 1000));
+}
+
+/** Stop a confirmation that has not gone yet. True when it was stopped. */
+function stopNotice(ticketId) {
+  const key = String(ticketId);
+  if (!pendingNotices.has(key)) return false;
+  clearTimeout(pendingNotices.get(key));
+  pendingNotices.delete(key);
+  return true;
+}
+
+/**
+ * Take back an entry this shift recorded a moment ago.
+ *
+ * ONLY YOUR OWN, ONLY JUST NOW. The entry must be from this very session and no
+ * older than the undo window — measured from when it reached the server, so an
+ * entry that sat on a phone without signal can still be taken back the moment it
+ * lands. Anything older is the office's to correct, with the audit trail that
+ * goes with that.
+ *
+ * WHAT IT PUTS BACK. The pass returns to exactly what it was: unused, or — if the
+ * visitor had checked themselves in and this shift only confirmed it — back to
+ * their own word. The scan moves to scan_undos with the reason, so every count
+ * elsewhere stays right; the WhatsApp confirmation is stopped if it has not gone.
+ */
+async function undo({ session, ticketNo, reason }) {
+  const why = String(reason || '').trim().slice(0, 200);
+  if (!ticketNo) return { ok: false, code: 'missing_pass', message: 'Which entry?' };
+  if (why.length < 3) return { ok: false, code: 'reason_required', message: 'Choose why you are undoing it.' };
+
+  const out = await tx(async (client) => {
+    const { rows } = await client.query(
+      `SELECT sc.*, EXTRACT(EPOCH FROM (now() - COALESCE(sc.synced_at, sc.scanned_at)))::float AS age
+         FROM scans sc
+        WHERE sc.ticket_no = $1 AND sc.session_id = $2 AND sc.verdict IN ('valid', 'valid_override')
+        ORDER BY sc.id DESC
+        LIMIT 1
+          FOR UPDATE`, [ticketNo, session.session_id]);
+    const sc = rows[0];
+    if (!sc) return { ok: false, code: 'not_yours', message: 'Only an entry recorded on your own shift can be undone here.' };
+    if (Number(sc.age) > UNDO_SECONDS + UNDO_GRACE_SECONDS) {
+      return { ok: false, code: 'too_late', message: 'It is too late to undo this entry here. Ask the office to correct it.' };
+    }
+
+    let payload = {};
+    try { payload = JSON.parse(sc.raw_payload || '{}') || {}; } catch { payload = {}; }
+    const wasSelf = payload.confirmedSelfCheckin === true;
+
+    const { rows: moved } = await client.query(
+      `INSERT INTO scan_undos (scan_id, ticket_id, ticket_no, reg_no, checkpost_id, staff_id, session_id, verdict,
+                               raw_payload, scanned_at, synced_at, was_offline, duration_ms, reason)
+       SELECT id, ticket_id, ticket_no, reg_no, checkpost_id, staff_id, session_id, verdict,
+              raw_payload, scanned_at, synced_at, was_offline, duration_ms, $2
+         FROM scans WHERE id = $1
+       RETURNING id`, [sc.id, why]);
+    await client.query(`DELETE FROM scans WHERE id = $1`, [sc.id]);
+
+    await client.query(
+      wasSelf
+        ? `UPDATE tickets SET entry_source = 'self', modified_at = now() WHERE id = $1 AND status = 'used'`
+        : `UPDATE tickets SET status = 'paid', used_at = NULL, entry_source = NULL, modified_at = now()
+            WHERE id = $1 AND status = 'used'`,
+      [sc.ticket_id]);
+
+    return { ok: true, undoId: moved[0].id, ticketId: sc.ticket_id, regNo: sc.reg_no, wasSelf };
+  });
+
+  if (!out.ok) return out;
+
+  const noticeStopped = stopNotice(out.ticketId);
+  await query(`UPDATE scan_undos SET notice_stopped = $2 WHERE id = $1`, [out.undoId, noticeStopped]);
+  require('../log').gate('undone', `entry undone — ${ticketNo} · ${out.regNo} · ${why}${noticeStopped ? ' · message stopped' : ''}`);
+
+  return {
+    ok: true, ticketNo, regNo: out.regNo, noticeStopped,
+    message: out.wasSelf ? 'Undone. The pass is back to the visitor’s own check-in.' : 'Undone. The pass can be used again.',
+  };
 }
 
 /** The visitor's copy: the approved template, in the language they chose. */
@@ -755,4 +871,7 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
   };
 }
 
-module.exports = { arrivals, search, inspect, record, recordOffline, recent, history, passes, vehicle, verdictFor, notify };
+module.exports = {
+  arrivals, search, inspect, record, recordOffline, undo, recent, history, passes, vehicle, verdictFor, notify,
+  UNDO_SECONDS,
+};
