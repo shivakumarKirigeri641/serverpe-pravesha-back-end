@@ -17,6 +17,7 @@ const slotTime = require('./slotTime');
 async function list() {
   const r = await query(
     `SELECT p.id, p.code, p.name, p.name_kn, p.district, p.district_kn, p.booking_days_ahead, p.is_active,
+            p.booking_mode, p.max_persons_per_pass,
             COALESCE(json_agg(json_build_object(
               'id', s.id, 'code', s.code, 'label', s.label, 'label_kn', s.label_kn,
               'starts_at', s.starts_at, 'ends_at', s.ends_at,

@@ -152,16 +152,57 @@ async function handle(msg, contact) {
 
   /* A fresh single-use link per tap. Reusing one would mean the link in an old
      message still worked, and the visitor booking twice by scrolling up. */
-  if (action === 'BOOK') {
+  /*
+   * BOOK: THE PLACE FIRST (2026-09-15). With more than one destination open —
+   * Mullayanagiri books per vehicle, Nandi Hills per person — the visitor picks
+   * the place in the chat, and the link that follows opens that place's own
+   * form. With a single destination open it goes straight to its form, as before.
+   */
+  const bookingLink = async (place) => {
     const lang = langOf(customer);
     const tok = await webToken.issue(customer.id, 'booking');
+    const perPerson = Boolean(place && place.booking_mode === 'person');
     await send.ctaUrl(to, {
       header: t('bookHeader', lang),
-      body: t('bookBody', lang),
+      body: perPerson ? t('bookBodyPerson', lang, { max: place.max_persons_per_pass || 10 }) : t('bookBody', lang),
       footer: t('bookFooter', lang),
       displayText: t('bookCta', lang),
-      url: webToken.linkFor(tok),
+      url: webToken.linkFor(tok, place ? place.id : null),
     });
+  };
+
+  if (action === 'BOOK') {
+    const open = (await require('../gatepass/places').list()).filter((p) => p.is_active);
+    if (open.length <= 1) {
+      await bookingLink(open[0] || null);
+      return;
+    }
+    const lang = langOf(customer);
+    await send.list(to, {
+      header: t('pickPlaceHeader', lang),
+      body: t('pickPlaceBody', lang),
+      button: t('pickPlaceButton', lang),
+      sections: [{
+        title: t('pickPlaceSection', lang),
+        /* WhatsApp allows ten rows, 24-character titles and 72-character descriptions. */
+        rows: open.slice(0, 10).map((p) => ({
+          id: `PLACE_${p.id}`,
+          title: String(lang === 'kn' && p.name_kn ? p.name_kn : p.name).slice(0, 24),
+          description: [
+            lang === 'kn' && p.district_kn ? p.district_kn : p.district,
+            t(p.booking_mode === 'person' ? 'pickPlacePerson' : 'pickPlaceVehicle', lang),
+          ].filter(Boolean).join(' · ').slice(0, 72),
+        })),
+      }],
+    });
+    return;
+  }
+
+  /* A place chosen from that list. Closed since the list went out: the plain form, which offers what is open. */
+  const picked = /^PLACE_(\d+)$/.exec(String(action || ''));
+  if (picked) {
+    const place = await require('../gatepass/places').byId(picked[1]);
+    await bookingLink(place && place.is_active ? place : null);
     return;
   }
 

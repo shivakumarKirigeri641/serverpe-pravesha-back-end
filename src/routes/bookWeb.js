@@ -173,10 +173,19 @@ router.get('/book/:token', gate, safe(async (req, res) => {
 
   const list = await places.list();
   const live = list.filter((p) => p.is_active);
-  const first = live[0] || list[0];
+  /* The place chosen in the chat (2026-09-15), while it is still open. */
+  const chosen = req.query.place ? live.find((p) => String(p.id) === String(req.query.place)) : null;
+  const first = chosen || live[0] || list[0];
+
+  /* A per-person destination (056) has its own short form: a date and a number of people. */
+  if (first && first.is_active && first.booking_mode === 'person') {
+    return res.type('html').send(await require('../web/personBookingPage').pageFor({
+      token: req.params.token, customer: req.customer, place: first, lang: req.lang }));
+  }
   const dates = await places.bookableDates(first, first ? first.slots : []);
   const releaseInfo = first ? await places.window(first) : null;
-  const tariffRows = live[0] ? await pricing.tariff(live[0].id) : [];
+  /* The fees of the place being booked, not whichever active place happens to come first. */
+  const tariffRows = first && first.is_active ? await pricing.tariff(first.id) : [];
 
   res.type('html').send(page.render({
     scriptVersion: client().hash,
@@ -498,6 +507,23 @@ router.post('/book/:token/release', express.json(), gate, safe(async (req, res) 
   if (!held) return res.json({ ok: true, released: false });
   const released = await booking.releaseHold(held.id);
   res.json({ ok: true, released });
+}));
+
+/*
+ * PER-PERSON BOOKING (056): places left on a date, and the hold that leads to
+ * payment. Both re-check everything from the database; see personBookingPage.js.
+ */
+router.post('/book/:token/people/availability', express.json(), gate, safe(async (req, res) => {
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError });
+  res.json(await require('../web/personBookingPage').availability({
+    placeId: req.body?.placeId, travelDate: req.body?.travelDate }));
+}));
+
+router.post('/book/:token/people/confirm', express.json(), gate, safe(async (req, res) => {
+  if (req.tokenError) return res.status(410).json({ ok: false, error: req.tokenError, message: both('linkExpired') });
+  res.json(await require('../web/personBookingPage').confirm({
+    token: req.params.token, customer: req.customer, lang: req.lang,
+    placeId: req.body?.placeId, travelDate: req.body?.travelDate, persons: req.body?.persons }));
 }));
 
 module.exports = router;

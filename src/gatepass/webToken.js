@@ -121,7 +121,10 @@ async function spend(token, ticketId = null) {
 
 const base = () => (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 
-const linkFor = (token) => `${base()}/book/${token}`;
+/* The destination chosen in the chat rides along (2026-09-15), so the link opens
+   that place's form. Not a secret and not trusted: the form re-checks it. */
+const linkFor = (token, placeId = null) =>
+  `${base()}/book/${token}${placeId ? `?place=${encodeURIComponent(placeId)}` : ''}`;
 
 /* The same signed, single-use token, pointed at the rating page instead. Issued
    with purpose 'feedback' so a booking link can never be spent on a rating, nor
