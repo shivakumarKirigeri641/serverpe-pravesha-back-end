@@ -113,7 +113,25 @@ router.get(`${P}/tickets/availability`, auth, (req, res, next) => (
     : res.status(403).json({ error: 'not_allowed', message: 'Your account does not have permission for that.' })
 ), read((req) => tickets.availability({ placeId: req.query.placeId, date: req.query.date })));
 
-router.get(`${P}/tickets/grants`, auth, read(async (req) => ({ grants: await tickets.grants({ kind: req.query.kind }) })));
+/*
+ * The recent free and on-spot passes: visitor names, plates, UPI and card
+ * references, amounts and who issued them. It used to answer anybody signed in,
+ * so a Viewer could read all of it by calling the API directly even though no
+ * screen of theirs offered it (found in the permissions audit, 2026-09-15).
+ *
+ * Now only a role that may issue one of those kinds may ask, and it is shown only
+ * the kinds it may issue — the same split the screen draws — whatever `kind` the
+ * request names.
+ */
+router.get(`${P}/tickets/grants`, auth, (req, res, next) => (
+  admin.can(req.admin.role, 'tickets.free') || admin.can(req.admin.role, 'tickets.onspot') ? next()
+    : res.status(403).json({ error: 'not_allowed', message: 'Your account does not have permission for that.' })
+), read(async (req) => {
+  const allowed = [admin.can(req.admin.role, 'tickets.free') && 'free', admin.can(req.admin.role, 'tickets.onspot') && 'onspot'].filter(Boolean);
+  const asked = req.query.kind;
+  const kind = allowed.includes(asked) ? asked : (allowed.length === 1 ? allowed[0] : null);
+  return { grants: (await tickets.grants({ kind })).filter((g) => allowed.includes(g.kind)) };
+}));
 
 router.post(`${P}/tickets/free`, json, auth, needs('tickets.free'),
   change('free_ticket_issued', (req) => tickets.freeTicket({ body: req.body, adminId: req.admin.admin_id })));
