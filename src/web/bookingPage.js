@@ -32,7 +32,7 @@ const COPY = {
     step2: 'Where, when and time slot', place: 'Destination',
     soon: 'Bookings for this destination are not open yet. Please choose Mullayanagiri.',
     comingSoon: 'coming soon', date: 'Date of visit', today: 'today', slot: 'Time slot',
-    fees: 'Entry fees', thVehicle: 'Vehicle', thFee: 'Fee', thTotal: 'Total', platformFee: 'platform fee',
+    fees: 'Entry fees', thVehicle: 'Vehicle', thFee: 'Entry fee', thTotal: 'Total',
     note: 'Please note',
     rules: [
       'The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.',
@@ -60,7 +60,7 @@ const COPY = {
     step2: 'ಸ್ಥಳ, ದಿನಾಂಕ ಮತ್ತು ಸಮಯ', place: 'ಪ್ರವಾಸಿ ತಾಣ',
     soon: 'ಈ ತಾಣಕ್ಕೆ ಬುಕಿಂಗ್ ಇನ್ನೂ ಆರಂಭವಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಮುಳ್ಳಯ್ಯನಗಿರಿ ಆಯ್ಕೆಮಾಡಿ.',
     comingSoon: 'ಶೀಘ್ರದಲ್ಲೇ', date: 'ಭೇಟಿಯ ದಿನಾಂಕ', today: 'ಇಂದು', slot: 'ಸಮಯದ ಸ್ಲಾಟ್',
-    fees: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thVehicle: 'ವಾಹನ', thFee: 'ಶುಲ್ಕ', thTotal: 'ಒಟ್ಟು', platformFee: 'ಪ್ಲಾಟ್‌ಫಾರ್ಮ್ ಶುಲ್ಕ',
+    fees: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thVehicle: 'ವಾಹನ', thFee: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thTotal: 'ಒಟ್ಟು',
     note: 'ದಯವಿಟ್ಟು ಗಮನಿಸಿ',
     rules: [
       'ನಮೂದಿಸಿದ ವಾಹನ ಸಂಖ್ಯೆಗೆ ಮಾತ್ರ ಪಾಸ್ ಮಾನ್ಯ. ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ವಾಹನ ಬದಲಾಯಿಸಲು ಅವಕಾಶವಿಲ್ಲ.',
@@ -198,7 +198,6 @@ const SHELL = (title, body, lang = 'en') => {
   .fees .ico{font-size:17px;margin-right:7px;vertical-align:-2px}
   .fees .tot{font-weight:700}
   .fees td.calc{white-space:normal;line-height:1.3}
-  .fees .plus{display:block;font-size:11.5px;color:var(--muted)}
   .fees tr.mine td{background:rgba(0,168,132,.10)}
   .fees tr.mine td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   /* The confirmation sheet shown once a place is held. It slides up from the
@@ -386,10 +385,11 @@ function render({ token, customer, places, dates, tariff, feePercent, scriptVers
      someone who calls it a Cruiser, while the silhouette does. */
   const ICON = { BIKE: '🏍️', CAR: '🚗', TOOFAN: '🚙', TT: '🚐' };
   const rs = (paise) => '&#8377;' + (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
-  const pct = feePercent === null || feePercent === undefined ? '' : `${feePercent}%`;
+  /* The entry fee and the total, with no platform-fee line between them (user,
+     2026-09-15): the visitor sees what goes to the department and what they pay. */
   const feeRows = tariff.map((t) => `<tr data-cat="${esc(t.categoryId)}">
         <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(kn && t.labelKn ? t.labelKn : t.label)}</td>
-        <td class="calc">${rs(t.entryPaise)} <span class="plus">+ ${pct} ${c.platformFee}</span></td>
+        <td class="calc">${rs(t.entryPaise)}</td>
         <td class="tot">${rs(t.totalPaise)}</td></tr>`).join('');
   const live = places.find((p) => p.is_active);
   const placeName = esc(live ? pn(live) : '');
