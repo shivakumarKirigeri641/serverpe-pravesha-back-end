@@ -53,6 +53,7 @@ const COPY = {
     tapReturn: 'Tap below to return to WhatsApp.', confirming: 'Confirming...',
     confirmFailed: 'Confirming failed - tap to retry', payFailed: 'Payment failed - try again',
     didNotGo: 'That payment did not go through.', tapToPay: 'Tap below to pay.',
+    goingBack: 'Taking you back to your booking…',
   },
   kn: {
     doneT: 'ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಿದೆ', done: 'ನಿಮ್ಮ ಪ್ರವೇಶ ಪಾಸ್ ಅನ್ನು ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ನಲ್ಲಿ ಕಳುಹಿಸಲಾಗಿದೆ.<br>ನೀವು ಈ ಪುಟವನ್ನು ಮುಚ್ಚಬಹುದು.',
@@ -71,6 +72,7 @@ const COPY = {
     tapReturn: 'ವಾಟ್ಸ್‌ಆ್ಯಪ್‌ಗೆ ಹಿಂತಿರುಗಲು ಕೆಳಗೆ ಒತ್ತಿ.', confirming: 'ದೃಢೀಕರಿಸಲಾಗುತ್ತಿದೆ…',
     confirmFailed: 'ದೃಢೀಕರಣ ವಿಫಲವಾಗಿದೆ - ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಲು ಒತ್ತಿ', payFailed: 'ಪಾವತಿ ವಿಫಲವಾಗಿದೆ - ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ',
     didNotGo: 'ಆ ಪಾವತಿ ಯಶಸ್ವಿಯಾಗಲಿಲ್ಲ.', tapToPay: 'ಪಾವತಿಸಲು ಕೆಳಗೆ ಒತ್ತಿ.',
+    goingBack: 'ನಿಮ್ಮ ಬುಕಿಂಗ್‌ಗೆ ಹಿಂತಿರುಗಿಸಲಾಗುತ್ತಿದೆ…',
   },
 };
 
@@ -117,6 +119,49 @@ router.get('/pay/:token', async (req, res) => {
 
   const k = checkout.keys();
   res.type('html').send(payPage({ ticket, payment, orderId, keyId: k.id, token: req.params.token, lang }));
+});
+
+/*
+ * The visitor closed the payment sheet without paying (user, 2026-09-15).
+ *
+ * BACK TO THE BOOKING FORM, NOT A DEAD END. Dismissing Razorpay used to leave
+ * them on the checkout page with the Pay button re-enabled and nothing else —
+ * no way back, and the place still held. Somebody who changes their mind about
+ * the slot, the date or the vehicle had to go back to the chat and start again.
+ *
+ * THE PLACE IS GIVEN BACK. Cancelling is what the review sheet already promised
+ * it would do — "Nothing was charged. You can change your choices and continue
+ * again." Holding a place for somebody who has walked away keeps it from the
+ * next visitor, and it would also refuse this one: a vehicle may hold only one
+ * pass for a date, so the form would turn them away on their own held place.
+ *
+ * A PAID PASS IS NEVER TOUCHED. If the money landed between the sheet closing
+ * and this being asked for, the payment reads as paid and the pass stands —
+ * releaseHold only acts on a ticket that is still held, so a race cannot expire
+ * something somebody has paid for.
+ *
+ * The booking link is single-use and was spent when the place was held, so a
+ * fresh one is issued for the same visitor and opens at the same destination.
+ */
+router.get('/pay/:token/cancel', async (req, res) => {
+  const backToChat = () => res.redirect(WA_LINK());
+  try {
+    const found = await checkout.byToken(req.params.token);
+    if (!found?.ticket) return backToChat();
+
+    const { payment, ticket } = found;
+    if (payment.status === 'paid') return res.redirect('/pay/done');
+
+    if (ticket.status === 'held') await booking.releaseHold(ticket.id);
+
+    const webToken = require('../gatepass/webToken');
+    const fresh = await webToken.issue(ticket.customer_id, 'booking');
+    return res.redirect(webToken.linkFor(fresh, ticket.place_id));
+  } catch (e) {
+    /* Never strand them on an error page: the chat always works. */
+    console.error('[checkout] cancel %s: %s', req.params.token, e.message);
+    return backToChat();
+  }
 });
 
 /* ────────────────────────────────────────────── path 1: browser callback */
@@ -270,7 +315,8 @@ function payPage({ ticket, payment, orderId, keyId, token, lang = 'en' }) {
   const words = {
     sentHtml: C.sent, going: C.going, open: C.open, ifNot: C.ifNot, tapReturn: C.tapReturn,
     doneT: C.doneT, confirming: C.confirming, confirmFailed: C.confirmFailed,
-    payFailed: C.payFailed, didNotGo: C.didNotGo, tapToPay: C.tapToPay, pay: C.pay(rs(ticket.total_paise)),
+    payFailed: C.payFailed, didNotGo: C.didNotGo, tapToPay: C.tapToPay, goingBack: C.goingBack,
+    pay: C.pay(rs(ticket.total_paise)),
   };
   return `<!doctype html><html lang="${lang === 'kn' ? 'kn' : 'en'}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -313,6 +359,9 @@ button:disabled{opacity:.6}
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
 var btn = document.getElementById('pay');
+/* Set the moment Razorpay reports a payment, so a dismissal arriving after it
+   does not send a paying visitor back to the form mid-confirmation. */
+var paid = false;
 var W = ${JSON.stringify(words).replace(/</g, '\\u003c')};
 
 /**
@@ -411,6 +460,7 @@ var opts = {
   prefill: { contact: ${JSON.stringify(ticket.mobile)} },
   theme: { color: '#008069' },
   handler: function (r) {
+    paid = true;
     btn.disabled = true; btn.textContent = W.confirming;
     fetch('/pay/' + ${JSON.stringify(token)} + '/confirm', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -421,7 +471,23 @@ var opts = {
       btn.disabled = false; btn.textContent = W.confirmFailed;
     });
   },
-  modal: { ondismiss: function () { btn.disabled = false; btn.textContent = W.pay; } }
+  /*
+   * Closed without paying: back to the booking form, where the slot, the date
+   * and the vehicle can be changed — rather than left on this page with nothing
+   * but the button they just declined. The server gives the held place back.
+   *
+   * The paid flag guards the case where Razorpay reports the dismissal after a payment
+   * has gone through; confirming is already under way and must not be
+   * interrupted by a redirect.
+   */
+  modal: {
+    ondismiss: function () {
+      if (paid) return;
+      btn.disabled = true; btn.textContent = W.pay;
+      document.getElementById('msg').textContent = W.goingBack;
+      window.location.replace('/pay/' + ${JSON.stringify(token)} + '/cancel');
+    }
+  }
 };
 function openPayment() {
   btn.disabled = true;
