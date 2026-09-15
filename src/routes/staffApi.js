@@ -140,7 +140,9 @@ router.get(`${P}/arrivals`, auth, safe(async (req, res) => {
   /* The watchlist travels with the list, so a phone that loses signal still
      knows which plates to stop. */
   out.passes = await withWatch(out.passes);
-  res.json({ ok: true, ...out });
+  /* Never from a cache: a list a few seconds old shows a vehicle that just went
+     through as still to come. The pulse beside it already says no-store. */
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...out });
 }));
 
 /* Plate or pass number, typed at the gate. */
