@@ -27,16 +27,28 @@ const check = (name, ok, detail) => {
 };
 
 /* Everything this run created or changed, so it can be put back. */
-const touched = { clientIds: [], ticketIds: [] };
+const touched = { clientIds: [], ticketIds: [], staffId: null };
 
 async function fixtures() {
   const { rows: [cp] } = await query(
     'SELECT id, name, place_id FROM checkposts WHERE is_active ORDER BY id LIMIT 1');
-  const { rows: [se] } = await query(
-    'SELECT id AS session_id, staff_id FROM staff_sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1');
   if (!cp) throw new Error('no active checkpost — seed one first');
-  if (!se) throw new Error('no open staff session — sign in on the gate app first');
-  return { checkpost: cp, session: se };
+
+  const { rows: [open] } = await query(
+    'SELECT id AS session_id, staff_id FROM staff_sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1');
+  if (open) return { checkpost: cp, session: open };
+
+  /* Nobody signed in — after a database clean there is no staff at all. The
+     test provides its own, on the reserved 000 range, and removes it at the end
+     rather than asking for a gate app to be opened first. */
+  const { rows: [staff] } = await query(
+    `INSERT INTO staff (name, mobile, is_active) VALUES ('Offline sync test', '0000000098', true) RETURNING id`);
+  await query('INSERT INTO staff_checkposts (staff_id, checkpost_id) VALUES ($1,$2)', [staff.id, cp.id]);
+  const { rows: [made] } = await query(
+    'INSERT INTO staff_sessions (staff_id, checkpost_id, token) VALUES ($1,$2,$3) RETURNING id AS session_id, staff_id',
+    [staff.id, cp.id, require('crypto').randomBytes(24).toString('base64url')]);
+  touched.staffId = staff.id;
+  return { checkpost: cp, session: made };
 }
 
 /** An unused, paid pass for today that no other test in this run has claimed. */
@@ -138,7 +150,12 @@ async function cleanup() {
     await query(`UPDATE tickets SET status = 'paid', used_at = NULL, entry_source = NULL
                   WHERE id = ANY($1::bigint[])`, [touched.ticketIds]);
   }
-  console.log(`\nput back: ${touched.ticketIds.length} passes, ${touched.clientIds.length} scan records`);
+  if (touched.staffId) {
+    await query('DELETE FROM staff_sessions WHERE staff_id = $1', [touched.staffId]);
+    await query('DELETE FROM staff WHERE id = $1', [touched.staffId]);
+  }
+  console.log(`\nput back: ${touched.ticketIds.length} passes, ${touched.clientIds.length} scan records`
+    + `${touched.staffId ? ', the test staff member' : ''}`);
 }
 
 (async () => {
