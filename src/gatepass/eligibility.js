@@ -103,12 +103,26 @@ async function decide(vehicle) {
     return { allowed: true, unclassified: true, reason: 'no_vehicle_class' };
   }
 
-  /* A row matches on its class pattern or on its model pattern. Model rows are
-     seeded at a higher priority precisely so they are reached first: a Force
-     Cruiser has to be recognised as a Toofan before the broad "Motor Car" row
-     prices it as a car. */
+  /*
+   * A row matches on its class pattern, on its model pattern, or — when it
+   * carries both — on both together. Model rows are seeded at a higher priority
+   * precisely so they are reached first: a Force Cruiser has to be recognised as
+   * a Toofan before the broad "Motor Car" row prices it as a car.
+   *
+   * WHY BOTH, WHEN A ROW HAS BOTH (user, 2026-09-15). The Tempo Traveller row
+   * says class LIGHT PASSENGER VEHICLE and model TRAVELLER or TEMPO, and it has
+   * to mean both at once. VAHAN registers an 8-seat Innova Crysta taxi and a
+   * 12-seat Force Traveller under the same class and the same category — "not
+   * more than 12 passengers" covers them equally — so the class alone cannot
+   * tell them apart, and the model is the only thing that can. Matching on
+   * either one made every light passenger vehicle a Tempo Traveller and charged
+   * an Innova ₹200 instead of ₹100.
+   */
   for (const m of allow) {
-    if (hits(m.pattern, v) || hitsModel(m.model_pattern, v)) {
+    const both = m.pattern && m.model_pattern
+      ? hits(m.pattern, v) && hitsModel(m.model_pattern, v)
+      : hits(m.pattern, v) || hitsModel(m.model_pattern, v);
+    if (both) {
       return {
         allowed: true,
         categoryId: String(m.category_id),
