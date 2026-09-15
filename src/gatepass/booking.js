@@ -59,10 +59,12 @@ function passNumberCandidates(input) {
  * The random tail keeps it unique when the same person rebooks the same vehicle
  * for the same slot: Razorpay refuses a receipt it has seen before.
  */
-function referenceId({ placeCode, mobile, regNo, travelDate, slotCode }) {
+function referenceId({ placeCode, mobile, regNo, persons = 1, travelDate, slotCode }) {
   const tail = crypto.randomBytes(3).toString('hex').toUpperCase();
   const place = String(placeCode || 'PRV').slice(0, 3).toUpperCase();
-  return `${place}-${String(mobile).slice(-4)}-${regNo}-${String(travelDate).replace(/-/g, '')}-${slotCode}-${tail}`;
+  /* A per-person pass has no plate; "P4" says it is for four people. */
+  const who = regNo || `P${persons || 1}`;
+  return `${place}-${String(mobile).slice(-4)}-${who}-${String(travelDate).replace(/-/g, '')}-${slotCode}-${tail}`;
 }
 
 /** Has this vehicle already got a live pass for this date? */
@@ -83,10 +85,22 @@ function existingForDate(vehicleId, travelDate) {
  * needs a different sentence: one sends the visitor to another slot, another
  * tells them they already hold a pass.
  */
-async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) {
+async function hold({ customer, vehicle = null, place, slot, categoryId, travelDate, persons = 1 }) {
+  /*
+   * A PER-PERSON DESTINATION (056) books people, not a vehicle: the pass carries
+   * no vehicle, the entry fee is per person, the platform fee is per pass (₹10
+   * each plus ₹5 for the pass, user 2026-09-15), and the pass takes one place
+   * in the day's pool for each person on it.
+   */
+  const perPerson = place.booking_mode === 'person';
+  const people = perPerson
+    ? Math.max(1, Math.min(Math.floor(Number(persons)) || 1, Number(place.max_persons_per_pass) || 10))
+    : 1;
+  if (!perPerson && !vehicle) return { ok: false, reason: 'no_vehicle' };
+
   const price = await pricing.forPlaceCategory(place.id, categoryId);
   if (!price) return { ok: false, reason: 'no_price' };
-  const b = await pricing.breakdown(price);
+  const b = await pricing.breakdown(perPerson ? { ...price, entryPaise: price.entryPaise * people } : price);
   const minutes = await inventory.holdMinutes();
 
   /* Abandoned holds must not make a slot look full to the next person. */
@@ -99,7 +113,7 @@ async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) 
     try {
       return await tx(async (client) => {
         const inv = await inventory.hold(client, {
-          placeId: place.id, slotId: slot.id, categoryId, travelDate });
+          placeId: place.id, slotId: slot.id, categoryId, travelDate, units: people });
         if (!inv) return { ok: false, reason: 'sold_out' };
 
         /* After the capacity is claimed, so a sold-out attempt uses no number. */
@@ -109,16 +123,18 @@ async function hold({ customer, vehicle, place, slot, categoryId, travelDate }) 
           `INSERT INTO tickets
              (ticket_no, pass_seq, reference_id, customer_id, vehicle_id, place_id, slot_id,
               category_id, travel_date, reg_no, mobile,
-              entry_paise, platform_paise, gst_paise, total_paise, status, held_until)
+              entry_paise, platform_paise, gst_paise, total_paise, status, held_until,
+              pass_kind, persons)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'held',
-                   now() + ($16 || ' minutes')::interval)
+                   now() + ($16 || ' minutes')::interval, $17, $18)
            RETURNING *`,
           [passCodec.encode(travelDate, seq), seq,
-           referenceId({ placeCode: place.code, mobile: customer.mobile, regNo: vehicle.reg_no,
-             travelDate, slotCode: slot.code }),
-           customer.id, vehicle.id, place.id, slot.id, categoryId, travelDate,
-           vehicle.reg_no, customer.mobile,
-           b.entry_paise, b.platform_paise, b.gst_paise, b.total_paise, String(minutes)]);
+           referenceId({ placeCode: place.code, mobile: customer.mobile, regNo: vehicle ? vehicle.reg_no : null,
+             persons: people, travelDate, slotCode: slot.code }),
+           customer.id, vehicle ? vehicle.id : null, place.id, slot.id, categoryId, travelDate,
+           vehicle ? vehicle.reg_no : null, customer.mobile,
+           b.entry_paise, b.platform_paise, b.gst_paise, b.total_paise, String(minutes),
+           perPerson ? 'person' : 'vehicle', people]);
         return { ok: true, ticket: r.rows[0], breakdown: b };
       });
     } catch (e) {
@@ -151,14 +167,15 @@ async function markPaid(ticketId, paymentId) {
     /* A hold that timed out gave its place back. It has to be claimed again
        before this pass can be honoured; issuing it anyway is how a slow payment
        oversells a slot. */
+    const units = inventory.unitsOf(t);
     if (t.status === 'expired') {
       const again = await inventory.hold(client, { placeId: t.place_id, slotId: t.slot_id,
-        categoryId: t.category_id, travelDate: t.travel_date });
+        categoryId: t.category_id, travelDate: t.travel_date, units });
       if (!again) return { ok: false, reason: 'expired_and_full' };
     }
 
     await inventory.confirm(client, { placeId: t.place_id, slotId: t.slot_id,
-      categoryId: t.category_id, travelDate: t.travel_date });
+      categoryId: t.category_id, travelDate: t.travel_date, units });
 
     const u = (await client.query(
       `UPDATE tickets SET status = 'paid', payment_id = COALESCE($2, payment_id),
@@ -182,7 +199,7 @@ async function releaseHold(ticketId) {
     if (!t || t.status !== 'held') return false;
     await client.query("UPDATE tickets SET status = 'expired', modified_at = now() WHERE id = $1", [ticketId]);
     await inventory.release(client, { placeId: t.place_id, slotId: t.slot_id,
-      categoryId: t.category_id, travelDate: t.travel_date });
+      categoryId: t.category_id, travelDate: t.travel_date, units: inventory.unitsOf(t) });
     return true;
   });
 }
@@ -203,7 +220,9 @@ function full(where, params) {
        JOIN places p ON p.id = t.place_id
        JOIN place_slots s ON s.id = t.slot_id
        JOIN vehicle_categories c ON c.id = t.category_id
-       JOIN vehicles v ON v.id = t.vehicle_id
+       /* LEFT: a per-person pass (056) has no vehicle, and must still load for
+          payment, delivery and the gate. A vehicle pass always has one. */
+       LEFT JOIN vehicles v ON v.id = t.vehicle_id
        JOIN customers cu ON cu.id = t.customer_id
        LEFT JOIN payments pay ON pay.id = t.payment_id
       WHERE ${where}`, params);

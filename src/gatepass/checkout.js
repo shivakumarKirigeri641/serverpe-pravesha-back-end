@@ -116,7 +116,8 @@ async function ensureOrder(payment, ticket) {
     receipt: ticket.reference_id.slice(0, 40),
     notes: {
       ticket_no: ticket.ticket_no,
-      reg_no: ticket.reg_no,
+      /* A per-person pass (056) has no plate; the note says who it covers instead. */
+      reg_no: ticket.reg_no || `${ticket.persons || 1} persons`,
       travel_date: String(ticket.travel_date),
     },
   });

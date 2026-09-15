@@ -106,37 +106,47 @@ async function forDate(placeId, categoryId, travelDate) {
  * UPDATE that only matches while booked + held < capacity lets exactly one of
  * them through, and the table's own CHECK stands behind it.
  */
-async function hold(client, { placeId, slotId, categoryId, travelDate }) {
+/**
+ * How many places a pass takes: one for a vehicle, the number of people for a
+ * per-person pass (056). Every claim, confirmation and release goes through
+ * this, so a pass for four can never give back one.
+ */
+const unitsOf = (t) => (t && t.pass_kind === 'person' ? Math.max(1, Number(t.persons) || 1) : 1);
+
+async function hold(client, { placeId, slotId, categoryId, travelDate, units = 1 }) {
   await ensure(placeId, slotId, categoryId, travelDate);
+  const n = Math.max(1, Number(units) || 1);
   const r = await client.query(
     `UPDATE slot_inventory
-        SET held = held + 1, modified_at = now()
+        SET held = held + $5, modified_at = now()
       WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
-        AND is_open AND booked + held < capacity
+        AND is_open AND booked + held + $5 <= capacity
       RETURNING *`,
-    [placeId, slotId, categoryId, travelDate]);
+    [placeId, slotId, categoryId, travelDate, n]);
   return r.rows[0] || null;
 }
 
 /** A held place becomes a booked one: paid for. */
-async function confirm(client, { placeId, slotId, categoryId, travelDate }) {
+async function confirm(client, { placeId, slotId, categoryId, travelDate, units = 1 }) {
+  const n = Math.max(1, Number(units) || 1);
   const r = await client.query(
     `UPDATE slot_inventory
-        SET held = GREATEST(held - 1, 0), booked = booked + 1, modified_at = now()
+        SET held = GREATEST(held - $5, 0), booked = booked + $5, modified_at = now()
       WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
       RETURNING *`,
-    [placeId, slotId, categoryId, travelDate]);
+    [placeId, slotId, categoryId, travelDate, n]);
   return r.rows[0] || null;
 }
 
 /** Give a held place back. */
-async function release(client, { placeId, slotId, categoryId, travelDate }) {
+async function release(client, { placeId, slotId, categoryId, travelDate, units = 1 }) {
+  const n = Math.max(1, Number(units) || 1);
   const r = await (client || { query }).query(
     `UPDATE slot_inventory
-        SET held = GREATEST(held - 1, 0), modified_at = now()
+        SET held = GREATEST(held - $5, 0), modified_at = now()
       WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4
       RETURNING *`,
-    [placeId, slotId, categoryId, travelDate]);
+    [placeId, slotId, categoryId, travelDate, n]);
   return r.rows[0] || null;
 }
 
@@ -151,10 +161,10 @@ async function sweepExpiredHolds() {
   const rows = (await query(
     `UPDATE tickets SET status = 'expired', modified_at = now()
       WHERE status = 'held' AND held_until IS NOT NULL AND held_until < now()
-      RETURNING place_id, slot_id, category_id, travel_date`)).rows;
+      RETURNING place_id, slot_id, category_id, travel_date, pass_kind, persons`)).rows;
   for (const t of rows) {
     await release(null, { placeId: t.place_id, slotId: t.slot_id,
-      categoryId: t.category_id, travelDate: t.travel_date });
+      categoryId: t.category_id, travelDate: t.travel_date, units: unitsOf(t) });
   }
   return rows.length;
 }
@@ -163,4 +173,4 @@ async function holdMinutes() {
   return require('./settings').num('hold_minutes', 10);
 }
 
-module.exports = { ensure, available, forDate, hold, confirm, release, sweepExpiredHolds, holdMinutes };
+module.exports = { ensure, available, forDate, hold, confirm, release, sweepExpiredHolds, holdMinutes, unitsOf };

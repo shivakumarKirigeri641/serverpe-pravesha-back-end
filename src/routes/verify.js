@@ -91,14 +91,18 @@ Pravesha is a product of ServerPe App Solutions</footer></div></body></html>`;
     <p class="note">${st.note}</p>
     <table>
       <tr><th>Pass number</th><td>${esc(t.ticket_no)}</td></tr>
-      <tr><th>Vehicle number</th><td class="plate">${esc(t.reg_no)}</td></tr>
-      <tr><th>Vehicle</th><td>${esc([d.make, d.model].filter(Boolean).join(' ') || '—')}</td></tr>
+      ${t.pass_kind === 'person'
+    /* A per-person pass (056): how many people, and no vehicle. */
+    ? `<tr><th>Visitors</th><td>${esc(require('../localize').persons(t.persons, 'en'))}</td></tr>`
+    : `<tr><th>Vehicle number</th><td class="plate">${esc(t.reg_no)}</td></tr>
+      <tr><th>Vehicle</th><td>${esc([d.make, d.model].filter(Boolean).join(' ') || '—')}</td></tr>`}
       <tr><th>Destination</th><td>${esc(t.place_name)}</td></tr>
       <tr><th>Date of visit</th><td>${esc(longDate(t.travel_date))}</td></tr>
       <tr><th>Time slot</th><td>${esc(t.slot_label)}</td></tr>
     </table>
-    <p class="note" style="margin:14px 0 0;font-size:12.5px">For information only. Entry is by vehicle number &mdash;
-    checkpost staff record your vehicle at the gate.</p></div>`));
+    <p class="note" style="margin:14px 0 0;font-size:12.5px">${t.pass_kind === 'person'
+    ? 'For information only. Show this pass number at the checkpost &mdash; staff confirm how many of you are entering.'
+    : 'For information only. Entry is by vehicle number &mdash; checkpost staff record your vehicle at the gate.'}</p></div>`));
 });
 
 module.exports = router;

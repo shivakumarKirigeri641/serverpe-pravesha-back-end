@@ -334,13 +334,15 @@ async function cancel({ id, reason, adminId }) {
 
     await c.query("UPDATE tickets SET status = 'cancelled', modified_at = now() WHERE id = $1", [t.id]);
     /* The place goes back: a paid pass held a booked seat, an unpaid one a hold. */
+    /* As many places as the pass took: one for a vehicle, the people on a per-person pass (056). */
+    const units = inventory.unitsOf(t);
     if (t.status === 'paid') {
       await c.query(
-        `UPDATE slot_inventory SET booked = GREATEST(booked - 1, 0), modified_at = now()
+        `UPDATE slot_inventory SET booked = GREATEST(booked - $5, 0), modified_at = now()
           WHERE place_id = $1 AND slot_id = $2 AND category_id = $3 AND travel_date = $4`,
-        [t.place_id, t.slot_id, t.category_id, t.travel_date]);
+        [t.place_id, t.slot_id, t.category_id, t.travel_date, units]);
     } else {
-      await inventory.release(c, { placeId: t.place_id, slotId: t.slot_id, categoryId: t.category_id, travelDate: t.travel_date });
+      await inventory.release(c, { placeId: t.place_id, slotId: t.slot_id, categoryId: t.category_id, travelDate: t.travel_date, units });
     }
 
     const paid = t.status === 'paid';

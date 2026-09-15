@@ -67,10 +67,10 @@ function passMessage(t, lang, { resend = false } = {}) {
     `*${tr('passNo', lang)}:* *${t.ticket_no}*`,
     `*${tr('passStatus', lang)}:* ${t.status === 'used' ? tr('passUsedStatus', lang) : tr('passValid', lang)}`,
     '',
-    tr('secVehicle', lang),
-    `*${t.reg_no}*${car ? ` · ${car}` : ''}`,
-    `${tr('vehType', lang)}: ${type}`,
-    '',
+    /* A per-person pass (056) names how many people, not a vehicle. */
+    ...(t.pass_kind === 'person'
+      ? [tr('secPeople', lang), `*${L.persons(t.persons, lang)}*`, '']
+      : [tr('secVehicle', lang), `*${t.reg_no}*${car ? ` · ${car}` : ''}`, `${tr('vehType', lang)}: ${type}`, '']),
     tr('secVisit', lang),
     L.placeWithDistrict(t, lang),
     `📅 ${L.longDate(t.travel_date, lang)}`,
@@ -84,7 +84,7 @@ function passMessage(t, lang, { resend = false } = {}) {
     `${tr('paymentId', lang)}: ${t.gateway_payment_id || '—'}`,
     '',
     tr('secCheckpost', lang),
-    tr('checkpostNote', lang),
+    tr(t.pass_kind === 'person' ? 'checkpostNotePerson' : 'checkpostNote', lang),
     '',
     tr('pdfAttached', lang),
   ].join('\n');
@@ -124,7 +124,8 @@ async function deliverTicket(ticketId) {
   const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t), lang });
   const doc = await send.document(to, pdf, {
     filename: passPdf.filename(t),
-    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: L.longDate(t.travel_date, lang) }),
+    /* A per-person pass (056) has no plate: the caption says how many people. */
+    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no || L.persons(t.persons, lang), date: L.longDate(t.travel_date, lang) }),
   });
 
   if (invoice && String(await settings.str('send_invoice', 'false')) === 'true') {
@@ -197,7 +198,8 @@ async function resendPass(ticketId) {
   const pdf = await passPdf.render(t, { settings: s, verifyUrl: verifyUrl(t), lang });
   const doc = await send.document(to, pdf, {
     filename: passPdf.filename(t),
-    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no, date: L.longDate(t.travel_date, lang) }),
+    /* A per-person pass (056) has no plate: the caption says how many people. */
+    caption: tr('pdfCaption', lang, { ticket: t.ticket_no, plate: t.reg_no || L.persons(t.persons, lang), date: L.longDate(t.travel_date, lang) }),
   });
 
   await logEvent(t, 'pass_resent', { message: msg.ok, pdf: doc.ok });

@@ -42,6 +42,7 @@ const LBL = {
     title: 'ENTRY PASS',
     chip: { paid: 'PAID · VALID', used: 'USED' },
     passNumber: 'PASS NUMBER', vehicleNumber: 'VEHICLE NUMBER', validFor: 'VALID FOR',
+    visitorCount: 'VISITORS', secVisitors: 'Visitors', people: 'People', passType: 'Pass type', perPerson: 'Per person',
     lastEntry: 'Last entry', scan: 'Scan for pass details',
     secVehicle: 'Vehicle details', secVisit: 'Visit details', secVisitor: 'Visitor & pass details',
     secPayment: 'Payment details', secTrack: 'Date & time track',
@@ -74,6 +75,7 @@ const LBL = {
     title: 'ಪ್ರವೇಶ ಪಾಸ್',
     chip: { paid: 'ಪಾವತಿಸಲಾಗಿದೆ · ಮಾನ್ಯ', used: 'ಬಳಸಲಾಗಿದೆ' },
     passNumber: 'ಪಾಸ್ ಸಂಖ್ಯೆ', vehicleNumber: 'ವಾಹನ ಸಂಖ್ಯೆ', validFor: 'ಮಾನ್ಯತೆ',
+    visitorCount: 'ಪ್ರವಾಸಿಗರು', secVisitors: 'ಪ್ರವಾಸಿಗರು', people: 'ಜನರ ಸಂಖ್ಯೆ', passType: 'ಪಾಸ್ ಪ್ರಕಾರ', perPerson: 'ಪ್ರತಿ ವ್ಯಕ್ತಿಗೆ',
     lastEntry: 'ಕೊನೆಯ ಪ್ರವೇಶ', scan: 'ಪಾಸ್ ವಿವರಗಳಿಗೆ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ',
     secVehicle: 'ವಾಹನದ ವಿವರಗಳು', secVisit: 'ಭೇಟಿಯ ವಿವರಗಳು', secVisitor: 'ಸಂದರ್ಶಕ ಮತ್ತು ಪಾಸ್ ವಿವರಗಳು',
     secPayment: 'ಪಾವತಿ ವಿವರಗಳು', secTrack: 'ದಿನಾಂಕ ಮತ್ತು ಸಮಯದ ದಾಖಲೆ',
@@ -138,9 +140,11 @@ async function render(t, { settings, verifyUrl, generatedAt = new Date(), lang =
   doc.font('R').fontSize(8.5).fillColor(C.muted).text(X.passNumber, M + 14, y + 12, { lineBreak: false });
   doc.font('B').fontSize(20).fillColor(C.brand).text(t.ticket_no, M + 14, y + 23, { lineBreak: false });
 
-  doc.font('R').fontSize(8.5).fillColor(C.muted).text(X.vehicleNumber, M + 14, y + 58, { lineBreak: false });
+  /* A per-person pass (056) shows how many people where a vehicle pass shows its plate. */
+  const perPerson = t.pass_kind === 'person';
+  doc.font('R').fontSize(8.5).fillColor(C.muted).text(perPerson ? X.visitorCount : X.vehicleNumber, M + 14, y + 58, { lineBreak: false });
   doc.font('B').fontSize(16);
-  const plate = t.reg_no;
+  const plate = perPerson ? L.persons(t.persons, lg) : t.reg_no;
   const pw = doc.widthOfString(plate) + 26;
   doc.save().roundedRect(M + 14, y + 72, pw, 30, 4).lineWidth(1.6).fillAndStroke('#fffbe6', C.ink).restore();
   doc.fillColor(C.ink).text(plate, M + 14, y + 78, { width: pw, align: 'center', lineBreak: false });
@@ -172,13 +176,18 @@ async function render(t, { settings, verifyUrl, generatedAt = new Date(), lang =
   const paid = t.payment_status === 'paid';
 
   pair(
-    kvTable(doc, M, y, colW, X.secVehicle, [
-      [X.vehicleNo, t.reg_no],
-      [X.maker, d.make],
-      [X.model, d.model],
-      [X.variant, d.variant],
-      [X.type, L.vehicleType(t, lg)],
-    ]),
+    perPerson
+      ? kvTable(doc, M, y, colW, X.secVisitors, [
+        [X.people, L.persons(t.persons, lg)],
+        [X.passType, X.perPerson],
+      ])
+      : kvTable(doc, M, y, colW, X.secVehicle, [
+        [X.vehicleNo, t.reg_no],
+        [X.maker, d.make],
+        [X.model, d.model],
+        [X.variant, d.variant],
+        [X.type, L.vehicleType(t, lg)],
+      ]),
     kvTable(doc, M + colW + gap, y, colW, X.secVisit, [
       [X.destination, L.placeName(t, lg)],
       [X.district, `${L.district(t, lg)}, ${L.state(lg)}`],

@@ -33,10 +33,14 @@ const plate = require('../ulip/plate');
 /** query() hands back a pg result; every list here wants the rows. */
 const rowsOf = async (text, params) => (await query(text, params)).rows;
 
+/* What a pass is for, in a log line: a plate, or the people on a per-person
+   pass (056), which has none. */
+const who = (t) => (t && t.reg_no) || `${(t && t.persons) || 1} persons`;
+
 /* The gate is only ever interested in a pass that was paid for. */
 const LIST_COLUMNS = `
   t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.mobile,
-  t.total_paise, t.place_id, t.entry_source,
+  t.total_paise, t.place_id, t.entry_source, t.pass_kind, t.persons,
   s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label,
   s.label_kn AS slot_label_kn, s.starts_at, s.ends_at,
   c.code AS category_code, c.label AS category_label, c.label_kn AS category_label_kn,
@@ -47,7 +51,7 @@ const LIST_FROM = `
   FROM tickets t
   JOIN place_slots s ON s.id = t.slot_id
   JOIN vehicle_categories c ON c.id = t.category_id
-  JOIN vehicles v ON v.id = t.vehicle_id
+  LEFT JOIN vehicles v ON v.id = t.vehicle_id   /* none on a per-person pass (056) */
   JOIN customers cu ON cu.id = t.customer_id`;
 
 const shape = (r) => ({
@@ -61,6 +65,9 @@ const shape = (r) => ({
      themselves at the payment sheet — the screens say which, because they are
      not the same fact. */
   entrySource: r.entry_source || null,
+  /* A per-person pass (056) has no plate; the gate reads the number of people. */
+  passKind: r.pass_kind || 'vehicle',
+  persons: Number(r.persons) || 1,
   slot: { code: r.slot_code, label: r.slot_label, startsAt: r.starts_at, endsAt: r.ends_at },
   category: { code: r.category_code, label: r.category_label },
   vehicle: [r.maker, r.model].filter(Boolean).join(' ') || null,
@@ -247,7 +254,7 @@ function verdictFor(checkpost, t, at = new Date()) {
  * a template that did not send is a message to retry, not a reason to stop a
  * queue.
  */
-async function record({ session, checkpost, ticketNo, regNo, override = false, rawPayload = null, durationMs = null }) {
+async function record({ session, checkpost, ticketNo, regNo, override = false, rawPayload = null, durationMs = null, persons = null }) {
   const t = ticketNo ? await booking.byTicketNo(ticketNo) : null;
 
   if (!t) {
@@ -257,10 +264,11 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
 
   /* On the watchlist as blocked: stopped whatever the pass says. */
   const watchlist = require('./watchlist');
-  const watched = await watchlist.levelFor(t.reg_no);
+  /* The watchlist is of number plates; a per-person pass has none to check. */
+  const watched = t.reg_no ? await watchlist.levelFor(t.reg_no) : null;
   if (watched && watched.level === 'block') {
     await logScan({ session, checkpost, ticket: t, verdict: 'watch_blocked', rawPayload, durationMs });
-    require('../log').gate('watch_blocked', `watchlist — ${t.ticket_no} · ${t.reg_no}`);
+    require('../log').gate('watch_blocked', `watchlist — ${t.ticket_no} · ${who(t)}`);
     return { ok: false, verdict: 'watch_blocked', blocking: true, watch: watched,
       message: watchlist.gateMessage(watched), pass: detail(t) };
   }
@@ -275,6 +283,21 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
     /* Not logged yet: nothing happened, the staff member is being asked. The
        scan is written when they decide. */
     return { ok: false, verdict: 'wrong_slot', needsOverride: true, message: v.message, pass: detail(t) };
+  }
+
+  /*
+   * A PER-PERSON PASS (056): the gate says how many actually came in. Fewer than
+   * were booked is fine — somebody stayed behind — and is what gets recorded.
+   * More than were booked is refused before anything is written.
+   */
+  let entered = null;
+  if (t.pass_kind === 'person') {
+    const booked = Math.max(1, Number(t.persons) || 1);
+    entered = persons === null || persons === undefined || persons === '' ? booked : Math.floor(Number(persons));
+    if (!Number.isFinite(entered) || entered < 1 || entered > booked) {
+      return { ok: false, verdict: 'too_many_people', blocking: true, pass: detail(t),
+        message: `This pass is for ${booked} ${booked === 1 ? 'person' : 'persons'}. Enter a number from 1 to ${booked}.` };
+    }
   }
 
   /*
@@ -298,26 +321,26 @@ async function record({ session, checkpost, ticketNo, regNo, override = false, r
 
     await client.query(
       `INSERT INTO scans (ticket_id, ticket_no, reg_no, checkpost_id, staff_id, device_id, session_id, verdict,
-                          raw_payload, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                          raw_payload, duration_ms, persons)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [t.id, t.ticket_no, t.reg_no, checkpost.id, session.staff_id, null, session.session_id,
         override ? 'valid_override' : 'valid',
         JSON.stringify({ typed: rawPayload, override: override || undefined, slotVerdict: v.verdict,
           confirmedSelfCheckin: selfDeclared || undefined }),
-        sane(durationMs)]);
+        sane(durationMs), entered]);
     return rows[0].used_at;
   });
 
   if (!claimed) {
     const fresh = await booking.byTicketNo(t.ticket_no);
     await logScan({ session, checkpost, ticket: t, verdict: 'already_used', rawPayload, durationMs });
-    require('../log').gate('already_used', `already used — ${t.ticket_no} · ${t.reg_no}`);
+    require('../log').gate('already_used', `already used — ${t.ticket_no} · ${who(t)}`);
     return { ok: false, verdict: 'already_used', usedAt: fresh ? fresh.used_at : null,
       message: 'This pass was recorded a moment ago.', pass: detail(fresh || t) };
   }
 
   require('../log').gate(override ? 'valid_override' : 'valid',
-    `${t.ticket_no}  ${t.reg_no} · ${checkpost.name}${durationMs ? ` · ${(sane(durationMs) / 1000).toFixed(1)}s` : ''}`);
+    `${t.ticket_no}  ${who(t)} · ${checkpost.name}${durationMs ? ` · ${(sane(durationMs) / 1000).toFixed(1)}s` : ''}`);
 
   notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
 
@@ -385,10 +408,10 @@ async function recordOffline({ session, checkpost, ticketNo, clientId, at, overr
 
   /* Blocked on the watchlist: not accepted, even though it went through — the
      staff member is shown it, and so is the office. */
-  const offWatch = await require('./watchlist').levelFor(t.reg_no);
+  const offWatch = t.reg_no ? await require('./watchlist').levelFor(t.reg_no) : null;
   if (offWatch && offWatch.level === 'block') {
     await logOffline(t, 'watch_blocked');
-    require('../log').gate('watch_blocked', `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · watchlist`);
+    require('../log').gate('watch_blocked', `offline entry not accepted — ${t.ticket_no} · ${who(t)} · watchlist`);
     return { ok: false, verdict: 'watch_blocked', watch: offWatch,
       message: require('./watchlist').gateMessage(offWatch), pass: detail(t) };
   }
@@ -396,7 +419,7 @@ async function recordOffline({ session, checkpost, ticketNo, clientId, at, overr
   const v = verdictFor(checkpost, t, when);
   if (v.blocking) {
     await logOffline(t, v.verdict);
-    require('../log').gate(v.verdict, `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · ${v.verdict}`);
+    require('../log').gate(v.verdict, `offline entry not accepted — ${t.ticket_no} · ${who(t)} · ${v.verdict}`);
     return { ok: false, verdict: v.verdict, message: v.message, usedAt: v.usedAt || null, pass: detail(t) };
   }
 
@@ -422,14 +445,14 @@ async function recordOffline({ session, checkpost, ticketNo, clientId, at, overr
   if (!claimed) {
     const fresh = await booking.byTicketNo(t.ticket_no);
     await logOffline(t, 'already_used');
-    require('../log').gate('already_used', `offline entry not accepted — ${t.ticket_no} · ${t.reg_no} · used meanwhile`);
+    require('../log').gate('already_used', `offline entry not accepted — ${t.ticket_no} · ${who(t)} · used meanwhile`);
     return { ok: false, verdict: 'already_used', usedAt: fresh ? fresh.used_at : null,
       message: 'This pass was already used — probably at another gate while this phone had no signal.',
       pass: detail(fresh || t) };
   }
 
   require('../log').gate(asOverride ? 'valid_override' : 'valid',
-    `${t.ticket_no}  ${t.reg_no} · ${checkpost.name} · recorded offline, sent later`);
+    `${t.ticket_no}  ${who(t)} · ${checkpost.name} · recorded offline, sent later`);
   notify(t, checkpost, claimed).catch((e) => console.error('[checkin] notify %s: %s', t.ticket_no, e.message));
 
   return { ok: true, offline: true, verdict: asOverride ? 'valid_override' : 'valid', usedAt: claimed,

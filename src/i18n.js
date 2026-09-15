@@ -88,6 +88,26 @@ const S = {
   bookFooter: { en: 'Pravesha · Karnataka Tourism', kn: 'ಪ್ರವೇಶ · ಕರ್ನಾಟಕ ಪ್ರವಾಸೋದ್ಯಮ' },
   bookCta: { en: 'Open booking form', kn: 'ಫಾರಮ್ ತೆರೆಯಿರಿ' },
 
+  /* ── choosing the destination first, and per-person passes (2026-09-15) ── */
+  pickPlaceHeader: { en: 'Where are you visiting?', kn: 'ಯಾವ ಸ್ಥಳಕ್ಕೆ ಭೇಟಿ?' },
+  pickPlaceBody: {
+    en: 'Choose the place you are visiting. The booking form for that place opens next.',
+    kn: 'ನೀವು ಭೇಟಿ ನೀಡುವ ಸ್ಥಳವನ್ನು ಆಯ್ಕೆಮಾಡಿ. ಆ ಸ್ಥಳದ ಬುಕಿಂಗ್ ಫಾರಮ್ ನಂತರ ತೆರೆಯುತ್ತದೆ.',
+  },
+  pickPlaceButton: { en: 'Choose place', kn: 'ಸ್ಥಳ ಆಯ್ಕೆ' },
+  pickPlaceSection: { en: 'Destinations', kn: 'ಸ್ಥಳಗಳು' },
+  pickPlaceVehicle: { en: 'Pass per vehicle', kn: 'ಪ್ರತಿ ವಾಹನಕ್ಕೆ ಪಾಸ್' },
+  pickPlacePerson: { en: 'Pass per person', kn: 'ಪ್ರತಿ ವ್ಯಕ್ತಿಗೆ ಪಾಸ್' },
+  bookBodyPerson: {
+    en: 'Tap below to choose your date and the number of people (up to {max}).\n\nThe link works once and is valid for 2 hours.',
+    kn: 'ದಿನಾಂಕ ಮತ್ತು ಜನರ ಸಂಖ್ಯೆಯನ್ನು (ಗರಿಷ್ಠ {max}) ಆಯ್ಕೆ ಮಾಡಲು ಕೆಳಗೆ ಒತ್ತಿರಿ.\n\nಈ ಲಿಂಕ್ 2 ಗಂಟೆಗಳವರೆಗೆ ಮಾತ್ರ ಮಾನ್ಯ.',
+  },
+  secPeople: { en: '👥 *Visitors*', kn: '👥 *ಪ್ರವಾಸಿಗರು*' },
+  checkpostNotePerson: {
+    en: 'No printout needed. At the checkpost, show this pass number — staff will confirm how many of you are entering.',
+    kn: 'ಮುದ್ರಿತ ಪ್ರತಿ ಬೇಕಿಲ್ಲ. ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ಈ ಪಾಸ್ ಸಂಖ್ಯೆಯನ್ನು ತೋರಿಸಿ — ಸಿಬ್ಬಂದಿ ಪ್ರವೇಶಿಸುವವರ ಸಂಖ್ಯೆಯನ್ನು ದೃಢೀಕರಿಸುತ್ತಾರೆ.',
+  },
+
   /* ── the pass, as it arrives in the chat after payment ── */
   passConfirmed: {
     en: '✅ *Payment successful — your entry pass is confirmed*',

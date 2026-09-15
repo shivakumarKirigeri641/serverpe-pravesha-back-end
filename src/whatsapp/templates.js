@@ -63,7 +63,9 @@ function entryRecordedParams(t, { checkpost, recordedAt, statusKey = 'entry_reco
   const na = lang === 'kn' ? 'ಅನ್ವಯಿಸುವುದಿಲ್ಲ' : 'Not applicable';
   return [
     t.customer_name || t.wa_profile_name || (lang === 'kn' ? 'ಸಂದರ್ಶಕರೇ' : 'Visitor'), // {{1}} name
-    t.reg_no,                                    // {{2}} vehicle number
+    /* {{2}} vehicle number — or, on a per-person pass (056), how many people:
+       Meta rejects an empty parameter. */
+    t.reg_no || (lang === 'kn' ? `${t.persons || 1} ಜನರು` : `${t.persons || 1} ${Number(t.persons) === 1 ? 'person' : 'persons'}`),
     L.vehicleType(t, lang),                      // {{3}} vehicle type
     t.ticket_no,                                 // {{4}} pass number
     L.placeWithDistrict(t, lang),                // {{5}} place of visit

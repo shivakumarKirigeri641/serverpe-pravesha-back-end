@@ -171,13 +171,14 @@ router.get(`${P}/pass/:ticketNo`, auth, safe(async (req, res) => {
 /* Each pass, with its plate's watchlist entry if it has one. */
 async function withWatch(passes) {
   if (!Array.isArray(passes) || !passes.length) return passes;
-  const map = await require('../gatepass/watchlist').forPlates(passes.map((p) => p.regNo));
+  /* Only passes with a plate: a per-person pass (056) has none to look up. */
+  const map = await require('../gatepass/watchlist').forPlates(passes.map((p) => p.regNo).filter(Boolean));
   return passes.map((p) => (map.has(p.regNo) ? { ...p, watch: map.get(p.regNo) } : p));
 }
 
 /* Record the entry. `override: true` is the staff member accepting a warning. */
 router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
-  const { ticketNo, override, typed, elapsedMs } = req.body || {};
+  const { ticketNo, override, typed, elapsedMs, persons } = req.body || {};
   if (!ticketNo) return res.status(400).json({ error: 'missing_pass', message: 'Choose a pass first.' });
   const out = await checkin.record({
     session: req.session, checkpost: req.checkpost,
@@ -185,6 +186,8 @@ router.post(`${P}/entry`, json, auth, safe(async (req, res) => {
     /* How long the staff member spent on this pass, measured by their phone —
        the only place that knows when the pass was opened. */
     durationMs: elapsedMs,
+    /* On a per-person pass (056), how many came through; absent means everyone booked. */
+    persons: persons ?? null,
   });
   res.json(out);
 }));

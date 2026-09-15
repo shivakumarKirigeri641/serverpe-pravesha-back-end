@@ -117,7 +117,13 @@ const STATUS = {
 };
 const status = (key, lang) => (STATUS[key] ? pick(lang, STATUS[key].kn, STATUS[key].en) : key);
 
+/* The people on a per-person pass (056), in the reader's language. */
+const persons = (n, lang) => {
+  const k = Math.max(1, Number(n) || 1);
+  return lang === 'kn' ? `${k} ಜನರು` : `${k} ${k === 1 ? 'person' : 'persons'}`;
+};
+
 module.exports = {
   placeName, district, state, placeWithDistrict, slotLabel, vehicleType, checkpostName,
-  longDate, shortDate, dateTime, clock, status,
+  longDate, shortDate, dateTime, clock, status, persons,
 };

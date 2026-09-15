@@ -296,7 +296,7 @@ button:disabled{opacity:.6}
 </style></head><body>
 <div class="card">
   <div class="head"><h1>${esc(C.head(L.placeName(ticket, lang)))}</h1>
-    <p>${esc(C.pass)} ${esc(ticket.ticket_no)} &middot; ${esc(ticket.reg_no)}</p></div>
+    <p>${esc(C.pass)} ${esc(ticket.ticket_no)} &middot; ${esc(ticket.reg_no || require('../localize').persons(ticket.persons, lang))}</p></div>
   <div class="body">
     <!-- NOT a summary of any kind. The visitor reviewed and agreed to all of
          this on the previous page and tapped Pay; this page exists only to
