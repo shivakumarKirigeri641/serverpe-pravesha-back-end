@@ -119,7 +119,9 @@ const sendEntryRecorded = (to, t, opts, lang) =>
 const FEEDBACK_REQUEST = {
   /* Named per language, the same way the entry templates are. */
   en: { name: 'pv_feedback_en_v1', language: 'en' },
-  kn: { name: 'pv_feedback_kn_v1', language: 'kn' },
+  /* v3: v2 was recorded by Meta as MARKETING; v3 is the same message raised
+     again as UTILITY (user, 2026-09-15). */
+  kn: { name: 'pv_feedback_kn_v3', language: 'kn' },
 };
 
 function feedbackParams(t, lang) {
