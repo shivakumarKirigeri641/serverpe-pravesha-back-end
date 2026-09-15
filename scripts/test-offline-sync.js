@@ -27,7 +27,10 @@ const check = (name, ok, detail) => {
 };
 
 /* Everything this run created or changed, so it can be put back. */
-const touched = { clientIds: [], ticketIds: [], staffId: null };
+const touched = { clientIds: [], ticketIds: [], createdIds: [], vehicleIds: [], customerId: null, staffId: null, pool: null };
+
+/* Plates that may be used for tests, and nothing else (project rule). */
+const TEST_PLATES = ['KA31N8147', 'KA32R8604', 'KA02EX1480'];
 
 async function fixtures() {
   const { rows: [cp] } = await query(
@@ -61,6 +64,11 @@ async function freshTicket() {
       ORDER BY id DESC LIMIT 1`, [touched.ticketIds.length ? touched.ticketIds : [0]]);
   if (rows[0]) { touched.ticketIds.push(rows[0].id); return rows[0]; }
 
+  /* None to borrow — a clean database has no bookings at all. Make one, on a
+     test plate, and delete it again at the end. */
+  const made = await makePass();
+  if (made) return made;
+
   /* A development database rarely holds more spare passes than this file wants.
      Put an earlier one back to unused and use it again — cleanup does the same
      thing at the end, and each case keys off its own client id, not the pass. */
@@ -70,6 +78,48 @@ async function freshTicket() {
   if (!recycled[0]) throw new Error('no paid pass for today — book one, or run the Omniware sync/seed');
   console.log(`        (reusing ${recycled[0].ticket_no} — no spare passes today)`);
   return recycled[0];
+}
+
+/**
+ * A paid pass for today at this gate, built from nothing: a test plate, the
+ * day's first slot, the ordinary booking path. One pass per vehicle per day is
+ * enforced by the database, so each one uses the next test plate.
+ */
+async function makePass() {
+  const booking = require('../src/gatepass/booking');
+  const slotTime = require('../src/gatepass/slotTime');
+  const { rows: [cp] } = await query('SELECT * FROM checkposts WHERE is_active ORDER BY id LIMIT 1');
+  const { rows: [place] } = await query('SELECT * FROM places WHERE id = $1', [cp.place_id]);
+  const { rows: [slot] } = await query(
+    'SELECT * FROM place_slots WHERE place_id = $1 AND is_active ORDER BY sort_order LIMIT 1', [place.id]);
+  const { rows: [cat] } = await query("SELECT id FROM vehicle_categories WHERE code = 'CAR'");
+  if (!place || !slot || !cat) return null;
+
+  const plate = TEST_PLATES[touched.createdIds.length];
+  if (!plate) return null;
+
+  let { rows: [customer] } = await query("SELECT * FROM customers WHERE mobile = '9886122415'");
+  if (!customer) {
+    ({ rows: [customer] } = await query(
+      "INSERT INTO customers (mobile, name) VALUES ('9886122415', 'Offline sync test') RETURNING *"));
+    touched.customerId = customer.id;
+  }
+  let { rows: [vehicle] } = await query('SELECT * FROM vehicles WHERE reg_no = $1', [plate]);
+  if (!vehicle) {
+    ({ rows: [vehicle] } = await query(
+      `INSERT INTO vehicles (reg_no, maker, model, is_test) VALUES ($1, 'Test', 'Saloon', true) RETURNING *`, [plate]));
+    touched.vehicleIds.push(vehicle.id);
+  }
+
+  const travelDate = slotTime.nowIST().date;
+  const held = await booking.hold({ customer, vehicle, place, slot, categoryId: cat.id, travelDate });
+  if (!held.ok) return null;
+  await booking.markPaid(held.ticket.id, null);
+  touched.ticketIds.push(held.ticket.id);
+  touched.createdIds.push(held.ticket.id);
+  touched.pool = { placeId: place.id, slotId: slot.id, categoryId: cat.id, travelDate };
+  const { rows: [row] } = await query('SELECT id, ticket_no, reg_no FROM tickets WHERE id = $1', [held.ticket.id]);
+  return row;
 }
 
 const scansFor = async (clientId) => (await query(
@@ -146,10 +196,28 @@ async function cleanup() {
   for (const id of touched.clientIds) {
     await query('DELETE FROM scans WHERE raw_payload LIKE $1', [`%"clientId":"${id}"%`]);
   }
-  if (touched.ticketIds.length) {
+  /* Passes this run made are removed; ones it borrowed go back to unused. */
+  const borrowed = touched.ticketIds.filter((id) => !touched.createdIds.includes(id));
+  if (borrowed.length) {
     await query(`UPDATE tickets SET status = 'paid', used_at = NULL, entry_source = NULL
-                  WHERE id = ANY($1::bigint[])`, [touched.ticketIds]);
+                  WHERE id = ANY($1::bigint[])`, [borrowed]);
   }
+  if (touched.createdIds.length) {
+    await query('DELETE FROM invoices WHERE ticket_id = ANY($1::bigint[])', [touched.createdIds]);
+    await query('DELETE FROM web_tokens WHERE ticket_id = ANY($1::bigint[])', [touched.createdIds]);
+    await query('DELETE FROM tickets WHERE id = ANY($1::bigint[])', [touched.createdIds]);
+  }
+  if (touched.pool) {
+    const p = touched.pool;
+    await query(
+      `UPDATE slot_inventory SET booked = 0, held = 0, modified_at = now()
+        WHERE place_id=$1 AND slot_id=$2 AND category_id=$3 AND travel_date=$4
+          AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.place_id=$1 AND t.slot_id=$2
+                            AND t.category_id=$3 AND t.travel_date=$4 AND t.status IN ('held','paid','used'))`,
+      [p.placeId, p.slotId, p.categoryId, p.travelDate]);
+  }
+  if (touched.vehicleIds.length) await query('DELETE FROM vehicles WHERE id = ANY($1::bigint[])', [touched.vehicleIds]);
+  if (touched.customerId) await query('DELETE FROM customers WHERE id = $1', [touched.customerId]);
   if (touched.staffId) {
     await query('DELETE FROM staff_sessions WHERE staff_id = $1', [touched.staffId]);
     await query('DELETE FROM staff WHERE id = $1', [touched.staffId]);
