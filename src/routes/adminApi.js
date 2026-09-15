@@ -100,6 +100,8 @@ const me = (s) => ({
     manageStaff: admin.can(s.role, 'settings.staff'),
     readPersonal: admin.can(s.role, 'conversations.view'),
   },
+  /* The gate a checkpost manager runs; null for roles that span every checkpost. */
+  checkpost: s.checkpost_id ? { id: String(s.checkpost_id), name: s.checkpost_name, placeId: String(s.place_id) } : null,
   roleLabel: (require('../gatepass/permissions').ROLES[s.role] || {}).label || s.role,
   /* Filled in by the session route: the panel shows a banner while it runs. */
   simulation: s.simulation || null,
@@ -116,6 +118,28 @@ router.post(`${P}/session`, json, safe(async (req, res) => {
   });
   if (!out.ok) return res.status(out.error === 'locked' ? 423 : 401).json(out);
 
+  const session = await admin.sessionFor(out.token);
+  res.json({ ok: true, token: out.token, ...me(session) });
+}));
+
+/*
+ * Sign in with a code (2026-09-15): ask for one, then type it back. While codes
+ * are fixed for development nothing is sent to any number, and production
+ * refuses them — see src/gatepass/adminOtp.js.
+ */
+const clientIp = (req) => (req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
+
+router.post(`${P}/session/otp`, json, safe(async (req, res) => {
+  const out = await require('../gatepass/adminOtp').request({ mobile: req.body?.mobile, ip: clientIp(req) });
+  res.status(out.ok ? 200 : (['too_soon', 'too_many'].includes(out.error) ? 429 : 400)).json(out);
+}));
+
+router.post(`${P}/session/verify`, json, safe(async (req, res) => {
+  const out = await require('../gatepass/adminOtp').verify({
+    mobile: req.body?.mobile, code: req.body?.code,
+    ip: clientIp(req), userAgent: (req.get('user-agent') || '').slice(0, 300),
+  });
+  if (!out.ok) return res.status(401).json(out);
   const session = await admin.sessionFor(out.token);
   res.json({ ok: true, token: out.token, ...me(session) });
 }));

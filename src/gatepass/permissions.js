@@ -108,6 +108,25 @@ const ROLES = {
   },
 };
 
+/*
+ * The Deputy Commissioner (user, 2026-09-15): almost everything, including the
+ * audit trail — except editing prices, and except the checkpost manager's own
+ * work at the gate (selling and resending passes, staff, the watchlist, today's
+ * capacity, acting on alerts and negative tracking). The super administrator's
+ * two hardest-to-undo powers, panel users and GST, and the demonstration tools
+ * stay out too.
+ */
+const NOT_FOR_DC = [
+  'settings.pricing',
+  'tickets.onspot', 'tickets.resend', 'settings.staff', 'watchlist.manage', 'capacity.today', 'negative.act', 'alerts.act',
+  'settings.users', 'settings.gst', 'demo.simulate', 'demo.reset',
+];
+ROLES.dc = {
+  label: 'Deputy Commissioner',
+  description: 'Oversight of everything, including the audit trail; no price edits and no gate operations.',
+  can: ALL.filter((c) => !NOT_FOR_DC.includes(c)),
+};
+
 /* An older role name still found on rows created before 035. */
 ROLES.department = { ...ROLES.checkpost_manager, label: 'Department (legacy)' };
 
@@ -128,7 +147,7 @@ const capabilitiesOf = (role) => (ROLES[role] ? [...ROLES[role].can] : []);
 
 /** The matrix, for the permissions screen. */
 function matrix() {
-  const roles = ['super_admin', 'admin', 'checkpost_manager', 'finance', 'viewer'];
+  const roles = ['super_admin', 'admin', 'dc', 'checkpost_manager', 'finance', 'viewer'];
   return {
     roles: roles.map((key) => ({ key, label: ROLES[key].label, description: ROLES[key].description })),
     capabilities: Object.entries(CAPABILITIES).map(([key, label]) => ({

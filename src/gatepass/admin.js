@@ -51,6 +51,23 @@ async function passwordMatches(password, stored) {
 
 const localMobile = (m) => String(m || '').replace(/\D/g, '').replace(/^(?:0|91)(\d{10})$/, '$1');
 
+/**
+ * A session, however the person proved who they are — a password, or a code
+ * (panel OTP, 2026-09-15). One place writes the session, clears the lock and
+ * records the sign-in, so the two ways in cannot drift apart.
+ */
+async function openSession({ user, ip = null, userAgent = null, method = 'password' }) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  await query(
+    `INSERT INTO admin_sessions (admin_id, token, ip, user_agent) VALUES ($1,$2,$3,$4)`,
+    [user.id, token, ip || null, userAgent || null]);
+  await query(
+    `UPDATE admin_users SET failed_attempts = 0, locked_until = NULL, last_login_at = now(), modified_at = now()
+      WHERE id = $1`, [user.id]);
+  await audit({ adminId: user.id, action: 'sign_in', ip, detail: { method } });
+  return token;
+}
+
 /** Sign in. Every refusal carries a sentence the screen can show as it is. */
 async function signIn({ mobile, password, ip, userAgent }) {
   const m = localMobile(mobile);
@@ -84,15 +101,7 @@ async function signIn({ mobile, password, ip, userAgent }) {
     return { ok: false, error: 'bad_credentials', message: 'That mobile number and password do not match.' };
   }
 
-  const token = crypto.randomBytes(32).toString('base64url');
-  await query(
-    `INSERT INTO admin_sessions (admin_id, token, ip, user_agent) VALUES ($1,$2,$3,$4)`,
-    [user.id, token, ip || null, userAgent || null]);
-  await query(
-    `UPDATE admin_users SET failed_attempts = 0, locked_until = NULL, last_login_at = now(), modified_at = now()
-      WHERE id = $1`, [user.id]);
-
-  await audit({ adminId: user.id, action: 'sign_in', ip });
+  const token = await openSession({ user, ip, userAgent, method: 'password' });
 
   return { ok: true, token, user };
 }
@@ -103,9 +112,12 @@ async function sessionFor(token) {
   const hours = await settings.num('admin_session_hours', 12);
   const row = await one(
     `SELECT s.id AS session_id, s.started_at, s.last_seen_at,
-            u.id AS admin_id, u.name, u.mobile, u.role, u.is_active
+            u.id AS admin_id, u.name, u.mobile, u.role, u.is_active,
+            /* A checkpost manager's gate (055): what their screens are scoped to. */
+            u.checkpost_id, c.place_id, c.name AS checkpost_name
        FROM admin_sessions s
        JOIN admin_users u ON u.id = s.admin_id
+       LEFT JOIN checkposts c ON c.id = u.checkpost_id
       WHERE s.token = $1 AND s.ended_at IS NULL`, [token]);
 
   if (!row || !row.is_active) return null;
@@ -170,4 +182,4 @@ async function upsert({ name, mobile, password, role = 'admin' }) {
     [name, m, password_hash, role]);
 }
 
-module.exports = { signIn, signOut, sessionFor, audit, upsert, can, hashPassword, passwordMatches, localMobile, ROLES, MIN_PASSWORD };
+module.exports = { signIn, openSession, signOut, sessionFor, audit, upsert, can, hashPassword, passwordMatches, localMobile, ROLES, MIN_PASSWORD };
