@@ -48,7 +48,7 @@ async function request({ mobile, ip = null }) {
 
   const [recent] = (await query(
     `SELECT count(*) FILTER (WHERE sent_at > now() - interval '1 hour') AS in_hour, max(sent_at) AS last_sent
-       FROM admin_otps WHERE mobile = $1`, [m])).rows;
+       FROM admin_otps WHERE mobile = $1 AND purpose = 'sign_in'`, [m])).rows;
   if (recent.last_sent && Date.now() - new Date(recent.last_sent).getTime() < RESEND_SECONDS * 1000) {
     const wait = Math.ceil((RESEND_SECONDS * 1000 - (Date.now() - new Date(recent.last_sent).getTime())) / 1000);
     return { ok: false, error: 'too_soon', retryIn: wait, message: `A code was just issued. Wait ${wait} seconds before asking again.` };
@@ -60,7 +60,7 @@ async function request({ mobile, ip = null }) {
   /* One live code at a time: asking again retires the last one. */
   await query(
     `UPDATE admin_otps SET expires_at = now()
-      WHERE mobile = $1 AND consumed_at IS NULL AND expires_at > now()`, [m]);
+      WHERE mobile = $1 AND purpose = 'sign_in' AND consumed_at IS NULL AND expires_at > now()`, [m]);
   await query(
     `INSERT INTO admin_otps (admin_id, mobile, code_hash, expires_at, ip, is_fixed)
      VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval, $5, true)`,
@@ -78,7 +78,7 @@ async function verify({ mobile, code, ip = null, userAgent = null }) {
   if (m.length !== 10 || typed.length !== 4) return { ok: false, error: 'wrong', message: WRONG };
 
   const otp = await one(
-    `SELECT * FROM admin_otps WHERE mobile = $1 AND consumed_at IS NULL
+    `SELECT * FROM admin_otps WHERE mobile = $1 AND purpose = 'sign_in' AND consumed_at IS NULL
       ORDER BY sent_at DESC LIMIT 1`, [m]);
   if (!otp) return { ok: false, error: 'wrong', message: WRONG };
   if (new Date(otp.expires_at) <= new Date()) {

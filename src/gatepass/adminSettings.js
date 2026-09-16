@@ -357,7 +357,35 @@ async function deleteSlot({ slotId, reason }) {
 /* No PIN is issued. An enabled mobile number is the access: the gate app sends
    a code only to an active staff member's number (staffOtp.js). */
 
-async function staffList() {
+/*
+ * WHO MANAGES WHICH STAFF (user, 2026-09-16). The super administrator appoints
+ * a checkpost manager to one checkpost; that manager decides who reports for
+ * duty there. So a manager — anyone whose panel account is tied to a
+ * checkpost — sees, adds, re-posts and disables only the staff of that gate,
+ * and can post people only to that gate. Everyone else with this permission
+ * works across all gates.
+ *
+ * A staff member posted to two gates is shared, not owned: a manager changing
+ * them touches only their own gate's posting and leaves the other gate's alone.
+ *
+ * `gate` is the manager's checkpost id, or null for no limit.
+ */
+const gateOf = (actor) => {
+  if (actor && actor.checkpost_id) return String(actor.checkpost_id);
+  /* A checkpost manager whose gate has gone — closed, or removed by a clean-up
+     — reaches no gate at all. Treating "no gate" as "no limit" would hand them
+     every gate's staff. 0 matches no checkpost. */
+  if (actor && actor.role === 'checkpost_manager') return '0';
+  return null;
+};
+
+async function staffIsAtGate(staffId, gate) {
+  if (!gate) return true;
+  return Boolean(await one(`SELECT 1 FROM staff_checkposts WHERE staff_id = $1 AND checkpost_id = $2`, [staffId, gate]));
+}
+
+async function staffList({ actor = null } = {}) {
+  const gate = gateOf(actor);
   const today = slotTime.nowIST().date;
   const rows = await rowsOf(
     `SELECT s.id, s.name, s.mobile, s.is_active, s.locked_until, s.failed_attempts, s.created_at,
@@ -369,10 +397,16 @@ async function staffList() {
        FROM staff s
        LEFT JOIN staff_checkposts sc ON sc.staff_id = s.id
        LEFT JOIN checkposts c ON c.id = sc.checkpost_id
-      GROUP BY s.id ORDER BY s.is_active DESC, s.name`, [today]);
-  const checkposts = await rowsOf(`SELECT c.id, c.name, p.name AS place FROM checkposts c JOIN places p ON p.id = c.place_id WHERE c.is_active ORDER BY c.id`);
+      WHERE $2::bigint IS NULL
+         OR EXISTS (SELECT 1 FROM staff_checkposts mine WHERE mine.staff_id = s.id AND mine.checkpost_id = $2)
+      GROUP BY s.id ORDER BY s.is_active DESC, s.name`, [today, gate]);
+  const checkposts = await rowsOf(
+    `SELECT c.id, c.name, p.name AS place FROM checkposts c JOIN places p ON p.id = c.place_id
+      WHERE c.is_active AND ($1::bigint IS NULL OR c.id = $1) ORDER BY c.id`, [gate]);
   return {
     checkposts: checkposts.map((c) => ({ id: String(c.id), name: c.name, place: c.place })),
+    /* The panel shows no gate picker to a manager: there is only one answer. */
+    fixedCheckpost: gate,
     staff: rows.map((r) => ({
       id: String(r.id), name: r.name, mobile: r.mobile ? `••••${String(r.mobile).slice(-4)}` : null,
       active: r.is_active, locked: Boolean(r.locked_until && new Date(r.locked_until) > new Date()),
@@ -383,37 +417,47 @@ async function staffList() {
   };
 }
 
-async function validateCheckposts(ids) {
-  const list = [...new Set((ids || []).map(String))];
+async function validateCheckposts(ids, gate = null) {
+  /* A manager posts people to their own gate, whatever the request says. */
+  const list = gate ? [gate] : [...new Set((ids || []).map(String))];
   if (!list.length) refuse('Assign at least one checkpost.');
   const found = await rowsOf(`SELECT id FROM checkposts WHERE id = ANY($1::bigint[]) AND is_active`, [list]);
   if (found.length !== list.length) refuse('One of those checkposts does not exist.');
   return list;
 }
 
-async function addStaff({ body, reason }) {
+async function addStaff({ body, reason, actor = null }) {
+  const gate = gateOf(actor);
   const why = requireReason(reason);
   const name = String(body.name || '').trim();
   if (name.length < 2) refuse('Give the staff member’s name.');
   const mobile = staffModule.localMobile(body.mobile);
   if (mobile.length !== 10) refuse('The mobile number must be ten digits.');
-  if (await one(`SELECT 1 FROM staff WHERE mobile = $1`, [mobile])) refuse('Staff with that mobile number already exist.', { status: 409, code: 'exists' });
-  const checkpostIds = await validateCheckposts(body.checkpostIds);
+  if (await one(`SELECT 1 FROM staff WHERE mobile = $1`, [mobile])) {
+    refuse(gate
+      ? 'This mobile number is already registered as staff at another checkpost. Ask the super administrator to post them here as well.'
+      : 'Staff with that mobile number already exist.', { status: 409, code: 'exists' });
+  }
+  const checkpostIds = await validateCheckposts(body.checkpostIds, gate);
   const row = await staffModule.upsert({ name, mobile, checkpostIds });
   return { reason: why, staff: { id: String(row.id), name: row.name },
     audit: { subject: `staff:${row.id}`, before: null, after: { name, mobile: `••••${mobile.slice(-4)}`, checkpostIds } } };
 }
 
-async function updateStaff({ staffId, body, reason }) {
+async function updateStaff({ staffId, body, reason, actor = null }) {
+  const gate = gateOf(actor);
   const why = requireReason(reason);
   const s = await one(`SELECT * FROM staff WHERE id = $1`, [staffId]);
-  if (!s) refuse('No such staff member.', { status: 404, code: 'not_found' });
+  /* Another gate's staff reads as nobody at all to a manager. */
+  if (!s || !(await staffIsAtGate(staffId, gate))) refuse('No such staff member.', { status: 404, code: 'not_found' });
   const before = (await staffList()).staff.find((x) => x.id === String(staffId));
   const name = String(body.name || s.name).trim();
   const mobile = body.mobile ? staffModule.localMobile(body.mobile) : s.mobile;
   if (mobile.length !== 10) refuse('The mobile number must be ten digits.');
   if (mobile !== s.mobile && await one(`SELECT 1 FROM staff WHERE mobile = $1`, [mobile])) refuse('Another staff member has that mobile number.', { status: 409 });
-  const checkpostIds = body.checkpostIds ? await validateCheckposts(body.checkpostIds) : null;
+  /* A manager does not re-post their own staff: the posting is to their gate
+     and stays so. Only an unlimited administrator moves people between gates. */
+  const checkpostIds = !gate && body.checkpostIds ? await validateCheckposts(body.checkpostIds) : null;
   await tx(async (client) => {
     await client.query(`UPDATE staff SET name = $2, mobile = $3, modified_at = now() WHERE id = $1`, [staffId, name, mobile]);
     if (checkpostIds) {
@@ -428,10 +472,25 @@ async function updateStaff({ staffId, body, reason }) {
   return { reason: why, staff: after, audit: { subject: `staff:${staffId}`, before, after } };
 }
 
-async function setStaffActive({ staffId, active, reason }) {
+async function setStaffActive({ staffId, active, reason, actor = null }) {
+  const gate = gateOf(actor);
   const why = requireReason(reason);
   const s = await one(`SELECT id, name, is_active FROM staff WHERE id = $1`, [staffId]);
-  if (!s) refuse('No such staff member.', { status: 404, code: 'not_found' });
+  if (!s || !(await staffIsAtGate(staffId, gate))) refuse('No such staff member.', { status: 404, code: 'not_found' });
+  /* Disabling a staff member stops them at every gate. A manager who shares
+     someone with another gate takes them off duty here instead of shutting
+     them out of the other gate's work. */
+  if (gate && !active) {
+    const elsewhere = await one(`SELECT 1 FROM staff_checkposts WHERE staff_id = $1 AND checkpost_id <> $2`, [staffId, gate]);
+    if (elsewhere) {
+      await tx(async (client) => {
+        await client.query(`DELETE FROM staff_checkposts WHERE staff_id = $1 AND checkpost_id = $2`, [staffId, gate]);
+        await client.query(`UPDATE staff_sessions SET ended_at = now(), ended_reason = 'signed_out'
+                             WHERE staff_id = $1 AND ended_at IS NULL AND checkpost_id = $2`, [staffId, gate]);
+      });
+      return { reason: why, audit: { subject: `staff:${staffId}`, before: { postedAt: gate }, after: { removedFrom: gate } } };
+    }
+  }
   await tx(async (client) => {
     await client.query(`UPDATE staff SET is_active = $2, modified_at = now() WHERE id = $1`, [staffId, active]);
     /* Disabling ends the shift, or the phone in their hand keeps working. */
@@ -440,7 +499,8 @@ async function setStaffActive({ staffId, active, reason }) {
   return { reason: why, audit: { subject: `staff:${staffId}`, before: { active: s.is_active }, after: { active } } };
 }
 
-async function staffActivity(staffId) {
+async function staffActivity(staffId, { actor = null } = {}) {
+  if (!(await staffIsAtGate(staffId, gateOf(actor)))) refuse('No such staff member.', { status: 404, code: 'not_found' });
   const rows = await rowsOf(
     `SELECT sc.verdict, sc.scanned_at, sc.ticket_no, sc.reg_no, sc.duration_ms, cp.name AS checkpost
        FROM scans sc LEFT JOIN checkposts cp ON cp.id = sc.checkpost_id
@@ -470,9 +530,18 @@ const newPassword = () => `${WORDS[crypto.randomInt(WORDS.length)]}-${WORDS[cryp
 async function users() {
   const rows = await rowsOf(
     `SELECT u.id, u.name, u.mobile, u.role, u.is_active, u.last_login_at, u.locked_until, u.created_at,
+            u.checkpost_id, c.name AS checkpost_name, p.name AS checkpost_place,
             (SELECT count(*) FROM admin_sessions s WHERE s.admin_id = u.id AND s.ended_at IS NULL) AS open_sessions
-       FROM admin_users u ORDER BY u.is_active DESC, u.id`);
+       FROM admin_users u
+       LEFT JOIN checkposts c ON c.id = u.checkpost_id
+       LEFT JOIN places p ON p.id = c.place_id
+      ORDER BY u.is_active DESC, u.id`);
+  const checkposts = await rowsOf(
+    `SELECT c.id, c.name, p.name AS place FROM checkposts c JOIN places p ON p.id = c.place_id
+      WHERE c.is_active ORDER BY p.id, c.id`);
   return {
+    /* The gates a checkpost manager can be appointed to. */
+    checkposts: checkposts.map((c) => ({ id: String(c.id), name: c.name, place: c.place })),
     roles: Object.entries(permissions.ROLES).filter(([k]) => k !== 'department')
       .map(([key, r]) => ({ key, label: r.label, description: r.description })),
     users: rows.map((u) => ({
@@ -480,6 +549,7 @@ async function users() {
       roleLabel: permissions.ROLES[u.role]?.label || u.role, active: u.is_active,
       locked: Boolean(u.locked_until && new Date(u.locked_until) > new Date()),
       lastLogin: u.last_login_at, since: u.created_at, openSessions: n(u.open_sessions),
+      checkpost: u.checkpost_id ? { id: String(u.checkpost_id), name: u.checkpost_name, place: u.checkpost_place } : null,
     })),
   };
 }
@@ -488,6 +558,22 @@ const validRole = (role) => {
   if (!permissions.ROLES[role] || role === 'department') refuse('Choose a role.');
   return role;
 };
+
+/*
+ * A CHECKPOST MANAGER RUNS ONE CHECKPOST (user, 2026-09-16). The super
+ * administrator names it when appointing them, and a manager without one is
+ * refused: their screens and their staff are all scoped by it, so a manager
+ * with none would silently see every gate. Every other role carries no
+ * checkpost — a manager promoted to admin stops being limited to one gate.
+ */
+async function checkpostForRole(role, id) {
+  if (role !== 'checkpost_manager') return null;
+  const want = String(id || '').trim();
+  if (!want) refuse('Choose the checkpost this manager will run.', { code: 'checkpost_required' });
+  const c = await one(`SELECT id FROM checkposts WHERE id = $1 AND is_active`, [want]);
+  if (!c) refuse('That checkpost does not exist or is closed.');
+  return String(c.id);
+}
 
 async function activeSuperAdmins(client, exceptId) {
   const r = await client.query(`SELECT count(*) AS c FROM admin_users WHERE role = 'super_admin' AND is_active AND id <> $1`, [exceptId]);
@@ -502,10 +588,12 @@ async function addUser({ body, reason }) {
   if (mobile.length !== 10) refuse('The mobile number must be ten digits.');
   if (await one(`SELECT 1 FROM admin_users WHERE mobile = $1`, [mobile])) refuse('A panel user with that mobile already exists.', { status: 409 });
   const role = validRole(body.role);
+  const checkpostId = await checkpostForRole(role, body.checkpostId);
   const password = newPassword();
   const row = await admin.upsert({ name, mobile, password, role });
-  return { reason: why, password, user: { id: String(row.id), name: row.name, role },
-    audit: { subject: `admin_user:${row.id}`, before: null, after: { name, role } } };
+  await query(`UPDATE admin_users SET checkpost_id = $2 WHERE id = $1`, [row.id, checkpostId]);
+  return { reason: why, password, user: { id: String(row.id), name: row.name, role, checkpostId },
+    audit: { subject: `admin_user:${row.id}`, before: null, after: { name, role, checkpostId } } };
 }
 
 async function updateUser({ userId, body, reason, actorId }) {
@@ -514,14 +602,24 @@ async function updateUser({ userId, body, reason, actorId }) {
   if (!u) refuse('No such user.', { status: 404, code: 'not_found' });
   const role = body.role ? validRole(body.role) : u.role;
   const name = String(body.name || u.name).trim();
+  /* Keep their gate unless a new one is named; drop it if they stop being a manager. */
+  const checkpostId = await checkpostForRole(role, body.checkpostId !== undefined ? body.checkpostId : u.checkpost_id);
   if (String(userId) === String(actorId) && role !== u.role) refuse('You cannot change your own role.', { code: 'self' });
   await tx(async (client) => {
     if (u.role === 'super_admin' && role !== 'super_admin' && await activeSuperAdmins(client, u.id) === 0) {
       refuse('This is the last super administrator. Make someone else super admin first.', { code: 'last_super_admin' });
     }
-    await client.query(`UPDATE admin_users SET name = $2, role = $3, modified_at = now() WHERE id = $1`, [userId, name, role]);
+    await client.query(`UPDATE admin_users SET name = $2, role = $3, checkpost_id = $4, modified_at = now() WHERE id = $1`,
+      [userId, name, role, checkpostId]);
+    /* A manager moved to another gate is signed out, so no open screen keeps
+       showing the old gate's figures until it happens to refresh. */
+    if (String(u.checkpost_id || '') !== String(checkpostId || '')) {
+      await client.query(`UPDATE admin_sessions SET ended_at = now() WHERE admin_id = $1 AND ended_at IS NULL`, [userId]);
+    }
   });
-  return { reason: why, audit: { subject: `admin_user:${userId}`, before: { name: u.name, role: u.role }, after: { name, role } } };
+  return { reason: why, audit: { subject: `admin_user:${userId}`,
+    before: { name: u.name, role: u.role, checkpostId: u.checkpost_id ? String(u.checkpost_id) : null },
+    after: { name, role, checkpostId } } };
 }
 
 async function setUserActive({ userId, active, reason, actorId }) {
@@ -663,6 +761,7 @@ async function auditLog({ q = null, action = null, adminId = null, from = null, 
 }
 
 module.exports = {
+  gateOf,
   Refusal, pricing, updatePricing, slots, createSlot, updateSlot, deleteSlot,
   staffList, addStaff, updateStaff, setStaffActive, staffActivity,
   users, addUser, updateUser, setUserActive, resetUserPassword, gst, updateGst, auditLog, feeFor,

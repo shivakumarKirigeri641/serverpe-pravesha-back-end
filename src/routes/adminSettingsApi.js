@@ -79,15 +79,48 @@ router.put(`${P}/settings/slots/:id`, json, auth, needs('settings.slots'),
 router.delete(`${P}/settings/slots/:id`, json, auth, needs('settings.slots'),
   change('slot_deleted', (req) => settingsAdmin.deleteSlot({ slotId: req.params.id, reason: req.body?.reason || req.query.reason })));
 
-/* ── Checkpost staff ───────────────────────────────────────────────────── */
-router.get(`${P}/settings/staff`, auth, needs('settings.staff'), read(() => settingsAdmin.staffList()));
-router.get(`${P}/settings/staff/:id/activity`, auth, needs('settings.staff'), read((req) => settingsAdmin.staffActivity(req.params.id)));
+/* ── Checkpost staff ───────────────────────────────────────────────────────
+   A checkpost manager manages only their own gate's staff (user, 2026-09-16);
+   the limit is applied in adminSettings from the signed-in account, never
+   from anything the request says. */
+router.get(`${P}/settings/staff`, auth, needs('settings.staff'), read((req) => settingsAdmin.staffList({ actor: req.admin })));
+router.get(`${P}/settings/staff/:id/activity`, auth, needs('settings.staff'), read((req) => settingsAdmin.staffActivity(req.params.id, { actor: req.admin })));
 router.post(`${P}/settings/staff`, json, auth, needs('settings.staff'),
-  change('staff_added', (req) => settingsAdmin.addStaff({ body: req.body, reason: req.body.reason })));
+  change('staff_added', (req) => settingsAdmin.addStaff({ body: req.body, reason: req.body.reason, actor: req.admin })));
 router.put(`${P}/settings/staff/:id`, json, auth, needs('settings.staff'),
-  change('staff_updated', (req) => settingsAdmin.updateStaff({ staffId: req.params.id, body: req.body, reason: req.body.reason })));
+  change('staff_updated', (req) => settingsAdmin.updateStaff({ staffId: req.params.id, body: req.body, reason: req.body.reason, actor: req.admin })));
 router.post(`${P}/settings/staff/:id/active`, json, auth, needs('settings.staff'),
-  change('staff_access_changed', (req) => settingsAdmin.setStaffActive({ staffId: req.params.id, active: req.body.active === true, reason: req.body.reason })));
+  change('staff_access_changed', (req) => settingsAdmin.setStaffActive({ staffId: req.params.id, active: req.body.active === true, reason: req.body.reason, actor: req.admin })));
+/* ── Adding a person: name, mobile, a code, then the account ──────────────
+   (user, 2026-09-16). One form for checkpost staff and panel users alike. The
+   route asks only for staff management, which every role that may add anyone
+   has; which kinds of account this person may create is decided in
+   enrolment.js from the signed-in account — a panel user needs settings.users. */
+const enrolment = require('../gatepass/enrolment');
+router.get(`${P}/settings/people/options`, auth, needs('settings.staff'), read((req) => enrolment.options(req.admin)));
+router.post(`${P}/settings/people/code`, json, auth, needs('settings.staff'),
+  read((req) => enrolment.requestCode({ mobile: req.body?.mobile, actor: req.admin, ip: ipOf(req) })));
+router.post(`${P}/settings/people/verify`, json, auth, needs('settings.staff'),
+  read((req) => enrolment.verifyCode({ mobile: req.body?.mobile, code: req.body?.code })));
+router.post(`${P}/settings/people`, json, auth, needs('settings.staff'), async (req, res) => {
+  /* The audit action depends on what was made, so this cannot use change(). */
+  let out;
+  try {
+    out = await enrolment.enrol({ body: req.body || {}, actor: req.admin });
+  } catch (e) {
+    if (e instanceof settingsAdmin.Refusal) return res.status(e.status).json({ error: e.code, message: e.message });
+    console.error('[settingsApi] enrol: %s', e.stack || e.message);
+    return res.status(500).json({ error: 'server_error', message: 'Something went wrong. Nothing was changed.' });
+  }
+  const { audit, reason, action, ...rest } = out;
+  await admin.audit({
+    adminId: req.admin.admin_id, action, subject: audit?.subject || null,
+    before: audit?.before, after: { ...(audit?.after || {}), verifiedBy: 'code' },
+    reason: reason || null, ip: ipOf(req), sessionId: req.admin.session_id,
+  });
+  res.json({ ok: true, ...rest });
+});
+
 /* ── Panel users and roles ─────────────────────────────────────────────── */
 router.get(`${P}/settings/users`, auth, needs('settings.users'), read(() => settingsAdmin.users()));
 router.post(`${P}/settings/users`, json, auth, needs('settings.users'),
