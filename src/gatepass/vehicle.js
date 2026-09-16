@@ -39,9 +39,21 @@ const SNAPSHOT_HOURS = 24 * 30;
  * not in TRANSIENT: vahan.js has already tried its fallback dataset, and a
  * second round here would only double the calls to be told the same thing.
  */
-async function fetchDataset(regNo, dataset) {
+/*
+ * `timeoutMs` and `query` are for the super administrator's own vehicle checks
+ * (user, 2026-09-16): a fleet vehicle with hundreds of challans takes ULIP well
+ * over the eight seconds a booking can afford to wait, and the gateway pages its
+ * challans. Bookings pass neither and keep the short wait.
+ */
+async function fetchDataset(regNo, dataset, { timeoutMs = TIMEOUT_MS, query = null } = {}) {
   if (require('../ulip/config').config.source() === 'ulip') {
     const started = Date.now();
+    /* Asked for fresh: forget what the in-process cache holds, so the call
+       below goes to ULIP and stores the new answer. The cache keys are
+       rc / challan / fastag. */
+    if (query && String(query.refresh) === '1') {
+      require('../ulip/cache').drop(`${dataset === 'challans' ? 'challan' : dataset}:${regNo}`);
+    }
     try {
       const body = await require('../ulip/lookup').byDataset[dataset](regNo);
       return { body, ms: Date.now() - started, status: body.success ? 200 : 0 };
@@ -51,12 +63,13 @@ async function fetchDataset(regNo, dataset) {
     }
   }
 
-  const url = `${BASE()}/api/v1/vehicle/${encodeURIComponent(regNo)}/${dataset}`;
+  const qs = query ? `?${new URLSearchParams(query)}` : '';
+  const url = `${BASE()}/api/v1/vehicle/${encodeURIComponent(regNo)}/${dataset}${qs}`;
   const started = Date.now();
   try {
     const res = await fetch(url, {
       headers: { 'x-api-key': KEY() },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const body = await res.json().catch(() => ({}));
     return { body, ms: Date.now() - started, status: res.status };
@@ -340,8 +353,25 @@ function titleCase(s) {
  * @returns { make, model, variant, type, fuel, seats, colour } — any of which
  *          may be null when the RC record did not carry it.
  */
+/*
+ * A maker VAHAN does not actually know (user, 2026-09-16). Older registrations
+ * often file the manufacturer as "OTHERS" and put the real make into the model:
+ * KA02EX1481 is maker "OTHERS", model "HONDA ACTIVA". Shown as it came, the
+ * gate read "Others Honda Activa". A placeholder is treated as no maker, and
+ * the make is taken from the front of the model instead — "Honda Activa".
+ */
+const NO_MAKER = /^(OTHERS?|NA|N\/A|NOT AVAILABLE|UNKNOWN|NIL|-+)$/i;
+const realMaker = (m) => (NO_MAKER.test(String(m || '').trim()) ? '' : String(m || ''));
+
 function details(v) {
   if (!v) return {};
+  if (!realMaker(v.maker) && v.maker) {
+    /* The first word of the model is the make, when there is anything after it. */
+    const parts = String(v.model || '').trim().split(/\s+/).filter(Boolean);
+    v = parts.length > 1
+      ? { ...v, maker: parts[0], model: parts.slice(1).join(' ') }
+      : { ...v, maker: '' };
+  }
 
   /* "KIA INDIA PRIVATE LIMITED" -> "Kia". Corporate words are stripped rather
      than the string being truncated, so "TATA MOTORS LTD" keeps "Tata Motors"
@@ -391,7 +421,7 @@ function details(v) {
 /** One line: "Kia Seltos · Diesel · 2023". Kept for the chat and the caption. */
 function describe(v) {
   const bits = [
-    [v.maker, v.model].filter(Boolean).join(' '),
+    [realMaker(v.maker), v.model].filter(Boolean).join(' '),
     v.fuel,
     v.reg_date ? String(v.reg_date).slice(0, 4) : null,
   ].filter(Boolean);
@@ -416,4 +446,4 @@ function isClassified(v) {
   return !!(v && (v.vehicle_class || v.vehicle_category || v.body_type));
 }
 
-module.exports = { resolve, describe, details, upsertBare, isClassified, lookupOutcome, flushExtras };
+module.exports = { resolve, describe, details, upsertBare, upsert, saveSnapshot, isClassified, lookupOutcome, flushExtras, fetchDataset };

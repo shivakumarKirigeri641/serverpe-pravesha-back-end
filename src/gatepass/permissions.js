@@ -34,6 +34,9 @@ const CAPABILITIES = {
      here, how often, and what it paid. Money is still redacted for anybody
      without finance.view, the same as everywhere else. */
   'vehicles.view': 'Look up any vehicle and its history',
+  /* Paid lookups of a vehicle's government records, for the super
+     administrator's own checks (user, 2026-09-16). Every one is audited. */
+  'vehicles.check': 'Check any vehicle — RC, eChallans and FASTag (paid lookups)',
   /* A blocked plate is a vehicle turned away at a barrier with a paid pass in
      its hand. Putting one there is a decision, kept apart from looking. */
   'watchlist.manage': 'Put number plates on the watchlist, and take them off',
@@ -85,7 +88,7 @@ const ROLES = {
   admin: {
     label: 'Admin',
     description: 'Runs the service: everything except panel users and GST.',
-    can: ALL.filter((c) => !['settings.users', 'settings.gst', 'demo.reset'].includes(c)),
+    can: ALL.filter((c) => !['settings.users', 'settings.gst', 'demo.reset', 'vehicles.check'].includes(c)),
   },
   checkpost_manager: {
     label: 'Checkpost Manager',
@@ -119,7 +122,7 @@ const ROLES = {
 const NOT_FOR_DC = [
   'settings.pricing',
   'tickets.onspot', 'tickets.resend', 'settings.staff', 'watchlist.manage', 'capacity.today', 'negative.act', 'alerts.act',
-  'settings.users', 'settings.gst', 'demo.simulate', 'demo.reset',
+  'settings.users', 'settings.gst', 'demo.simulate', 'demo.reset', 'vehicles.check',
 ];
 ROLES.dc = {
   label: 'Deputy Commissioner',
