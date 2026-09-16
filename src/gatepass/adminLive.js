@@ -543,13 +543,30 @@ async function pulse(date = null) {
             (SELECT count(*) FROM staff_sessions
               WHERE (started_at AT TIME ZONE 'Asia/Kolkata')::date = $1::date)      AS shifts,
             (SELECT count(*) FROM staff_sessions
-              WHERE ended_at IS NULL AND started_at > now() - interval '18 hours')   AS on_duty`,
+              WHERE ended_at IS NULL AND started_at > now() - interval '18 hours')   AS on_duty,
+            /*
+             * WHATEVER DATE IT IS FOR (user, 2026-09-16). The markers above
+             * watch today; money does not. A pass booked today for next week, a
+             * refund of last week's, an invoice, a sale at the barrier, a failed
+             * checkout — each changes what the money screens show, and the
+             * GST & Invoices list stayed as it was until it was reloaded by hand.
+             * Each of these is an index lookup (migration 060).
+             */
+            (SELECT COALESCE(max(id), 0) FROM tickets)                              AS any_pass,
+            (SELECT COALESCE(floor(extract(epoch FROM max(modified_at)) * 1000), 0) FROM tickets) AS any_pass_changed,
+            (SELECT COALESCE(max(id), 0) FROM payments)                             AS any_payment,
+            (SELECT COALESCE(floor(extract(epoch FROM max(paid_at)) * 1000), 0) FROM payments)     AS any_paid,
+            (SELECT COALESCE(floor(extract(epoch FROM max(refunded_at)) * 1000), 0) FROM payments) AS any_refund,
+            (SELECT count(*) FROM payments WHERE status = 'failed')                 AS failed_payments,
+            (SELECT COALESCE(max(id), 0) FROM invoices)                             AS any_invoice,
+            (SELECT COALESCE(max(id), 0) FROM ticket_grants)                        AS any_grant`,
     [today]);
 
   /* One short string the screen can compare with the last one it saw. Its shape
      is nobody's business but this file's — it is an "is it still the same?",
      not a report. */
-  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.pass_changed, row.capacity_changed, row.shifts, row.on_duty].join('.');
+  const beat = [row.checks, row.last_check, row.passes, row.last_pass, row.pass_changed, row.capacity_changed, row.shifts, row.on_duty,
+    row.any_pass, row.any_pass_changed, row.any_payment, row.any_paid, row.any_refund, row.failed_payments, row.any_invoice, row.any_grant].join('.');
   return {
     date: today,
     pulse: beat,
