@@ -71,7 +71,10 @@ async function signInVerified({ staffId, checkpostId = null, deviceToken = null 
             p.district, p.district_kn
        FROM staff_checkposts sc
        JOIN checkposts c ON c.id = sc.checkpost_id AND c.is_active
-       JOIN places p ON p.id = c.place_id
+       /* A gate at a destination that is switched off is not a place to start a
+          shift (user, 2026-09-16): offering it made staff choose between an open
+          gate and a closed one. */
+       JOIN places p ON p.id = c.place_id AND p.is_active
       WHERE sc.staff_id = $1
       ORDER BY c.id`, [staff.id])).rows;
 

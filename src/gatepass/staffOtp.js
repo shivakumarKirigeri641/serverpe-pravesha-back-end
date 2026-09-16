@@ -40,7 +40,7 @@ const MINUTES = 3;            // how long a code lives
 const MAX_ATTEMPTS = 5;       // wrong guesses before it is dead
 const RESEND_SECONDS = 60;    // between one code and the next
 const PER_HOUR = 6;           // codes per number per hour
-const TEST_CODE = '1234';     // for the reserved 000 range only
+const TEST_CODE = '1234';     // the reserved 000 range, and every number off production
 
 /* Both languages, because the person reading this is at a barrier in Chikkamagaluru. */
 const SAYS = {
@@ -98,6 +98,17 @@ const say = (key, extra = {}) => ({ message: SAYS[key].en, messageKn: SAYS[key].
 
 const digits = (m) => String(m || '').replace(/\D/g, '').slice(-10);
 const isTest = (m) => /^000\d{7}$/.test(m);
+
+/*
+ * NO SMS FOR NOW (user, 2026-09-16). Off production, every staff number signs in
+ * with the fixed code 1234 and nothing is sent — the same rule as the admin
+ * panel's sign-in (adminOtp.js). On production a fixed code would let anyone who
+ * knows a staff member's number through the gate app, so there real codes are
+ * generated and sent by SMS exactly as before.
+ * "Production" is NODE_ENV=production, as everywhere else.
+ */
+const onProduction = () => String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const fixedCode = (m) => isTest(m) || !onProduction();
 
 /* A code with no pattern in it. randomInt is the right generator here: Math.random
    is predictable enough to matter when the whole secret is four digits. */
@@ -162,7 +173,7 @@ async function request({ mobile, ip = null }) {
   })();
   const validity = `${MINUTES} minutes`;
 
-  const testing = isTest(m);
+  const testing = fixedCode(m);
   const code = testing ? TEST_CODE : mint();
   /* Scrypt from staff.js, rather than a second scheme and a new dependency for
      the sake of four digits. */
@@ -178,10 +189,11 @@ async function request({ mobile, ip = null }) {
     `INSERT INTO staff_otps (staff_id, mobile, code_hash, expires_at, ip, is_test)
      VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval, $5, $6)
      RETURNING id, expires_at`,
-    [staff.id, m, hash, String(MINUTES), ip, testing]);
+    [staff.id, m, hash, String(MINUTES), ip, isTest(m)]);
 
   if (testing) {
-    /* No SMS exists for a reserved number, so the flow is testable without one. */
+    /* No SMS: a reserved number cannot receive one, and off production none is
+       sent to anybody. */
     return {
       ok: true, expiresAt: row.expires_at, minutes: MINUTES, testCode: code,
       ...say('sent'),
@@ -236,11 +248,27 @@ async function verify({ mobile, code, checkpostId = null, deviceToken = null }) 
       : { ok: false, error: 'wrong', attemptsLeft: remaining, ...say('wrong') };
   }
 
-  /* Spent the moment it works, so the same code cannot open a second shift. */
-  await query(`UPDATE staff_otps SET consumed_at = now() WHERE id = $1`, [otp.id]);
+  /*
+   * Spent when it opens a shift, so the same code cannot open a second one.
+   * Claimed first, in one statement, so two taps arriving together cannot both
+   * get past this line.
+   */
+  const claimed = await one(
+    `UPDATE staff_otps SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL RETURNING id`, [otp.id]);
+  if (!claimed) return { ok: false, error: 'no_code', ...say('no_code') };
 
   const signed = await staffModule.signInVerified({ staffId: otp.staff_id, checkpostId, deviceToken });
-  if (!signed.ok) return signed;
+  if (!signed.ok) {
+    /*
+     * No shift opened, so the code is given back (user, 2026-09-16). The usual
+     * reason is someone posted to two gates being asked which one they are at:
+     * their answer comes back with the same code, and it used to find that code
+     * already spent — "Ask for a code first", on the gate they had just chosen.
+     * The code still expires on time and still counts its wrong tries.
+     */
+    await query(`UPDATE staff_otps SET consumed_at = NULL WHERE id = $1`, [otp.id]);
+    return signed;
+  }
 
   require('../log').event('gate', 'in', `${signed.staff.name} · ••••${m.slice(-4)} · ${signed.checkpost.name}`);
   return signed;
