@@ -242,8 +242,60 @@ function slotNotice(t, notice, lang) {
 const sendSlotNotice = (to, t, notice, lang) =>
   sendInLanguage(to, (l) => slotNotice(t, notice, l), lang);
 
+/* ── A pass issued from the panel, or sent again ─────────────────────────── */
+
+/**
+ * "Your entry pass has been issued" (user, 2026-09-16).
+ *
+ * A TEMPLATE, because a free pass is usually issued to somebody who never wrote
+ * to us — a guest of the department, a walk-in at the desk — and a free message
+ * to them would be refused. The same template carries "Send again" for any pass
+ * whose visitor is outside the 24-hour window.
+ *
+ * ENGLISH ONLY for now: one registration. The header and footer are fixed text
+ * approved with it; only the body and the button carry parameters.
+ *
+ *   body   {{1}} name  {{2}} pass number  {{3}} vehicle number (or people)
+ *          {{4}} vehicle type  {{5}} place  {{6}} date  {{7}} slot  {{8}} pass type
+ *   button {{1}} the pass number, appended to the approved verify URL
+ */
+const PASS_ISSUED = { name: 'pv_passissuedetails_v1', language: 'en' };
+
+const PASS_KIND = { free: 'Free pass', onspot: 'On-spot pass', whatsapp: 'Booked on WhatsApp' };
+
+function passIssuedParams(t, kind) {
+  const na = 'Not applicable';
+  return [
+    t.customer_name || t.wa_profile_name || 'Visitor',                                  // {{1}}
+    t.ticket_no,                                                                        // {{2}}
+    t.reg_no || `${t.persons || 1} ${Number(t.persons) === 1 ? 'person' : 'persons'}`,  // {{3}}
+    L.vehicleType(t, 'en'),                                                             // {{4}}
+    L.placeWithDistrict(t, 'en'),                                                       // {{5}}
+    L.longDate(t.travel_date, 'en'),                                                    // {{6}}
+    L.slotLabel(t, 'en'),                                                               // {{7}}
+    PASS_KIND[kind] || PASS_KIND.whatsapp,                                              // {{8}}
+  ].map((v) => flat(v) || na); // Meta refuses an empty parameter
+}
+
+function passIssued(t, kind) {
+  return {
+    type: 'template',
+    template: {
+      name: PASS_ISSUED.name,
+      language: { code: PASS_ISSUED.language },
+      components: [
+        { type: 'body', parameters: passIssuedParams(t, kind).map((text) => ({ type: 'text', text: String(text) })) },
+        { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: t.ticket_no }] },
+      ],
+    },
+  };
+}
+
+const sendPassIssued = (to, t, kind) => send.post(to, passIssued(t, kind));
+
 module.exports = {
   sendInLanguage,
+  passIssued, passIssuedParams, sendPassIssued, PASS_ISSUED,
   entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
   feedbackRequest, feedbackParams, sendFeedbackRequest, FEEDBACK_REQUEST,
   periodReport, sendPeriodReport, PERIOD_REPORT,

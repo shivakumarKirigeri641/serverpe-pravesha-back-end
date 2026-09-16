@@ -329,12 +329,32 @@ async function freeTicket({ body, adminId }) {
     recordEntry: false,
   });
 
+  /* The pass exists whatever happens to the message: a failed send is reported,
+     never turned into a failed issue. */
+  const whatsapp = body.sendWhatsapp === true ? await tellVisitor(ticket, customer) : null;
+
   return {
     ticket: summary(ticket, { place, slot, category, customer, vehicle }),
+    whatsapp,
     audit: { subject: `ticket:${ticket.ticket_no}`, before: null,
       after: { kind: 'free', ticketNo: ticket.ticket_no, regNo: vehicle.reg_no, travelDate, slot: slot.label, reasonCode, approvedBy: approver.name },
       reason: `${reasonCode}: ${reason}` },
   };
+}
+
+/* The pass-issued template, on request, with a sentence the panel can show as it is. */
+async function tellVisitor(ticket, customer) {
+  const to = `••••${String(customer.mobile).slice(-4)}`;
+  try {
+    const out = await require('../whatsapp/deliver').sendPassIssued(ticket.id);
+    if (!out.ok) return { sent: false, sentTo: to, message: 'The pass is issued, but WhatsApp did not accept the message. Use "Send again" on the pass.' };
+    if (out.testRecipient) return { sent: false, sentTo: to, message: 'This is a test number, so nothing was actually sent.' };
+    if (out.dryRun) return { sent: false, sentTo: to, message: 'Sending is switched off on this server, so nothing was actually sent.' };
+    return { sent: true, sentTo: to, message: `The pass details were sent on WhatsApp to ${to}.` };
+  } catch (e) {
+    console.error('[tickets] pass-issued message for %s: %s', ticket.ticket_no, e.message);
+    return { sent: false, sentTo: to, message: 'The pass is issued, but the WhatsApp message could not be sent. Use "Send again" on the pass.' };
+  }
 }
 
 const METHODS = ['cash', 'upi', 'card'];

@@ -190,6 +190,19 @@ async function resendPass(ticketId) {
   const t = await booking.byId(ticketId);
   if (!t || (t.status !== 'paid' && t.status !== 'used')) return { ok: false, reason: 'not_found' };
 
+  /*
+   * THE TEMPLATE WHEN A CHAT MESSAGE CANNOT GO (2026-09-16). A free pass always
+   * goes as the template — its visitor rarely wrote to us, and the chat message
+   * is a receipt whose payment section has nothing to say. Any other pass goes
+   * as the template once the visitor is outside the 24-hour window, where the
+   * message and PDF would be refused. The template has no PDF; its button opens
+   * the pass.
+   */
+  const kind = await issuedAs(t.id);
+  if (kind === 'free' || !await send.windowOpen(phone.toWa(t.mobile))) {
+    return sendIssued(t, kind, 'pass_resent');
+  }
+
   const to = phone.toWa(t.mobile);
   const lang = langOf((await query('SELECT language FROM customers WHERE id = $1', [t.customer_id])).rows[0]);
   const s = await docSettings();
@@ -208,6 +221,27 @@ async function resendPass(ticketId) {
   return { ok: msg.ok && doc.ok, testRecipient: Boolean(msg.testRecipient || doc.testRecipient), dryRun: Boolean(msg.dryRun || doc.dryRun) };
 }
 
+/* 'free' | 'onspot' | 'whatsapp' — how the pass came to exist. */
+async function issuedAs(ticketId) {
+  const { rows } = await query('SELECT kind FROM ticket_grants WHERE ticket_id = $1 LIMIT 1', [ticketId]);
+  return rows[0] ? rows[0].kind : 'whatsapp';
+}
+
+/** The pass-issued template, to the number on the pass. */
+async function sendIssued(t, kind, event) {
+  const out = await require('./templates').sendPassIssued(phone.toWa(t.mobile), t, kind);
+  await logEvent(t, event, { template: 'pv_passissuedetails_v1', ok: out.ok, error: out.error || null });
+  return { ok: out.ok, template: true, error: out.error || null,
+    testRecipient: Boolean(out.testRecipient), dryRun: Boolean(out.dryRun) };
+}
+
+/** A pass issued from the panel, on WhatsApp — only when whoever issued it asked. */
+async function sendPassIssued(ticketId) {
+  const t = await booking.byId(ticketId);
+  if (!t || (t.status !== 'paid' && t.status !== 'used')) return { ok: false, reason: 'not_found' };
+  return sendIssued(t, await issuedAs(t.id), 'pass_issued_sent');
+}
+
 async function sendInvoice(t, inv, to, s) {
   const invoicePdf = require('../pdf/invoicePdf');
   const pdf = await invoicePdf.render(t, inv, { settings: s });
@@ -221,4 +255,4 @@ async function logEvent(t, kind, detail) {
   } catch { /* the log is for us; it must not undo a delivered pass */ }
 }
 
-module.exports = { deliverTicket, resendPass, passMessage, docSettings, verifyUrl };
+module.exports = { deliverTicket, resendPass, sendPassIssued, passMessage, docSettings, verifyUrl };

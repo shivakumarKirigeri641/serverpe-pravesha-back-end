@@ -102,7 +102,10 @@ router.post(`${P}/:id/resend`, auth, needs('tickets.resend'), handle(async (req,
         ? 'This is a test number, so nothing was actually sent.'
         : 'Sending is switched off on this server, so nothing was actually sent.' });
   }
-  res.json({ ok: true, sent: true, sentTo: `••••${String(t.mobile).slice(-4)}`, message: 'The pass was sent again on WhatsApp.' });
+  res.json({ ok: true, sent: true, sentTo: `••••${String(t.mobile).slice(-4)}`,
+    message: out.template
+      ? 'The pass details were sent on WhatsApp, with a button that opens the pass.'
+      : 'The pass was sent again on WhatsApp.' });
 }));
 
 module.exports = router;
