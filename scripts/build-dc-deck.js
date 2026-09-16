@@ -299,6 +299,10 @@ const AGENDA = [
     brief: 'Charging model — per-vehicle service fee, and the department\'s annual charge' },
   { en: 'Investment & Operating Costs', kn: 'ಹೂಡಿಕೆ ಮತ್ತು ನಿರ್ವಹಣಾ ವೆಚ್ಚಗಳು',
     brief: 'Investments, expenditure & infrastructure costs — laptop, VPS, domain, mail domain, SMS OTP cost, WhatsApp message cost, Razorpay cost, SSL certificate (HTTPS), development tools (Claude agent, Copilot agent); development & testing effort, deployment testing effort, bug-fix effort' },
+  /* Added by the user (2026-09-16): what happens if the department stops —
+     after the money has been set out, so the terms follow the charges. */
+  { en: 'Termination, Suspension & Exit', kn: 'ಸೇವೆ ಸ್ಥಗಿತ, ಅಮಾನತು ಮತ್ತು ನಿರ್ಗಮನ',
+    brief: 'First month is beta live production: no AMC, only the proposed per-ticket charge. AMC start date is the agreed 1st day after the month of beta, once the department is satisfied; AMC is settled before that day. Dropping or suspension during beta is allowed; platform fees collected are retained, not refunded. No dropping or exit once in actual production (user, 2026-09-16).' },
   { en: 'Inputs & Approvals — Access, Deployment & Reports', kn: 'ಅನುಮೋದನೆಗಳು — ಪ್ರವೇಶ, ನಿಯೋಜನೆ, ವರದಿ',
     brief: 'Deployment, domain names, WhatsApp booking mobile number, logo usage sanction, split sharing of the costs based on the model selected, publicity/promotion/marketing on approval. Role based access, deployments, server/database access from ServerPe. Reports sharing.' },
   { en: 'Live Demonstration', kn: 'ನೇರ ಪ್ರಾತ್ಯಕ್ಷಿಕೆ', highlight: true,
@@ -1441,9 +1445,9 @@ const COST = {
   razorpay: { min: 300000, max: 600000 },
   /* One quotable figure, not a range: a range on a slide is negotiated down
      before the meeting starts (user, 2026-09-15). GST is added on top. */
-  /* From Year 2. Year 1 is charged at ₹5 L (deployment, training and first-year
-     support) — see the commercial slide, which holds that figure. */
-  amc: { value: 300000 },
+  /* From Year 2 — ₹4 L for now (user, 2026-09-16; was ₹3 L). Year 1 is the
+     ₹2 L start-up charge — see YEAR1_SUPPORT beside the commercial slide. */
+  amc: { value: 400000 },
 };
 
 const L2 = (n) => (n / 100000).toFixed(2);
@@ -1572,8 +1576,8 @@ function amc(pptx, ctx) {
   heading(s, 'Annual Maintenance Contract (AMC)', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣಾ ಒಪ್ಪಂದ (AMC)');
 
   s.addText([
-    { text: 'Year 1 carries deployment and training; from Year 2 the AMC carries the platform', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
-    { text: '   ·   ಮೊದಲ ವರ್ಷ ನಿಯೋಜನೆ ಮತ್ತು ತರಬೇತಿ; ಎರಡನೇ ವರ್ಷದಿಂದ AMC', options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
+    { text: 'Two AMC proposals — renewed every year, or one 3-year contract', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
+    { text: '   ·   AMC ಎರಡು ಆಯ್ಕೆ — ಪ್ರತಿ ವರ್ಷ ನವೀಕರಣ ಅಥವಾ 3 ವರ್ಷದ ಒಪ್ಪಂದ', options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
   ], { x: GUTTER, y: 1.84, w: W - GUTTER * 2, h: 0.36, valign: 'middle', margin: 0 });
 
   const covered = [
@@ -1634,24 +1638,28 @@ function amc(pptx, ctx) {
   /* Right: the price, then why it is lean. */
   const rx = lx + leftW + 0.25;
   const rw = W - GUTTER - rx;
-  const priceH = 1.95;
+  const priceH = 2.12;
   s.addShape('roundRect', { x: rx, y: top, w: rw, h: priceH, fill: { color: C.brand }, line: { color: C.brand }, rectRadius: 0.08 });
   /* The two figures the commercial slide quotes: a higher first year, because
      deployment and training sit inside it, and the lean AMC from Year 2. */
-  const amcGst = (COST.amc.value * ctx.gst) / 100;
-  const y1Gst = (YEAR1_SUPPORT * ctx.gst) / 100;
   const halfW = (rw - 0.56) / 2;
-  const year = (dx, tag, kn, amount, gst, note) => s.addText([
-    { text: tag, options: { fontFace: F.enBold, fontSize: 11.5, color: C.sun } },
-    { text: `   ${kn}`, options: { fontFace: F.kn, fontSize: KN(8), color: 'CFE5DC', breakLine: true } },
-    { text: inrFull(amount + gst), options: { fontFace: F.enBold, fontSize: 23, color: C.white, breakLine: true } },
-    { text: `${inrFull(amount)} + GST ${ctx.gst}% ${inrFull(gst)}`, options: { fontFace: F.en, fontSize: 10, color: 'CFE5DC', breakLine: true } },
-    { text: note, options: { fontFace: F.en, fontSize: 9.5, color: 'CFE5DC' } },
+  /* One column per proposal: its headline figure, what follows, and three years. */
+  const plan = (dx, tag, kn, big, bigNote, lines, threeYears) => s.addText([
+    { text: tag, options: { fontFace: F.enBold, fontSize: 11, color: C.sun, breakLine: true } },
+    { text: kn, options: { fontFace: F.kn, fontSize: KN(7.5), color: 'CFE5DC', breakLine: true } },
+    { text: big, options: { fontFace: F.enBold, fontSize: 20, color: C.white, breakLine: true } },
+    { text: bigNote, options: { fontFace: F.en, fontSize: 9.5, color: 'CFE5DC', breakLine: true } },
+    ...lines.map((l) => ({ text: l, options: { fontFace: F.en, fontSize: 9.5, color: C.white, breakLine: true } })),
+    { text: `${PLAN_YEARS} years: ${inrFull(threeYears)} + GST`, options: { fontFace: F.enBold, fontSize: 10, color: C.sun } },
   ], { x: rx + 0.28 + dx, y: top, w: halfW - 0.12, h: priceH, valign: 'middle', margin: 0 });
 
-  year(0, 'Year 1', 'ಮೊದಲ ವರ್ಷ', YEAR1_SUPPORT, y1Gst, 'Deployment, training & first-year support');
+  plan(0, 'Proposal 1 · Yearly', 'ಪ್ರತಿ ವರ್ಷ ನವೀಕರಣ', inrFull(YEAR1_TOTAL),
+    `₹2 L start-up + ₹4 L AMC`,
+    [`Then ${inrFull(COST.amc.value)} a year`, 'Renewed yearly on payment'], PLAN1_TOTAL);
   s.addShape('line', { x: rx + 0.28 + halfW, y: top + 0.3, w: 0, h: priceH - 0.6, line: { color: '3F7F72', width: 1 } });
-  year(halfW + 0.12, 'Year 2 onward', 'ಎರಡನೇ ವರ್ಷದಿಂದ', COST.amc.value, amcGst, 'Hosting, maintenance & support, per year');
+  plan(halfW + 0.12, 'Proposal 2 · 3 years', '3 ವರ್ಷದ ಒಪ್ಪಂದ', inrFull(PLAN2_TOTAL),
+    'One contract for 3 years',
+    ['Training & on-spot fixes free', 'First-month visits free'], PLAN2_TOTAL);
 
   const whyY = top + priceH + 0.2;
   s.addShape('roundRect', { x: rx, y: whyY, w: rw, h: bottom - whyY, fill: { color: C.mist }, line: { color: C.mist2 }, rectRadius: 0.08 });
@@ -1694,14 +1702,14 @@ function yearCompare(pptx, ctx) {
   const leftW = 6.55;
   const rx = lx + leftW + 0.28;
   const rw = W - GUTTER - rx;
-  const rowH = 0.36;
-  /* The engineering behind the AMC, priced rather than asserted (user,
-     2026-09-15): about 20 hours a month of maintenance, monitoring, updates and
-     support during gate hours. The rate is derived from the AMC so the two can
-     never drift apart — 240 × ₹1,250 is exactly ₹3,00,000. */
-  const SUPPORT_HOURS = 240;
-  const supportRate = COST.amc.value / SUPPORT_HOURS;
-  const everyYear = plus(T.year2, { min: COST.amc.value, max: COST.amc.value });
+  const rowH = 0.28;
+  /*
+   * ROUNDED TO THE CHARGE (user, 2026-09-16). The year totals exactly the ₹4 L
+   * annual charge, all-inclusive: work, labour and development is the balance
+   * after the bought-in lines, so the list and the charge are one figure. Year 1
+   * adds the ₹2 L start-up, for ₹6 L.
+   */
+  const balance = { min: COST.amc.value - T.year2.max, max: COST.amc.value - T.year2.min };
 
   /* Left: every rupee that recurs, itemised — grouped subtotals here read as
      something withheld, and this is the slide where the department is entitled
@@ -1713,7 +1721,7 @@ function yearCompare(pptx, ctx) {
     { text: 'Every Year', options: { fontFace: F.enBold, fontSize: 15, color: C.white } },
     { text: '   ಪ್ರತಿ ವರ್ಷ', options: { fontFace: F.kn, fontSize: KN(9.5), color: 'E7F2EE' } },
   ], { x: lx + 0.22, y: top, w: leftW - 2.2, h: 0.58, valign: 'middle', margin: 0 });
-  s.addText('Same in Year 1, Year 2 and after', { x: lx + leftW - 2.6, y: top, w: 2.4, h: 0.58, fontFace: F.en, fontSize: 9.5, color: 'E7F2EE', align: 'right', valign: 'middle', margin: 0 });
+  s.addText('Every year · Year 1 adds the start-up', { x: lx + leftW - 2.9, y: top, w: 2.7, h: 0.58, fontFace: F.en, fontSize: 9.5, color: 'E7F2EE', align: 'right', valign: 'middle', margin: 0 });
 
   const rows = [...COST.fixed, ...COST.usage];
   rows.forEach((r, i) => {
@@ -1724,21 +1732,37 @@ function yearCompare(pptx, ctx) {
   /* The labour, set apart from the bought-in lines above it: it is the one row
      the department is actually being asked to fund through the AMC. */
   const wY = top + 0.64 + rows.length * rowH + 0.04;
-  s.addShape('rect', { x: lx + 0.12, y: wY, w: leftW - 0.24, h: 0.5, fill: { color: C.mist }, line: { color: C.mist2 } });
+  s.addShape('rect', { x: lx + 0.12, y: wY, w: leftW - 0.24, h: 0.46, fill: { color: C.mist }, line: { color: C.mist2 } });
   costRow(s, {
-    x: lx, y: wY, w: leftW, h: 0.5, valueColor: C.brand,
-    en: 'Engineering, maintenance & support', kn: 'ನಿರ್ವಹಣೆ',
-    note: `${SUPPORT_HOURS} hours a year — about 20 a month — at ${inrFull(supportRate)} an hour`,
-    value: lakh(COST.amc.value),
+    x: lx, y: wY, w: leftW, h: 0.46, valueColor: C.brand,
+    en: 'Work, labour & development', kn: 'ಶ್ರಮ ಮತ್ತು ಅಭಿವೃದ್ಧಿ',
+    note: 'Maintenance, monitoring, fixes and support — the balance of the year',
+    value: lakhRange(balance),
   });
 
-  const tY = wY + 0.56;
-  s.addShape('rect', { x: lx + 0.12, y: tY, w: leftW - 0.24, h: 0.6, fill: { color: C.deep }, line: { color: C.deep } });
+  /* A band: a label on the left, a figure on the right. */
+  const band = (y, en, kn, value, fill) => {
+    s.addShape('rect', { x: lx + 0.12, y, w: leftW - 0.24, h: 0.46, fill: { color: fill }, line: { color: fill } });
+    s.addText([
+      { text: en, options: { fontFace: F.enBold, fontSize: 12, color: C.white } },
+      { text: `   ${kn}`, options: { fontFace: F.kn, fontSize: KN(8), color: 'CFE5DC' } },
+    ], { x: lx + 0.24, y, w: leftW - 2.2, h: 0.46, valign: 'middle', margin: 0 });
+    s.addText(value, { x: lx + leftW - 2.1, y, w: 1.9, h: 0.46, fontFace: F.enBold, fontSize: 15, color: C.white, align: 'right', valign: 'middle', margin: 0 });
+  };
+
+  const tY = wY + 0.5;
+  band(tY, 'Every year total', 'ವಾರ್ಷಿಕ ಒಟ್ಟು', lakh(COST.amc.value), C.brand2);
+
+  /* Year 1: the year, plus the start-up and what the start-up is for. */
+  const yY = tY + 0.5;
+  const yH = 0.64;
+  s.addShape('rect', { x: lx + 0.12, y: yY, w: leftW - 0.24, h: yH, fill: { color: C.deep }, line: { color: C.deep } });
   s.addText([
-    { text: 'Every year total', options: { fontFace: F.enBold, fontSize: 12, color: C.white, breakLine: true } },
-    { text: 'ವಾರ್ಷಿಕ ಒಟ್ಟು', options: { fontFace: F.kn, fontSize: KN(8), color: 'CFE5DC' } },
-  ], { x: lx + 0.24, y: tY, w: leftW - 2.2, h: 0.6, valign: 'middle', margin: 0 });
-  s.addText(lakhRange(everyYear), { x: lx + leftW - 2.1, y: tY, w: 1.9, h: 0.6, fontFace: F.enBold, fontSize: 15, color: C.white, align: 'right', valign: 'middle', margin: 0 });
+    { text: 'Year 1 total', options: { fontFace: F.enBold, fontSize: 12, color: C.white } },
+    { text: '   ಮೊದಲ ವರ್ಷದ ಒಟ್ಟು', options: { fontFace: F.kn, fontSize: KN(8), color: 'CFE5DC', breakLine: true } },
+    { text: `${lakh(COST.amc.value)} + ${lakh(YEAR1_SUPPORT)} start-up — deployment, training, on-spot fixes & presence, travel, etc.`, options: { fontFace: F.en, fontSize: 8.5, color: 'CFE5DC' } },
+  ], { x: lx + 0.24, y: yY, w: leftW - 1.9, h: yH, valign: 'middle', margin: 0 });
+  s.addText(lakh(YEAR1_TOTAL), { x: lx + leftW - 1.7, y: yY, w: 1.5, h: yH, fontFace: F.enBold, fontSize: 15, color: C.sun, align: 'right', valign: 'middle', margin: 0 });
 
   /* Right: the build, said once and kept out of every total, then what the AMC
      is actually buying against the list on the left. */
@@ -1756,25 +1780,24 @@ function yearCompare(pptx, ctx) {
   const aY = top + cardH + 0.24;
   s.addShape('roundRect', { x: rx, y: aY, w: rw, h: cardH, fill: { color: C.brand }, line: { color: C.brand }, rectRadius: 0.08 });
   s.addText([
-    { text: 'What the department pays — all-inclusive', options: { fontFace: F.enBold, fontSize: 13, color: C.white, breakLine: true } },
-    { text: 'ಇಲಾಖೆ ಪಾವತಿಸುವುದು — ಎಲ್ಲವೂ ಒಳಗೊಂಡಂತೆ', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC', breakLine: true } },
+    { text: 'What the department pays — two AMC proposals', options: { fontFace: F.enBold, fontSize: 13, color: C.white, breakLine: true } },
+    { text: 'ಇಲಾಖೆ ಪಾವತಿಸುವುದು — ಎರಡು AMC ಆಯ್ಕೆಗಳು', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC', breakLine: true } },
     { text: ' ', options: { fontFace: F.en, fontSize: 5, breakLine: true } },
     /* One figure a year, not a bill of parts (user, 2026-09-15). The first year
        is larger because everything that happens once happens in it. */
-    { text: `Year 1 — ${inrFull(YEAR1_SUPPORT)} `, options: { fontFace: F.enBold, fontSize: 11, color: C.sun } },
-    { text: 'covers deployment, training, on-spot testing at the gate and close support through the first few months.', options: { fontFace: F.en, fontSize: 10.5, color: C.white, breakLine: true } },
-    { text: `Year 2 onward — ${inrFull(COST.amc.value)} a year `, options: { fontFace: F.enBold, fontSize: 11, color: C.sun } },
-    { text: 'covers everything in the list beside it — server, domain, mail, SSL, maintenance, monitoring, backups and support. Nothing is billed separately.', options: { fontFace: F.en, fontSize: 10.5, color: C.white, breakLine: true } },
+    { text: `1 · Year by year — ${inrFull(YEAR1_TOTAL)} in Year 1, then ${inrFull(COST.amc.value)} a year: `, options: { fontFace: F.enBold, fontSize: 10.5, color: C.sun } },
+    { text: 'the table beside it, renewed each year on payment.', options: { fontFace: F.en, fontSize: 10.5, color: C.white, breakLine: true } },
+    { text: `2 · 3-year contract — ${inrFull(PLAN2_TOTAL)}: `, options: { fontFace: F.enBold, fontSize: 10.5, color: C.sun } },
+    { text: 'training, on-spot fixes, first-month visits and on-spot training included free.', options: { fontFace: F.en, fontSize: 10.5, color: C.white, breakLine: true } },
     { text: ' ', options: { fontFace: F.en, fontSize: 5, breakLine: true } },
-    /* The gap is the point: it is what the service fee is for. */
-    { text: 'Running costs exceed the charge — ServerPe carries the difference from the service fee.', options: { fontFace: F.en, fontSize: 10, color: 'CFE5DC', breakLine: true } },
-    { text: 'ವ್ಯತ್ಯಾಸವನ್ನು ServerPe ಸೇವಾ ಶುಲ್ಕದಿಂದ ಭರಿಸುತ್ತದೆ', options: { fontFace: F.kn, fontSize: KN(7.5), color: 'CFE5DC' } },
+    { text: `Over ${PLAN_YEARS} years: ${inrFull(PLAN1_TOTAL)} or ${inrFull(PLAN2_TOTAL)}, GST ${ctx.gst}% added to both.`, options: { fontFace: F.en, fontSize: 10, color: 'CFE5DC', breakLine: true } },
+    { text: `ಎರಡಕ್ಕೂ GST ${ctx.gst}% ಹೆಚ್ಚುವರಿ`, options: { fontFace: F.kn, fontSize: KN(7.5), color: 'CFE5DC' } },
   ], { x: rx + 0.24, y: aY + 0.14, w: rw - 0.48, h: cardH - 0.28, valign: 'top', margin: 0 });
 
   const stripY = bottom + 0.12;
   s.addShape('roundRect', { x: GUTTER, y: stripY, w: W - GUTTER * 2, h: stripH, fill: { color: C.deep }, line: { color: C.deep }, rectRadius: 0.08 });
   s.addText([
-    { text: 'ServerPe\'s own costs, in lakhs · WhatsApp rises and falls with bookings · Razorpay comes out of the service fee, and the department is billed none of this', options: { fontFace: F.en, fontSize: 10.5, color: C.white } },
+    { text: 'In lakhs, before GST · WhatsApp rises and falls with bookings · Razorpay comes out of the service fee, never billed to the department', options: { fontFace: F.en, fontSize: 10.5, color: C.white } },
   ], { x: GUTTER + 0.25, y: stripY, w: W - GUTTER * 2 - 0.5, h: stripH, align: 'center', valign: 'middle', margin: 0 });
 }
 
@@ -1789,11 +1812,9 @@ function yearCompare(pptx, ctx) {
  *   ₹30 Toofan/TT, which is 20% of each entry fee in whole rupees, with GST
  *   inside it. The visitor pays ₹60 / ₹120 / ₹180 and nothing else.
  *
- *   YEAR 1 ₹5 L + GST for deployment, training and first-year support, then
- *   an AMC of ₹3 L + GST from Year 2 — higher in the first year because that
- *   is when stabilising, training and teething fixes happen, lower once the
- *   system settles. Folded into one charge a year rather than a separate
- *   go-live fee, so the department sees a single number per year.
+ *   YEAR 1 ₹2 L + GST at the start, for deployment, training, on-spot testing
+ *   and fixes at the gate, and travel; then an AMC of ₹4 L + GST a year from
+ *   Year 2 (user, 2026-09-16 — previously ₹5 L and ₹3 L).
  *
  * The department keeps every rupee of its entry fee, and Razorpay's share of
  * the whole payment comes out of the service fee.
@@ -1803,7 +1824,28 @@ function yearCompare(pptx, ctx) {
  * platform earns is confidential and appears on no slide.
  */
 const SERVICE_FEE = { BIKE: 10, CAR: 20, TOOFAN: 30, TT: 30 };
-const YEAR1_SUPPORT = 500000;
+/* ₹2 L at the start (user, 2026-09-16; was ₹5 L): deployment, training,
+   on-spot testing and fixes at the gate, and travel. */
+const YEAR1_SUPPORT = 200000;
+/* Year 1 is the start-up and the year's charge together — ₹6 L; every year
+   after, the ₹4 L alone (user, 2026-09-16). The annual charge runs from Year 1,
+   as the termination slide says: from the agreed first day after the beta. */
+const YEAR1_TOTAL = YEAR1_SUPPORT + COST.amc.value;
+
+/*
+ * TWO AMC PROPOSALS (user, 2026-09-16), for the department to choose between.
+ *
+ *   1  Year by year — ₹6 L in Year 1 (the ₹2 L start-up and the ₹4 L AMC),
+ *      then ₹4 L a year, renewed each year on payment.
+ *   2  A 3-year contract — ₹10 L for the three years, with training, on-spot
+ *      fixes, frequent visits in the first month and on-spot training included
+ *      at no extra charge: ServerPe carries them.
+ *
+ * GST is added to both. Over three years they come to ₹14 L and ₹10 L.
+ */
+const PLAN_YEARS = 3;
+const PLAN1_TOTAL = YEAR1_TOTAL + COST.amc.value * (PLAN_YEARS - 1);
+const PLAN2_TOTAL = 1000000;
 const AMC_OFFER = COST.amc.value;
 /* Toofan's 2 bookings in the sample are counted with Tempo Travellers: same price. */
 const MIX = { BIKE: 0.33, CAR: 0.59, TT: 0.08 };
@@ -1814,7 +1856,9 @@ const MIX = { BIKE: 0.33, CAR: 0.59, TT: 0.08 };
 const COMMERCIAL_ROWS = [
   ['Two-wheeler', 'ದ್ವಿಚಕ್ರ ವಾಹನ', 'BIKE'],
   ['Car / Jeep / SUV', 'ಕಾರು / ಜೀಪ್', 'CAR'],
-  ['Toofan / Maxi Cab', 'ಟೂಫಾನ್', 'TOOFAN'],
+  /* Not "Maxi Cab": that is a licence an Innova taxi carries too, and it prices
+     as a car (user, 2026-09-16). Named as the app's rate card names it. */
+  ['Toofan / Trax / Cruiser', 'ಟೂಫಾನ್ / ಟ್ರಾಕ್ಸ್', 'TOOFAN'],
   ['Tempo Traveller', 'ಟೆಂಪೋ ಟ್ರಾವೆಲರ್', 'TT'],
 ];
 
@@ -1963,21 +2007,26 @@ function commercial(pptx, ctx) {
     { text: kn, options: { fontFace: F.kn, fontSize: KN(6.5), color: C.muted } },
   ], { x: ax + 0.22, y, w: aw - 0.44, h, valign: 'top', margin: 0 });
 
-  const y1Gst = (YEAR1_SUPPORT * ctx.gst) / 100;
-  const amcGst = (AMC_OFFER * ctx.gst) / 100;
+  /* Two proposals, each with what it covers, and the three years side by side
+     so the department compares totals, not tables (user, 2026-09-16). */
+  section(top + 0.52, 'Proposal 1 — year by year', 'ಪ್ರತಿ ವರ್ಷ', 'Renewed yearly');
+  line(top + 0.82, 'Year 1 — start-up + AMC', inrFull(YEAR1_TOTAL));
+  line(top + 1.08, 'Year 2 onward, per year', inrFull(AMC_OFFER));
+  covers(top + 1.36, 'Start-up: deployment, training, on-spot fixes & presence, travel, etc.', 'ಆರಂಭಿಕ: ನಿಯೋಜನೆ, ತರಬೇತಿ, ಸ್ಥಳದಲ್ಲಿ ದೋಷ ನಿವಾರಣೆ, ಪ್ರಯಾಣ', 0.44);
 
-  section(top + 0.52, 'Deployment, training & support', 'ನಿಯೋಜನೆ, ತರಬೇತಿ, ಬೆಂಬಲ', 'Year 1');
-  line(top + 0.8, 'Charge', inrFull(YEAR1_SUPPORT));
-  line(top + 1.04, `GST ${ctx.gst}%`, inrFull(y1Gst), { color: C.muted });
-  s.addShape('line', { x: ax + 0.2, y: top + 1.3, w: aw - 0.4, h: 0, line: { color: C.brand2, width: 1.25 } });
-  line(top + 1.32, 'Total, Year 1', inrFull(YEAR1_SUPPORT + y1Gst), { bold: true, size: 12.5, color: C.brand });
-  covers(top + 1.6, 'Server setup, WhatsApp verification, destinations, slots & prices, staff training, go-live support and first-year maintenance', 'ಸರ್ವರ್ ಸಿದ್ಧತೆ, ತರಬೇತಿ, ಆರಂಭದ ಬೆಂಬಲ, ಮೊದಲ ವರ್ಷದ ನಿರ್ವಹಣೆ', 0.44);
+  s.addShape('line', { x: ax + 0.2, y: top + 1.88, w: aw - 0.4, h: 0, line: { color: C.line, width: 1 } });
+  section(top + 1.96, 'Proposal 2 — 3-year contract', '3 ವರ್ಷದ ಒಪ್ಪಂದ', 'One contract');
+  line(top + 2.26, `AMC for ${PLAN_YEARS} years`, inrFull(PLAN2_TOTAL));
+  covers(top + 2.54, 'Training, on-spot fixes, frequent visits in the first month and on-spot training — included free', 'ತರಬೇತಿ, ಸ್ಥಳದಲ್ಲಿ ದೋಷ ನಿವಾರಣೆ, ಮೊದಲ ತಿಂಗಳ ಭೇಟಿಗಳು — ಉಚಿತ', 0.58);
 
-  section(top + 2.06, 'Annual maintenance (AMC)', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣೆ', 'Year 2 on');
-  line(top + 2.34, 'AMC', inrFull(AMC_OFFER));
-  line(top + 2.58, `GST ${ctx.gst}%`, inrFull(amcGst), { color: C.muted });
-  s.addShape('line', { x: ax + 0.2, y: top + 2.84, w: aw - 0.4, h: 0, line: { color: C.brand2, width: 1.25 } });
-  line(top + 2.86, 'Total per year', inrFull(AMC_OFFER + amcGst), { bold: true, size: 12.5, color: C.brand });
+  /* The three years, one line. */
+  s.addShape('roundRect', { x: ax + 0.14, y: top + 3.17, w: aw - 0.28, h: 0.38, fill: { color: 'FEF3C7' }, line: { color: C.sun }, rectRadius: 0.06 });
+  s.addText([
+    { text: `Over ${PLAN_YEARS} years`, options: { fontFace: F.enBold, fontSize: 10, color: C.ink } },
+    { text: `   1: ${inrFull(PLAN1_TOTAL)}  ·  2: ${inrFull(PLAN2_TOTAL)}`, options: { fontFace: F.enBold, fontSize: 10.5, color: C.brand } },
+    { text: `   + GST ${ctx.gst}%`, options: { fontFace: F.en, fontSize: 9, color: C.muted } },
+  ], { x: ax + 0.26, y: top + 3.17, w: aw - 0.5, h: 0.38, valign: 'middle', margin: 0 });
+
   /* What the AMC contains is slide 16's job; repeating it here crowded the card
      and the department reads the same list twice (user, 2026-09-15). Only the
      first-year charge needs justifying on this slide. */
@@ -1997,8 +2046,8 @@ function commercial(pptx, ctx) {
   s.addShape('line', { x: GUTTER + half, y: stripY + 0.14, w: 0, h: stripH - 0.28, line: { color: '4F9A8F', width: 1 } });
   s.addText([
     { text: 'Proposed term', options: { fontFace: F.enBold, fontSize: 11, color: C.sun, breakLine: true } },
-    { text: '3 years · service fee and AMC reviewed each year on actual bookings', options: { fontFace: F.enBold, fontSize: 11, color: C.white, breakLine: true } },
-    { text: '3 ವರ್ಷಗಳ ಒಪ್ಪಂದ · ವಾರ್ಷಿಕ ಪರಿಶೀಲನೆ', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } },
+    { text: '3 years · service fee reviewed each year · AMC as Proposal 1 or 2', options: { fontFace: F.enBold, fontSize: 11, color: C.white, breakLine: true } },
+    { text: '3 ವರ್ಷ · ಸೇವಾ ಶುಲ್ಕ ವಾರ್ಷಿಕ ಪರಿಶೀಲನೆ · AMC ಆಯ್ಕೆ 1 ಅಥವಾ 2', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } },
   ], { x: GUTTER + half + 0.3, y: stripY, w: half - 0.5, h: stripH, valign: 'middle', margin: 0 });
 }
 
@@ -2232,6 +2281,219 @@ function requirements(pptx, ctx) {
   ]);
 }
 
+/**
+ * Termination, suspension and exit (user, 2026-09-16).
+ *
+ * Only the terms the user gave, and no figure: a month of beta live service
+ * with no annual charge, the annual charge starting on an agreed day once the
+ * department is satisfied and paid before it, and what is kept if the service
+ * stops in either period. Read left to right as a timeline first, then as the
+ * two cases, so the department sees when each rule applies before the rule.
+ */
+function exitTerms(pptx) {
+  const s = pptx.addSlide({ masterName: 'CONTENT' });
+  const item = AGENDA.find((a) => a.en.startsWith('Termination'));
+  heading(s, item.en, item.kn);
+
+  s.addText([
+    { text: 'One month of beta live service without any AMC — the annual charge begins only once the department is satisfied', options: { fontFace: F.enBold, fontSize: 12.5, color: C.brand, breakLine: true } },
+    { text: 'ಒಂದು ತಿಂಗಳ ಬೀಟಾ ನೇರ ಸೇವೆಗೆ AMC ಇಲ್ಲ — ಇಲಾಖೆ ತೃಪ್ತಿಪಟ್ಟ ನಂತರವೇ ವಾರ್ಷಿಕ ಶುಲ್ಕ ಆರಂಭ', options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
+  ], { x: GUTTER, y: 1.72, w: W - GUTTER * 2, h: 0.62, valign: 'middle', margin: 0 });
+
+  /* ── The timeline: beta month → AMC start date → actual production ── */
+  const tTop = 2.6;
+  const tH = 1.46;
+  const gap = 0.5;
+  const mileW = 4.5;
+  const stageW = (W - GUTTER * 2 - mileW - gap * 2) / 2;
+  const x1 = GUTTER;
+  const x2 = x1 + stageW + gap;
+  const x3 = x2 + mileW + gap;
+
+  const stage = (x, w, fill, lineC, fg, sub, en, kn, noteEn, noteKn, tag) => {
+    s.addShape('roundRect', { x, y: tTop, w, h: tH, fill: { color: fill }, line: { color: lineC, width: 1.25 }, rectRadius: 0.1 });
+    s.addShape('roundRect', { x: x + 0.2, y: tTop - 0.15, w: 1.1, h: 0.3, fill: { color: tag.fill }, line: { color: tag.fill }, rectRadius: 0.15 });
+    s.addText(tag.text, { x: x + 0.2, y: tTop - 0.15, w: 1.1, h: 0.3, fontFace: F.enBold, fontSize: 9.5, color: C.white, align: 'center', valign: 'middle', margin: 0 });
+    s.addText([
+      { text: en, options: { fontFace: F.enBold, fontSize: 13.5, color: fg, breakLine: true } },
+      { text: kn, options: { fontFace: F.kn, fontSize: KN(9), color: sub, breakLine: true } },
+      { text: noteEn, options: { fontFace: F.en, fontSize: 10.5, color: fg, breakLine: true } },
+      { text: noteKn, options: { fontFace: F.kn, fontSize: KN(7.5), color: sub } },
+    ], { x: x + 0.22, y: tTop + 0.22, w: w - 0.44, h: tH - 0.3, valign: 'middle', margin: 0, lineSpacingMultiple: 0.98 });
+  };
+  const arrow = (x) => s.addShape('rightArrow', { x: x + 0.07, y: tTop + tH / 2 - 0.17, w: gap - 0.14, h: 0.34, fill: { color: C.accent }, line: { color: C.accent } });
+
+  stage(x1, stageW, C.mist, C.line, C.ink, C.muted,
+    'Beta live production', 'ಬೀಟಾ ನೇರ ಸೇವೆ',
+    'No AMC · only the per-pass service fee', 'AMC ಇಲ್ಲ · ಪ್ರತಿ ಪಾಸ್ ಸೇವಾ ಶುಲ್ಕ ಮಾತ್ರ',
+    { text: 'MONTH 1', fill: C.accent });
+  arrow(x1 + stageW);
+  stage(x2, mileW, 'FEF3C7', C.sun, C.ink, '8A5A00',
+    'AMC start date', 'AMC ಆರಂಭ ದಿನಾಂಕ',
+    'Agreed 1st day after the beta month · AMC paid before it', 'ಬೀಟಾ ನಂತರದ ಒಪ್ಪಿದ ಮೊದಲ ದಿನ · ಮುಂಚಿತ AMC ಪಾವತಿ',
+    { text: 'AGREED', fill: C.sun });
+  arrow(x2 + mileW);
+  stage(x3, stageW, C.brand, C.brand, C.white, 'CFE5DC',
+    'Actual production', 'ನಿಜವಾದ ಸೇವೆ',
+    'Per-pass service fee + AMC', 'ಪ್ರತಿ ಪಾಸ್ ಸೇವಾ ಶುಲ್ಕ + AMC',
+    { text: 'LIVE', fill: C.deep });
+
+  /* ── The two cases ── */
+  const lTop = tTop + tH + 0.24;
+  s.addText([
+    { text: 'If the service is dropped or suspended during the beta month', options: { fontFace: F.enBold, fontSize: 12.5, color: C.ink } },
+    { text: '   ·   ಸೇವೆ ಸ್ಥಗಿತ ಅಥವಾ ಅಮಾನತು ಆದರೆ', options: { fontFace: F.kn, fontSize: KN(9), color: C.muted } },
+  ], { x: GUTTER, y: lTop, w: W - GUTTER * 2, h: 0.34, valign: 'middle', margin: 0 });
+
+  const cTop = lTop + 0.42;
+  const bottom = H - FOOTER_H - 0.14;
+  const cGap = 0.3;
+  /* One card: once in actual production the service is not dropped or exited
+     (user, 2026-09-16), so the beta month is the only period with exit terms. */
+  const cW = W - GUTTER * 2;
+  /* Red for what is not given back — the one thing a department reads twice. */
+  const KEEP = 'B91C1C';
+
+  const card = (x, fill, en, kn, lines) => {
+    const h = bottom - cTop;
+    s.addShape('roundRect', { x, y: cTop, w: cW, h, fill: { color: fill }, line: { color: C.line }, rectRadius: 0.1 });
+    s.addText([
+      { text: en, options: { fontFace: F.enBold, fontSize: 13, color: C.ink } },
+      { text: `   ${kn}`, options: { fontFace: F.kn, fontSize: KN(9), color: C.muted } },
+    ], { x: x + 0.24, y: cTop + 0.1, w: cW - 0.48, h: 0.42, valign: 'middle', margin: 0 });
+    const top = cTop + 0.58;
+    const pitch = (h - 0.7) / lines.length;
+    lines.forEach(([le, lk, tone], i) => {
+      const y = top + i * pitch;
+      const dot = tone || C.accent;
+      s.addShape('ellipse', { x: x + 0.28, y: y + pitch / 2 - 0.07, w: 0.14, h: 0.14, fill: { color: dot }, line: { color: dot } });
+      s.addText([
+        { text: le, options: { fontFace: tone ? F.enBold : F.en, fontSize: 11.5, color: tone || C.ink, breakLine: true } },
+        { text: lk, options: { fontFace: F.kn, fontSize: KN(8.5), color: tone || C.muted } },
+      ], { x: x + 0.56, y, w: cW - 0.8, h: pitch, valign: 'middle', margin: 0 });
+    });
+  };
+
+  card(GUTTER, C.white, 'During the beta month', 'ಬೀಟಾ ತಿಂಗಳಲ್ಲಿ', [
+    ['Allowed at any time', 'ಯಾವುದೇ ಸಮಯದಲ್ಲಿ ಅವಕಾಶ'],
+    ['No AMC to pay — none has been charged', 'AMC ಪಾವತಿ ಇಲ್ಲ — ವಿಧಿಸಲಾಗಿಲ್ಲ'],
+    ['Service fees already collected are retained — not refunded', 'ಸಂಗ್ರಹವಾದ ಸೇವಾ ಶುಲ್ಕ ಹಿಂತಿರುಗಿಸಲಾಗುವುದಿಲ್ಲ', KEEP],
+  ]);
+}
+
+/**
+ * A question for the department: how should the price be shown? (user,
+ * 2026-09-16).
+ *
+ * Asked, not answered — the choice is the department's, so neither option is
+ * marked as preferred and each carries the same number of plain facts. The
+ * same car pass, presented both ways. The
+ * figures come from the same place the commercial slide's do — the entry fee
+ * on record and the proposed service fee — so the two slides cannot disagree.
+ * Part of the commercial proposal, so it carries that agenda item's number
+ * rather than one of its own.
+ */
+function priceView(pptx, ctx) {
+  const s = pptx.addSlide({ masterName: 'CONTENT' });
+  heading(s, 'How Should the Price Be Shown to Visitors?', 'ಪ್ರವಾಸಿಗರಿಗೆ ದರವನ್ನು ಹೇಗೆ ತೋರಿಸಬೇಕು?');
+
+  const entry = ctx.prices.CAR;
+  const fee = SERVICE_FEE.CAR;
+  const total = entry + fee;
+
+  s.addText([
+    { text: `For the department to decide · Example: Car / Jeep / SUV, ${rupees(total)} in total`, options: { fontFace: F.enBold, fontSize: 12.5, color: C.brand, breakLine: true } },
+    { text: `ಇಲಾಖೆಯ ನಿರ್ಧಾರಕ್ಕೆ · ಉದಾಹರಣೆ: ಕಾರು, ಒಟ್ಟು ${rupees(total)}`, options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
+  ], { x: GUTTER, y: 1.72, w: W - GUTTER * 2, h: 0.62, valign: 'middle', margin: 0 });
+
+  const top = 2.52;
+  const bottom = H - FOOTER_H - 0.82;
+  const gap = 0.36;
+  const cw = (W - GUTTER * 2 - gap) / 2;
+
+  const option = (x, { tag, tagFill, en, kn, border, lines, points }) => {
+    s.addShape('roundRect', { x, y: top, w: cw, h: bottom - top, fill: { color: C.white }, line: { color: border, width: 1.5 }, rectRadius: 0.1 });
+    if (tag) {
+      s.addShape('roundRect', { x: x + cw - 1.72, y: top - 0.15, w: 1.5, h: 0.3, fill: { color: tagFill }, line: { color: tagFill }, rectRadius: 0.15 });
+      s.addText(tag, { x: x + cw - 1.72, y: top - 0.15, w: 1.5, h: 0.3, fontFace: F.enBold, fontSize: 9.5, color: C.white, align: 'center', valign: 'middle', margin: 0 });
+    }
+    s.addText([
+      { text: en, options: { fontFace: F.enBold, fontSize: 14, color: C.ink } },
+      { text: `   ${kn}`, options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
+    ], { x: x + 0.26, y: top + 0.14, w: cw - 0.52, h: 0.42, valign: 'middle', margin: 0 });
+
+    /* The receipt, as the visitor would see it. */
+    const rx = x + 0.3;
+    const rw = cw - 0.6;
+    const ry = top + 0.66;
+    const rowH = 0.46;
+    const rh = rowH * (lines.length + 1) + 0.26;
+    s.addShape('roundRect', { x: rx, y: ry, w: rw, h: rh, fill: { color: C.mist }, line: { color: C.line }, rectRadius: 0.08 });
+    lines.forEach(([le, lk, amt], i) => {
+      const y = ry + 0.1 + i * rowH;
+      s.addText([
+        { text: le, options: { fontFace: F.en, fontSize: 12, color: C.ink, breakLine: true } },
+        { text: lk, options: { fontFace: F.kn, fontSize: KN(8), color: C.muted } },
+      ], { x: rx + 0.2, y, w: rw - 1.5, h: rowH, valign: 'middle', margin: 0 });
+      s.addText(amt, { x: rx + rw - 1.3, y, w: 1.1, h: rowH, fontFace: F.en, fontSize: 13, color: C.ink, align: 'right', valign: 'middle', margin: 0 });
+    });
+    const ty = ry + 0.16 + lines.length * rowH;
+    s.addShape('line', { x: rx + 0.2, y: ty, w: rw - 0.4, h: 0, line: { color: C.muted, width: 0.75 } });
+    s.addText([
+      { text: 'You pay', options: { fontFace: F.enBold, fontSize: 13, color: C.ink, breakLine: true } },
+      { text: 'ಪಾವತಿಸಬೇಕಾದ ಮೊತ್ತ', options: { fontFace: F.kn, fontSize: KN(8), color: C.muted } },
+    ], { x: rx + 0.2, y: ty + 0.02, w: rw - 1.5, h: rowH, valign: 'middle', margin: 0 });
+    s.addText(rupees(total), { x: rx + rw - 1.3, y: ty + 0.02, w: 1.1, h: rowH, fontFace: F.enBold, fontSize: 17, color: C.brand, align: 'right', valign: 'middle', margin: 0 });
+
+    /* What it does to the reader. */
+    const pTop = ry + rh + 0.2;
+    const pitch = (bottom - 0.12 - pTop) / points.length;
+    points.forEach(([pe, pk], i) => {
+      const y = pTop + i * pitch;
+      s.addShape('ellipse', { x: x + 0.34, y: y + pitch / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: C.accent }, line: { color: C.accent } });
+      s.addText([
+        { text: pe, options: { fontFace: F.en, fontSize: 11, color: C.ink, breakLine: true } },
+        { text: pk, options: { fontFace: F.kn, fontSize: KN(7.5), color: C.muted } },
+      ], { x: x + 0.62, y, w: cw - 0.86, h: pitch, valign: 'middle', margin: 0 });
+    });
+  };
+
+  option(GUTTER, {
+    tag: 'OPTION A', tagFill: C.brand, border: C.line,
+    en: 'Shown separately', kn: 'ಪ್ರತ್ಯೇಕವಾಗಿ ತೋರಿಸುವುದು',
+    lines: [
+      ['Entry fee — Tourism Department', 'ಪ್ರವೇಶ ಶುಲ್ಕ — ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ', rupees(entry)],
+      ['Service fee (incl. GST)', 'ಸೇವಾ ಶುಲ್ಕ (GST ಸಹಿತ)', rupees(fee)],
+    ],
+    points: [
+      [`Shows the department's ${rupees(entry)} and the service fee as two amounts`, `ಇಲಾಖೆಯ ${rupees(entry)} ಮತ್ತು ಸೇವಾ ಶುಲ್ಕ ಎರಡು ಮೊತ್ತಗಳಾಗಿ`],
+      ['Two lines for the visitor to read', 'ಪ್ರವಾಸಿಗರು ಓದಲು ಎರಡು ಸಾಲುಗಳು'],
+      ['Same layout as the GST invoice the visitor receives', 'ಪ್ರವಾಸಿಗರು ಪಡೆಯುವ GST ಇನ್‌ವಾಯ್ಸ್‌ನ ರೀತಿಯಲ್ಲೇ'],
+    ],
+  });
+
+  option(GUTTER + cw + gap, {
+    tag: 'OPTION B', tagFill: C.brand, border: C.line,
+    en: 'One combined amount', kn: 'ಒಂದೇ ಒಟ್ಟು ಮೊತ್ತ',
+    lines: [
+      ['Entry fee', 'ಪ್ರವೇಶ ಶುಲ್ಕ', rupees(total)],
+    ],
+    points: [
+      ['One number — the simplest for the visitor to read', 'ಒಂದೇ ಮೊತ್ತ — ಪ್ರವಾಸಿಗರಿಗೆ ಓದಲು ಸರಳ'],
+      [`The ${rupees(fee)} service fee is not shown on the booking screen`, `${rupees(fee)} ಸೇವಾ ಶುಲ್ಕ ಬುಕಿಂಗ್ ಪರದೆಯಲ್ಲಿ ಕಾಣುವುದಿಲ್ಲ`],
+      [`The GST invoice still lists ${rupees(entry)} + ${rupees(fee)} separately`, `GST ಇನ್‌ವಾಯ್ಸ್‌ನಲ್ಲಿ ${rupees(entry)} + ${rupees(fee)} ಪ್ರತ್ಯೇಕವಾಗಿಯೇ`],
+    ],
+  });
+
+  /* The point both options share. */
+  const by = H - FOOTER_H - 0.66;
+  s.addShape('roundRect', { x: GUTTER, y: by, w: W - GUTTER * 2, h: 0.5, fill: { color: C.brand }, line: { color: C.brand }, rectRadius: 0.08 });
+  s.addText([
+    { text: `Department's decision: Option A or B?  The visitor pays ${rupees(total)} either way`, options: { fontFace: F.enBold, fontSize: 12.5, color: C.white } },
+    { text: `   ·   ಇಲಾಖೆಯ ನಿರ್ಧಾರ: ಆಯ್ಕೆ A ಅಥವಾ B? ಪಾವತಿ ಎರಡರಲ್ಲೂ ${rupees(total)}`, options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC' } },
+  ], { x: GUTTER + 0.26, y: by, w: W - GUTTER * 2 - 0.52, h: 0.5, valign: 'middle', margin: 0 });
+}
+
 const SLIDES = [welcome, agenda, orgProfile, whatWeDo, products, scope, benefits, limitations, journey, staffFlow, architecture, flows,
   /* Agenda 8–11 go here as they are built, in agenda order. */
   roadmap, roadmapMore,
@@ -2239,7 +2501,10 @@ const SLIDES = [welcome, agenda, orgProfile, whatWeDo, products, scope, benefits
      any cost table (user, 2026-09-15); the costs then answer "why that much".
      No slide shows ServerPe's earnings — per year or per pass. The user
      treats them as confidential (2026-09-15). */
-  commercial, costStructure, amc, yearCompare,
+  /* The question of how the price is shown, right after the price itself. */
+  commercial, priceView, costStructure, amc, yearCompare,
+  /* What happens if the department stops, once the charges are known. */
+  exitTerms,
   requirements,
   closing];
 
