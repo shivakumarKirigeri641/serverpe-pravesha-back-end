@@ -64,13 +64,19 @@ router.get('/api/v1/vehicle/:regNo/:dataset', async (req, res) => {
 
   const started = Date.now();
   try {
-    const body = await lookup.byDataset[dataset](regNo);
+    /* The gateway's query, all of it (2026-09-17): refresh=1 forgets the cached
+       record first, and challans take page, per_page and status. The plate is
+       parsed here the same way lookup parses it, so the cache key matches. */
+    if (String(req.query.refresh || '') === '1') {
+      const parsed = require('../ulip/plate').parse(regNo);
+      if (parsed.ok) require('../ulip/cache').drop(`${dataset === 'challans' ? 'challan' : dataset}:${parsed.regNo}`);
+    }
+    const body = await lookup.byDataset[dataset](regNo, req.query || {});
     console.log('[vehicleApi] %s %s -> %s in %dms', dataset, regNo,
       body.success ? 'ok' : body.error, Date.now() - started);
-    // A plate that is not a registration, or a vehicle the government has no
-    // record of, is a fact about the request, not a server failure: 200 with
-    // success:false, which is the shape vehicle.js reads.
-    return res.json(body);
+    /* The gateway's status codes — 400 bad plate, 404 no record, 503 ULIP down —
+       with the same body; vehicle.js reads the body either way. */
+    return res.status(lookup.statusOf(body)).json(body);
   } catch (e) {
     console.error('[vehicleApi] %s %s failed: %s', dataset, regNo, e.message);
     return res.status(502).json({ success: false, error: 'upstream_unavailable',

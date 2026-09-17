@@ -54,12 +54,28 @@ async function fetchDataset(regNo, dataset, { timeoutMs = TIMEOUT_MS, query = nu
     if (query && String(query.refresh) === '1') {
       require('../ulip/cache').drop(`${dataset === 'challans' ? 'challan' : dataset}:${regNo}`);
     }
+    const lookup = require('../ulip/lookup');
+    /*
+     * THE SAME WAIT AS THE GATEWAY (2026-09-17). ULIP is not hurried by our
+     * patience: a booking gives up at `timeoutMs` and says so with the same
+     * gateway_timeout the gateway path gives, while the fetch carries on and
+     * lands in the cache — where the next ask, or the panel's background poll,
+     * finds it without another ULIP call.
+     */
+    const work = lookup.byDataset[dataset](regNo, query || {})
+      .then((body) => ({ body, ms: Date.now() - started, status: lookup.statusOf(body) }))
+      .catch((e) => {
+        console.error('[vehicle] ulip %s %s: %s', dataset, regNo, e.message);
+        return { body: { success: false, error: 'upstream_unavailable' }, ms: Date.now() - started, status: 0 };
+      });
+    let timer;
+    const late = new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ body: { success: false, error: 'gateway_timeout' }, ms: Date.now() - started, status: 0 }), timeoutMs);
+    });
     try {
-      const body = await require('../ulip/lookup').byDataset[dataset](regNo);
-      return { body, ms: Date.now() - started, status: body.success ? 200 : 0 };
-    } catch (e) {
-      console.error('[vehicle] ulip %s %s: %s', dataset, regNo, e.message);
-      return { body: { success: false, error: 'upstream_unavailable' }, ms: Date.now() - started, status: 0 };
+      return await Promise.race([work, late]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
