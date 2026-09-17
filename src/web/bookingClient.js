@@ -233,7 +233,7 @@
   function runCheck(opts) {
     var quiet = opts && opts.quiet;
     var reg = $('reg').value.trim();
-    if (reg.length < 6) {
+    if (reg.length < 5) { // ULIP's own minimum — old plates like MYS12 are five
       if (quiet) return;
       $('verr').innerHTML = msgHtml('needNumT', t('needNum'));
       show($('verr'), true); return;
@@ -531,7 +531,7 @@
           /* Everything the form needs may already be on the page: if a number
              is sitting in the field unchecked, check it now rather than leaving
              the visitor to find a button they have scrolled past. */
-          if (!state.vehicle && $('reg').value.trim().length >= 6 && $('reg').value.trim() !== state.checkedReg) {
+          if (!state.vehicle && $('reg').value.trim().length >= 5 && $('reg').value.trim() !== state.checkedReg) {
             runCheck({ quiet: true });
           } else {
             review();
@@ -889,8 +889,15 @@
       el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
     }
   }
+  /* Only fields that bring up a keyboard. A slot is a radio inside its card, and
+     tapping the card focuses that radio: counted as typing, a tap low on a tall
+     card whose top was off screen scrolled the page up to centre the radio —
+     the form jumping away just as a slot was chosen (user, 2026-09-17). */
+  var NO_KEYBOARD = /^(radio|checkbox|button|submit|reset|range|color|file|hidden|image)$/i;
   function isTyping(el) {
-    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && !el.readOnly;
+    if (!el || el.readOnly) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && !NO_KEYBOARD.test(el.type || 'text');
   }
   document.addEventListener('focusin', function (e) {
     if (!isTyping(e.target)) return;
