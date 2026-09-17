@@ -65,14 +65,15 @@ const page = ({ title, titleKn, summary, version, effective, sections, business 
   a { color:var(--accent) }
 </style></head><body><div class="wrap">
 <header><div class="brand">Pravesha · ಪ್ರವೇಶ</div>
-<div class="dept">Vehicle entry passes for Karnataka&rsquo;s hill destinations</div></header>
+<div class="dept">Entry passes for vehicles and visitors to Karnataka&rsquo;s destinations</div></header>
 <h1>${esc(title)}</h1>
 ${titleKn ? `<p class="kn">${esc(titleKn)}</p>` : ''}
 ${summary ? `<p class="summary">${esc(summary)}</p>` : ''}
 <p class="updated">Version ${esc(version)} · Effective from ${esc(longDate(effective))}</p>
 ${sections.map((s) => `<h2><span class="no">${esc(s.section_no)}.</span>${esc(s.title)}</h2>\n<p>${esc(s.description)}</p>`).join('\n')}
 <footer>${esc(business.legal_name)}${business.address ? `, ${esc(business.address)}` : ''}<br>
-Questions? Write to <a href="mailto:${esc(business.email)}">${esc(business.email)}</a>, or reply <strong>help</strong> on WhatsApp.</footer>
+Questions? Write to <a href="mailto:${esc(business.email)}">${esc(business.email)}</a>, or reply <strong>help</strong> on WhatsApp.<br>
+Pravesha™ is a trademark of ${esc(business.legal_name)}™. Approval from the Department of Tourism, Government of Karnataka, is awaited.</footer>
 </div></body></html>`;
 
 async function render(res, slug) {

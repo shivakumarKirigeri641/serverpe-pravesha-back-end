@@ -29,7 +29,7 @@ const CACHE = path.join(IMAGES, '.resized');
 const W = 1200;
 const H = 630;
 
-const DEFAULT_TITLE = 'Entry passes for Karnataka’s hill destinations';
+const DEFAULT_TITLE = 'Entry passes for Karnataka’s destinations';
 const DEFAULT_SUB = 'Book on WhatsApp in about a minute. No app, no queue, no printout.';
 
 let fontsReady = false;
@@ -76,13 +76,32 @@ async function compose({ photo, title, sub }) {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
-  /* The photograph, covering the frame. */
-  const file = path.join(IMAGES, `${photo}.png`);
-  const img = await loadImage(fs.existsSync(file) ? file : path.join(IMAGES, '4.png'));
-  const scale = Math.max(W / img.width, H / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  /*
+   * DRAWN, NOT PHOTOGRAPHED (user, 2026-09-17), until the real photographs are
+   * supplied: a dawn sky and five ridges, the same scene the website draws.
+   * `photo` still picks a variation, so each card keeps its own look.
+   */
+  const v = Number(photo) % 4;
+  const skies = [['#fde7c3', '#9ed4c4'], ['#e8f1ff', '#a9d8c6'], ['#ffe0d1', '#b9d9c9'], ['#e6f4ea', '#8fcbb6']][v];
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, skies[0]);
+  sky.addColorStop(1, skies[1]);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+  const ridges = ['#a7cfc2', '#6fae9a', '#3f8a74', '#1f6552', '#0f3a2f'];
+  ridges.forEach((colour, i) => {
+    const base = H * (0.38 + i * 0.12);
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    ctx.lineTo(0, base);
+    for (let x = 0; x <= W; x += 40) {
+      ctx.lineTo(x, base - 34 * Math.sin((x / W) * Math.PI * (2 + i) + v + i) - 18 * Math.cos((x / W) * Math.PI * 5 + i));
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
+  });
 
   /* Dark from the bottom-left, so white type sits on it at any crop. */
   const shade = ctx.createLinearGradient(0, H, W * 0.9, 0);
@@ -142,7 +161,7 @@ router.get(['/public/og.jpg', '/public/og.png'], async (req, res) => {
   const sub = String(req.query.s || DEFAULT_SUB).slice(0, 140);
   const photo = /^[1-5]$/.test(String(req.query.p)) ? String(req.query.p) : '4';
 
-  const key = crypto.createHash('sha1').update(`${photo}|${title}|${sub}`).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(`drawn|${photo}|${title}|${sub}`).digest('hex').slice(0, 16);
   const cached = path.join(CACHE, `og-${key}.jpg`);
 
   try {
