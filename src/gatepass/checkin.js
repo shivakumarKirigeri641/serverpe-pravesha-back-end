@@ -130,13 +130,15 @@ async function search(checkpost, q, { date } = {}) {
   const day = date || slotTime.nowIST().date;
   const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  /* A pass number first, when it looks like one: it identifies exactly one pass
-     on any date, which a plate does not. */
+  /* A pass number first, when it looks like one: it identifies exactly one pass.
+     TODAY'S ONLY, like the list it searches beside (user, 2026-09-17): the gate
+     works one day, and yesterday's or tomorrow's pass is not one to act on here —
+     opening it by its number still says why it is not valid today. */
   const byPass = booking.passNumberCandidates ? booking.passNumberCandidates(cleaned) : [];
   if (byPass.length) {
     const rows = await rowsOf(
-      `SELECT ${LIST_COLUMNS} ${LIST_FROM} WHERE t.ticket_no = ANY($1::text[]) AND t.status IN ('paid','used')`,
-      [byPass]);
+      `SELECT ${LIST_COLUMNS} ${LIST_FROM} WHERE t.ticket_no = ANY($1::text[]) AND t.status IN ('paid','used') AND t.travel_date = $2::date`,
+      [byPass, day]);
     if (rows.length) return { ok: true, matchedOn: 'pass', passes: rows.map(shape) };
   }
 
@@ -147,8 +149,8 @@ async function search(checkpost, q, { date } = {}) {
     `SELECT ${LIST_COLUMNS} ${LIST_FROM}
       WHERE t.status IN ('paid','used')
         AND (t.reg_no = $1 OR t.reg_no LIKE $2)
-        AND t.travel_date BETWEEN ($3::date - 1) AND ($3::date + 1)
-      ORDER BY (t.travel_date = $3::date) DESC, t.travel_date, s.starts_at
+        AND t.travel_date = $3::date
+      ORDER BY s.starts_at
       LIMIT 25`,
     [full || cleaned, `%${cleaned}`, day]);
 
