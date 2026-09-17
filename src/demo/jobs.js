@@ -73,7 +73,7 @@ const ACTIONS = {
     label: 'Clean the database',
     script: 'scripts/reset-all.js',
     destructive: true,
-    blurb: 'Empties everything — passes, payments, invoices, gate checks, shifts, staff, visitors, conversations, the watchlist, the vehicle cache and the other destinations — and restarts the counters. Keeps the policies, the default destination with its pricing and the default checkpost (both enabled), panel users, settings and the audit trail.',
+    blurb: 'Empties everything — passes, payments, invoices, gate checks, shifts, staff, other panel users, visitors, conversations, the watchlist, the vehicle cache and the audit trail — and restarts the counters. Keeps the policies, every destination with its slots and prices, every checkpost, the settings, and the super administrator.',
     args: () => ['--yes'],
   },
 };
