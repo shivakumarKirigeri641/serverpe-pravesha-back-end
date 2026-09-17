@@ -31,7 +31,6 @@
  * tested end to end without an SMS ever being sent.
  */
 
-const crypto = require('crypto');
 const { query, one } = require('./db');
 const sms = require('../sms/fast2sms');
 const staffModule = require('./staff');
@@ -40,7 +39,7 @@ const MINUTES = 3;            // how long a code lives
 const MAX_ATTEMPTS = 5;       // wrong guesses before it is dead
 const RESEND_SECONDS = 60;    // between one code and the next
 const PER_HOUR = 6;           // codes per number per hour
-const TEST_CODE = '1234';     // the reserved 000 range, and every number off production
+const otpMode = require('../config/otp');
 
 /* Both languages, because the person reading this is at a barrier in Chikkamagaluru. */
 const SAYS = {
@@ -100,19 +99,12 @@ const digits = (m) => String(m || '').replace(/\D/g, '').slice(-10);
 const isTest = (m) => /^000\d{7}$/.test(m);
 
 /*
- * NO SMS FOR NOW (user, 2026-09-16). Off production, every staff number signs in
- * with the fixed code 1234 and nothing is sent — the same rule as the admin
- * panel's sign-in (adminOtp.js). On production a fixed code would let anyone who
- * knows a staff member's number through the gate app, so there real codes are
- * generated and sent by SMS exactly as before.
- * "Production" is NODE_ENV=production, as everywhere else.
+ * REAL OR FIXED IS IS_REAL_OTP (user, 2026-09-17), the one switch every code in
+ * the project reads (config/otp.js). Off, every staff number signs in with 6416
+ * and nothing is sent; on, a random code goes out by SMS. The reserved 000 test
+ * range always gets the fixed code — no phone can receive an SMS there.
  */
-const onProduction = () => String(process.env.NODE_ENV || '').toLowerCase() === 'production';
-const fixedCode = (m) => isTest(m) || !onProduction();
-
-/* A code with no pattern in it. randomInt is the right generator here: Math.random
-   is predictable enough to matter when the whole secret is four digits. */
-const mint = () => String(crypto.randomInt(0, 10000)).padStart(4, '0');
+const fixedCode = (m) => isTest(m) || !otpMode.isRealOtp();
 
 /**
  * "Get OTP".
@@ -174,7 +166,7 @@ async function request({ mobile, ip = null }) {
   const validity = `${MINUTES} minutes`;
 
   const testing = fixedCode(m);
-  const code = testing ? TEST_CODE : mint();
+  const code = testing ? otpMode.DEFAULT_OTP : otpMode.mint();
   /* Scrypt from staff.js, rather than a second scheme and a new dependency for
      the sake of four digits. */
   const hash = await staffModule.hashSecret(code);
@@ -192,8 +184,8 @@ async function request({ mobile, ip = null }) {
     [staff.id, m, hash, String(MINUTES), ip, isTest(m)]);
 
   if (testing) {
-    /* No SMS: a reserved number cannot receive one, and off production none is
-       sent to anybody. */
+    /* No SMS: a reserved number cannot receive one, and with IS_REAL_OTP off
+       none is sent to anybody. */
     return {
       ok: true, expiresAt: row.expires_at, minutes: MINUTES, testCode: code,
       ...say('sent'),

@@ -12,9 +12,10 @@
  * person being added reads the code off their own phone, so the number is known
  * to be theirs before anything is switched on.
  *
- * NOTHING IS SENT, FOR NOW (user, 2026-09-15). As with sign-in, the code is the
- * fixed 1234 on a development server, and the step is refused on production
- * until codes are generated and sent — a fixed code there would prove nothing.
+ * REAL OR FIXED IS IS_REAL_OTP (user, 2026-09-17), as for every code in the
+ * project (config/otp.js): off, the code is 6416 and nothing is sent — which
+ * proves nothing about the number, so it is for testing; on, a random code is
+ * sent by SMS to the number being added.
  *
  * WHO MAY ADD WHOM.
  *   checkpost staff     anyone who manages staff; a checkpost manager only to
@@ -34,9 +35,8 @@ const MINUTES = 10;          // to hand the phone over and read the code out
 const VERIFIED_MINUTES = 15; // from typing the code to pressing Enable
 const MAX_ATTEMPTS = 5;
 const RESEND_SECONDS = 30;
-const FIXED_CODE = '1234';
-
-const onProduction = () => String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const otpMode = require('../config/otp');
+const FIXED_CODE = otpMode.DEFAULT_OTP;
 
 /* The settings screens' own refusal, so their routes explain these the same way. */
 const { Refusal } = settingsAdmin;
@@ -89,9 +89,6 @@ async function existing(mobile) {
 async function requestCode({ mobile, actor, ip = null }) {
   const m = admin.localMobile(mobile);
   if (m.length !== 10) refuse('Enter the 10-digit mobile number.', { code: 'bad_mobile' });
-  if (onProduction()) {
-    refuse('Codes are not set up on this server yet, so a number cannot be verified.', { status: 503, code: 'not_configured' });
-  }
 
   const [recent] = (await query(
     `SELECT max(sent_at) AS last_sent FROM admin_otps WHERE mobile = $1 AND purpose = 'enrol'`, [m])).rows;
@@ -103,10 +100,18 @@ async function requestCode({ mobile, actor, ip = null }) {
   await query(
     `UPDATE admin_otps SET expires_at = now()
       WHERE mobile = $1 AND purpose = 'enrol' AND consumed_at IS NULL AND expires_at > now()`, [m]);
-  await query(
+  const code = otpMode.newCode();
+  const row = await one(
     `INSERT INTO admin_otps (mobile, code_hash, expires_at, ip, is_fixed, purpose, requested_by)
-     VALUES ($1, $2, now() + ($3 || ' minutes')::interval, $4, true, 'enrol', $5)`,
-    [m, await admin.hashPassword(FIXED_CODE), String(MINUTES), ip, actor.admin_id]);
+     VALUES ($1, $2, now() + ($3 || ' minutes')::interval, $4, $5, 'enrol', $6) RETURNING id`,
+    [m, await admin.hashPassword(code), String(MINUTES), ip, !otpMode.isRealOtp(), actor.admin_id]);
+  if (otpMode.isRealOtp()) {
+    const sent = await require('./adminOtp').sendCode(m, code, MINUTES, 'enrol-otp');
+    if (!sent.ok) {
+      await query(`UPDATE admin_otps SET expires_at = now() WHERE id = $1`, [row.id]);
+      refuse('The code could not be sent to that number just now. Try again in a moment.', { status: 502, code: sent.error });
+    }
+  }
 
   const { staff, user } = await existing(m);
   return {

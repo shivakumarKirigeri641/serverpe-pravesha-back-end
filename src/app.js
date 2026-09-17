@@ -124,6 +124,13 @@ app.listen(PORT, () => {
   if (require('./ulip/config').config.source() === 'ulip' && process.env.VEHICLE_LOOKUP_KEY) {
     console.log(`  lookup   ${process.env.PUBLIC_BASE_URL || ''}/api/v1/vehicle/:regNo/{rc,challans,fastag} (x-api-key)`);
   }
+  /* IS_REAL_OTP (config/otp.js): said at start-up, and loudly when a live server
+     would accept the fixed code from anyone. */
+  const realOtp = require('./config/otp').isRealOtp();
+  console.log(`  otp      ${realOtp ? 'real codes, sent by SMS' : `fixed ${require('./config/otp').DEFAULT_OTP}, nothing sent`}`);
+  if (!realOtp && String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
+    console.warn('  WARNING  IS_REAL_OTP is off on production: anyone who knows a user mobile number can sign in with the fixed code.');
+  }
   console.log(`  replies  ${String(process.env.WHATSAPP_REPLY_ENABLED) !== 'false' ? 'enabled' : 'disabled'}`
     + `${String(process.env.WHATSAPP_DRY_RUN) === 'true' ? ' (DRY RUN)' : ''}\n`);
 });

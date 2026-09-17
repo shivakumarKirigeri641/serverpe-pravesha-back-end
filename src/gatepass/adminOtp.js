@@ -1,13 +1,10 @@
 /**
  * adminOtp.js — signing in to the admin panel with a code instead of a password.
  *
- * NOTHING IS SENT, FOR NOW (user, 2026-09-15). No SMS goes to any number. On a
- * development server the code is fixed at 1234, so the panel's users can sign
- * in while the flow is built and tested. On production a fixed code would let
- * anybody who knows a panel user's mobile number straight in — the Super Admin's
- * included — so there it is refused outright until codes are generated and sent.
- * "Production" is NODE_ENV=production, the same test the payment keys and the
- * demonstration mode use.
+ * REAL OR FIXED IS IS_REAL_OTP (user, 2026-09-17), the one switch every code in
+ * the project reads (config/otp.js). Off, the code is 6416 and nothing is sent;
+ * on, a random code is generated and sent by SMS through the same registered
+ * template the gate app uses.
  *
  * THE SAME LIMITS AS THE GATE APP. A code lives three minutes, dies after five
  * wrong tries, is spent the moment it works, and only the newest one counts.
@@ -27,9 +24,8 @@ const MINUTES = 3;
 const MAX_ATTEMPTS = 5;
 const RESEND_SECONDS = 30;
 const PER_HOUR = 10;
-const FIXED_CODE = '1234';
-
-const onProduction = () => String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const otpMode = require('../config/otp');
+const FIXED_CODE = otpMode.DEFAULT_OTP;
 
 const SENT = 'Enter the 4-digit code.';
 
@@ -37,10 +33,6 @@ const SENT = 'Enter the 4-digit code.';
 async function request({ mobile, ip = null }) {
   const m = admin.localMobile(mobile);
   if (m.length !== 10) return { ok: false, error: 'bad_mobile', message: 'Enter the 10-digit mobile number.' };
-
-  if (onProduction()) {
-    return { ok: false, error: 'not_configured', message: 'Sign-in codes are not set up on this server yet. Use your password.' };
-  }
 
   const user = await one(`SELECT id FROM admin_users WHERE mobile = $1 AND is_active`, [m]);
   /* Not a panel user: the same answer, and no code to type. */
@@ -61,12 +53,32 @@ async function request({ mobile, ip = null }) {
   await query(
     `UPDATE admin_otps SET expires_at = now()
       WHERE mobile = $1 AND purpose = 'sign_in' AND consumed_at IS NULL AND expires_at > now()`, [m]);
-  await query(
+  const code = otpMode.newCode();
+  const row = await one(
     `INSERT INTO admin_otps (admin_id, mobile, code_hash, expires_at, ip, is_fixed)
-     VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval, $5, true)`,
-    [user.id, m, await admin.hashPassword(FIXED_CODE), String(MINUTES), ip]);
+     VALUES ($1, $2, $3, now() + ($4 || ' minutes')::interval, $5, $6) RETURNING id`,
+    [user.id, m, await admin.hashPassword(code), String(MINUTES), ip, !otpMode.isRealOtp()]);
+
+  if (otpMode.isRealOtp()) {
+    const sent = await sendCode(m, code, MINUTES, 'admin-otp');
+    if (!sent.ok) {
+      /* A code nobody can read is retired at once, so asking again is not
+         blocked by the resend wait. */
+      await query(`UPDATE admin_otps SET expires_at = now() WHERE id = $1`, [row.id]);
+      return { ok: false, error: sent.error, message: 'The code could not be sent just now. Try again, or use your password.' };
+    }
+  }
 
   return { ok: true, minutes: MINUTES, message: SENT };
+}
+
+/* The registered SMS template takes the code, who is asking and how long it
+   lasts, in that order — the same three the gate app's code sends. */
+async function sendCode(mobile, code, minutes, purpose) {
+  const sms = require('../sms/fast2sms');
+  const brand = process.env.FAST2SMS_OTP_BRAND || 'Pravesha';
+  const out = await sms.send(mobile, [code, brand.slice(0, 30), `${minutes} minutes`], { purpose });
+  return out.ok ? { ok: true } : { ok: false, error: out.error === 'not_configured' ? 'not_configured' : 'sms_failed' };
 }
 
 const WRONG = 'That code is not right.';
@@ -107,4 +119,4 @@ async function verify({ mobile, code, ip = null, userAgent = null }) {
   return { ok: true, token };
 }
 
-module.exports = { MINUTES, MAX_ATTEMPTS, FIXED_CODE, request, verify };
+module.exports = { MINUTES, MAX_ATTEMPTS, FIXED_CODE, request, verify, sendCode };
