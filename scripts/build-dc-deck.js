@@ -278,8 +278,8 @@ function welcome(pptx, ctx) {
   line(ctx.tagline, 4.08, 0.52, { fontFace: F.enBold, fontSize: 26, color: C.brand2 });
   line(ctx.taglineKn, 4.58, 0.42, { fontFace: F.kn, fontSize: KN(18), color: C.accent });
   s.addShape('rect', { x: centre(1.1), y: 5.1, w: 1.1, h: 0.06, fill: { color: C.sun }, line: { color: C.sun } });
-  line('A WhatsApp-based toll & entry pass booking platform', 5.24, 0.44, { fontFace: F.en, fontSize: 19, color: C.ink });
-  line('ವಾಟ್ಸಾಪ್ ಆಧಾರಿತ ಟೋಲ್ ಮತ್ತು ಪ್ರವೇಶ ಪಾಸ್ ಬುಕಿಂಗ್ ವೇದಿಕೆ', 5.66, 0.36, { fontFace: F.kn, fontSize: KN(14), color: C.muted });
+  line('Digital Tourist Entry & Visitor Management Platform', 5.24, 0.44, { fontFace: F.en, fontSize: 19, color: C.ink });
+  line('ಡಿಜಿಟಲ್ ಪ್ರವಾಸಿ ಪ್ರವೇಶ ಮತ್ತು ಸಂದರ್ಶಕರ ನಿರ್ವಹಣಾ ವೇದಿಕೆ', 5.66, 0.36, { fontFace: F.kn, fontSize: KN(14), color: C.muted });
 
   /* Bottom: powered by. One centred row — label, mark, name. */
   const labelW = 1.25;
@@ -427,9 +427,7 @@ function orgProfile(pptx, ctx) {
   s.addText([
     { text: FOUNDER_NAME, options: { fontFace: F.enBold, fontSize: 18, color: C.ink, breakLine: true } },
     { text: ctx.founderTitle, options: { fontFace: F.en, fontSize: 12, color: C.brand2, breakLine: true } },
-    { text: 'ಸಂಸ್ಥಾಪಕರು ಮತ್ತು ಮಾಲೀಕರು', options: { fontFace: F.kn, fontSize: KN(11), color: C.muted, breakLine: true } },
-    { text: `Native place: ${FOUNDER_NATIVE.en}`, options: { fontFace: F.en, fontSize: 11, color: C.ink, breakLine: true, paraSpaceBefore: 6 } },
-    { text: `ಸ್ವಂತ ಊರು: ${FOUNDER_NATIVE.kn}`, options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } },
+    { text: 'ಸಂಸ್ಥಾಪಕರು ಮತ್ತು ಮಾಲೀಕರು', options: { fontFace: F.kn, fontSize: KN(11), color: C.muted } },
   ], { x: cardX + 0.15, y: photoY + photoH + 0.18, w: cardW - 0.3, h: 1.5, align: 'center', valign: 'top', margin: 0 });
 
   /* Right: the organisation, as a fact sheet. */
@@ -442,8 +440,7 @@ function orgProfile(pptx, ctx) {
     ['Constitution', 'ಸಂಸ್ಥೆಯ ಸ್ವರೂಪ', 'Sole Proprietorship'],
     ['Founder & Proprietor', 'ಸಂಸ್ಥಾಪಕರು ಮತ್ತು ಮಾಲೀಕರು', FOUNDER_NAME],
     ['Operating since', 'ಕಾರ್ಯಾರಂಭ', ctx.since],
-    ['GSTIN', 'ಜಿಎಸ್‌ಟಿ ನೋಂದಣಿ ಸಂಖ್ಯೆ', ctx.gstin],
-    ['Udyam Registration', 'ಉದ್ಯಮ ನೋಂದಣಿ ಸಂಖ್ಯೆ', UDYAM_NUMBER],
+    /* GST and Udyam are not explained on the slide (review, 2026-09-17). */
   ];
   facts.forEach(([en, kn, value], i) => {
     const y = cardY + i * rowH;
@@ -463,9 +460,9 @@ function orgProfile(pptx, ctx) {
   s.addShape('rect', { x: rx, y: bgY, w: 0.08, h: bgH, fill: { color: C.accent }, line: { color: C.accent } });
   s.addText('15+', { x: rx + 0.2, y: bgY, w: figureW, h: bgH, fontFace: F.enBold, fontSize: 48, color: C.brand, align: 'center', valign: 'middle', margin: 0 });
   s.addText([
-    { text: 'Years of IT experience', options: { fontFace: F.enBold, fontSize: 18, color: C.ink, breakLine: true } },
-    { text: 'ಐಟಿ ಕ್ಷೇತ್ರದಲ್ಲಿ 15ಕ್ಕೂ ಹೆಚ್ಚು ವರ್ಷಗಳ ಅನುಭವ', options: { fontFace: F.kn, fontSize: KN(12), color: C.brand2, breakLine: true } },
-    { text: 'Software engineer  ·  software & application development', options: { fontFace: F.en, fontSize: 13, color: C.muted, paraSpaceBefore: 4 } },
+    { text: 'Years of software engineering experience', options: { fontFace: F.enBold, fontSize: 18, color: C.ink, breakLine: true } },
+    { text: 'ಸಾಫ್ಟ್‌ವೇರ್ ಎಂಜಿನಿಯರಿಂಗ್‌ನಲ್ಲಿ 15ಕ್ಕೂ ಹೆಚ್ಚು ವರ್ಷಗಳ ಅನುಭವ', options: { fontFace: F.kn, fontSize: KN(12), color: C.brand2, breakLine: true } },
+    { text: 'ServerPe App Solutions, since August 2025 — we build and operate our own digital platforms and custom technology solutions', options: { fontFace: F.en, fontSize: 13, color: C.muted, paraSpaceBefore: 4 } },
   ], { x: rx + 0.2 + figureW + 0.15, y: bgY, w: rw - figureW - 0.55, h: bgH, valign: 'middle', margin: 0 });
 }
 
@@ -486,11 +483,11 @@ function whatWeDo(pptx) {
     { en: 'Services & Products', kn: 'ಸೇವೆಗಳು ಮತ್ತು ಉತ್ಪನ್ನಗಳು', color: C.brand,
       points: ['Own products, built and run in-house', 'Custom solutions for departments & businesses', 'Design, build, deploy & support — end to end'] },
     { en: 'WhatsApp Platforms', kn: 'ವಾಟ್ಸಾಪ್ ಆಧಾರಿತ ವೇದಿಕೆಗಳು', color: C.accent,
-      points: ['Meta-approved WhatsApp Business messaging API integration', 'Booking & payment inside the chat', 'English & Kannada conversations'] },
+      points: ['WhatsApp Business Platform integration', 'Booking & payment inside the chat', 'English & Kannada conversations'] },
     { en: 'Desktop & Web Apps', kn: 'ಡೆಸ್ಕ್‌ಟಾಪ್, ವೆಬ್ ಆ್ಯಪ್‌ಗಳು', color: C.brand2,
       points: ['Schedulers & automated jobs', 'Booking, slot & capacity management', 'Full-stack development — web, APIs, databases'] },
     { en: 'ULIP Vehicle Services', kn: 'ULIP ವಾಹನ ಸೇವೆಗಳು', color: C.sun,
-      points: ['ULIP-approved integration', 'RC — vehicle registration details', 'eChallan — traffic challans', 'FASTag'] },
+      points: ['ULIP integration', 'RC — vehicle registration details', 'eChallan — traffic challans', 'FASTag'] },
   ];
 
   const top = 1.95;
@@ -563,13 +560,13 @@ function scope(pptx) {
 
   const rows = [
     ['Forged tickets', 'ನಕಲಿ ಟಿಕೆಟ್‌ಗಳು',
-      'Nothing to forge — the gate checks the number plate against the day\'s bookings', 'ನಕಲಿ ಮಾಡಲು ಏನೂ ಇಲ್ಲ — ವಾಹನ ಸಂಖ್ಯೆಯನ್ನೇ ನೇರವಾಗಿ ಪರಿಶೀಲನೆ'],
+      'The physical PDF is not the source of truth — the system record determines entry validity', 'PDF ಅಂತಿಮವಲ್ಲ — ವ್ಯವಸ್ಥೆಯ ದಾಖಲೆಯೇ ಪ್ರವೇಶದ ಮಾನ್ಯತೆ ನಿರ್ಧರಿಸುತ್ತದೆ'],
     ['Same vehicle entering many times', 'ಒಂದೇ ವಾಹನ ಹಲವು ಬಾರಿ ಪ್ರವೇಶ',
       'Every entry is recorded — a repeat is flagged "already used"', 'ಪ್ರತಿ ಪ್ರವೇಶ ದಾಖಲು — ಮತ್ತೆ ಬಂದರೆ "ಈಗಾಗಲೇ ಬಳಸಲಾಗಿದೆ"'],
     ['One ticket, many vehicles', 'ಒಂದೇ ಟಿಕೆಟ್‌ನಲ್ಲಿ ಹಲವು ವಾಹನಗಳು',
       'Each pass is bound to one vehicle number — any other vehicle is refused', 'ಪಾಸ್ ಒಂದೇ ವಾಹನಕ್ಕೆ ಸೀಮಿತ — ಬೇರೆ ವಾಹನಕ್ಕೆ ಪ್ರವೇಶವಿಲ್ಲ'],
     ['Staff cannot verify tickets', 'ಸಿಬ್ಬಂದಿಗೆ ಪರಿಶೀಲನೆ ಕಷ್ಟ',
-      'Staff app gives a verdict in seconds — even without mobile signal', 'ಕೆಲವೇ ಸೆಕೆಂಡುಗಳಲ್ಲಿ ಪರಿಶೀಲನೆ — ನೆಟ್‌ವರ್ಕ್ ಇಲ್ಲದಿದ್ದರೂ'],
+      'The staff app can verify against the locally available day\'s booking data when connectivity is unavailable', 'ನೆಟ್‌ವರ್ಕ್ ಇಲ್ಲದಾಗ ಫೋನ್‌ನಲ್ಲಿರುವ ದಿನದ ಬುಕಿಂಗ್ ದಾಖಲೆಯಿಂದ ಪರಿಶೀಲನೆ'],
     ['Weekend & holiday rush, sudden spikes', 'ವಾರಾಂತ್ಯ, ರಜಾದಿನಗಳ ದಟ್ಟಣೆ ಮತ್ತು ಏಕಾಏಕಿ ಏರಿಕೆ',
       'Slots capped per vehicle type spread the rush; spikes raise an alert', 'ಸ್ಲಾಟ್‌ವಾರು ಮಿತಿಯಿಂದ ದಟ್ಟಣೆ ಹಂಚಿಕೆ; ಏರಿಕೆಗೆ ಎಚ್ಚರಿಕೆ'],
     ['Edited dates, vehicle numbers & IDs', 'ದಿನಾಂಕ, ವಾಹನ ಸಂಖ್ಯೆ, ಗುರುತಿನ ತಿದ್ದುಪಡಿ',
@@ -616,7 +613,8 @@ function scope(pptx) {
     s.addShape('roundRect', { x: rightX, y, w: rightW, h: boxH, fill: { color: C.mist }, line: { color: C.mist2 }, rectRadius: 0.06 });
     s.addShape('rect', { x: rightX, y, w: 0.07, h: boxH, fill: { color: C.accent }, line: { color: C.accent } });
     s.addText([
-      { text: se, options: { fontFace: F.en, fontSize: 12, color: C.ink, breakLine: true } },
+      /* The longer, more careful wordings (review, 2026-09-17) stay on one line. */
+      { text: se, options: { fontFace: F.en, fontSize: se.length > 90 ? 10.5 : 12, color: C.ink, breakLine: true } },
       { text: sk, options: { fontFace: F.kn, fontSize: KN(9), color: C.brand2 } },
     ], { x: rightX + 0.22, y, w: rightW - 0.32, h: boxH, valign: 'middle', margin: 0 });
   });
@@ -640,7 +638,7 @@ function benefits(pptx) {
   const advantages = [
     ['No app to install', 'ಆ್ಯಪ್ ಇನ್‌ಸ್ಟಾಲ್ ಬೇಕಿಲ್ಲ', 'Works inside WhatsApp'],
     ['Book 24 × 7', 'ಯಾವಾಗ ಬೇಕಾದರೂ ಬುಕಿಂಗ್', 'From home or on the road'],
-    ['Works without signal', 'ನೆಟ್‌ವರ್ಕ್ ಇಲ್ಲದಿದ್ದರೂ', 'At the gate, when the network drops'],
+    ['Offline verification', 'ನೆಟ್‌ವರ್ಕ್ ಇಲ್ಲದೆಯೂ ಪರಿಶೀಲನೆ', 'Against the day\'s saved bookings'],
     ['Every rupee accounted for', 'ಪ್ರತಿ ರೂಪಾಯಿಗೂ ಲೆಕ್ಕ', 'Reconciled and reported daily'],
   ];
   const top = 1.9;
@@ -669,10 +667,10 @@ function benefits(pptx) {
      show that page opening. */
   const groups = [
     { en: 'For the Department', kn: 'ಇಲಾಖೆಗೆ', color: C.brand, points: [
-      ['Pin-to-pin tracking, start to end of day', 'ದಿನವಿಡೀ ಸಂಪೂರ್ಣ ನಿಗಾ'],
+      ['End-to-end booking, payment and entry records', 'ಬುಕಿಂಗ್, ಪಾವತಿ, ಪ್ರವೇಶದ ಸಂಪೂರ್ಣ ದಾಖಲೆ'],
       ['Live view of entries & collections', 'ಪ್ರವೇಶ ಮತ್ತು ಸಂಗ್ರಹದ ನೇರ ನೋಟ'],
       /* jobs/periodReports.js: 8 PM IST, to the officers named in Settings. */
-      ['8 PM report on WhatsApp, every day', 'ಪ್ರತಿದಿನ ರಾತ್ರಿ 8ಕ್ಕೆ ವಾಟ್ಸಾಪ್ ವರದಿ'],
+      ['Optional scheduled daily summary for designated officers', 'ಅಧಿಕಾರಿಗಳಿಗೆ ಐಚ್ಛಿಕ ದೈನಂದಿನ ಸಾರಾಂಶ'],
       ['Set capacity; close slots for rain', 'ಸಾಮರ್ಥ್ಯ ನಿಗದಿ; ಮಳೆಗೆ ಸ್ಲಾಟ್ ಬಂದ್'],
       ['Watchlist to stop or flag vehicles', 'ವಾಹನಗಳ ತಡೆ ಅಥವಾ ಗಮನ ಪಟ್ಟಿ'],
     ] },
@@ -688,9 +686,9 @@ function benefits(pptx) {
     ] },
     { en: 'For Checkpost Staff', kn: 'ಚೆಕ್‌ಪೋಸ್ಟ್ ಸಿಬ್ಬಂದಿಗೆ', color: C.sun, points: [
       ['4 digits show the full vehicle number', '4 ಅಂಕೆಗಳಿಂದ ಪೂರ್ಣ ವಾಹನ ಸಂಖ್ಯೆ'],
-      ['Select & approve — under 1 second', 'ಆಯ್ಕೆ, ಅನುಮೋದನೆ — 1 ಸೆಕೆಂಡಿಗಿಂತ ಕಡಿಮೆ'],
+      ['Select & approve — within seconds', 'ಆಯ್ಕೆ, ಅನುಮೋದನೆ — ಕೆಲವೇ ಸೆಕೆಂಡುಗಳಲ್ಲಿ'],
       ['No rush, no waiting — hassle-free', 'ದಟ್ಟಣೆ ಇಲ್ಲ, ಕಾಯುವಿಕೆ ಇಲ್ಲ — ಸುಲಭ'],
-      ['Works offline when signal drops', 'ನೆಟ್‌ವರ್ಕ್ ಇಲ್ಲದಿದ್ದರೂ ಕೆಲಸ'],
+      ['Verifies offline from the day\'s bookings', 'ದಿನದ ಬುಕಿಂಗ್‌ನಿಂದ ಆಫ್‌ಲೈನ್ ಪರಿಶೀಲನೆ'],
       ['OTP login & shift handover', 'OTP ಲಾಗಿನ್ ಮತ್ತು ಪಾಳಿ ಹಸ್ತಾಂತರ'],
     ] },
   ];
@@ -739,11 +737,11 @@ function limitations(pptx) {
 
   const rows = [
     ['Single-person organisation', 'ಏಕವ್ಯಕ್ತಿ ಸಂಸ್ಥೆ',
-      'Founder on call with a laptop, always; a trained standby covers any absence', 'ಸಂಸ್ಥಾಪಕರು ಲ್ಯಾಪ್‌ಟಾಪ್ ಸಹಿತ ಸದಾ ಲಭ್ಯ; ಅನುಪಸ್ಥಿತಿಯಲ್ಲಿ ತರಬೇತಿ ಪಡೆದ ಪರ್ಯಾಯ ವ್ಯಕ್ತಿ'],
+      'Founder-led technical support with trained backup support for continuity', 'ಸಂಸ್ಥಾಪಕರ ನೇತೃತ್ವದ ತಾಂತ್ರಿಕ ಬೆಂಬಲ, ನಿರಂತರತೆಗೆ ತರಬೇತಿ ಪಡೆದ ಪರ್ಯಾಯ ಬೆಂಬಲ'],
     ['Vehicle data depends on ULIP records', 'ವಾಹನ ಮಾಹಿತಿ ULIP ದಾಖಲೆಗಳ ಮೇಲೆ ಅವಲಂಬಿತ',
       'No record? The visitor picks the type and the gate is told to check the vehicle', 'ದಾಖಲೆ ಇಲ್ಲದಿದ್ದರೆ ಪ್ರವಾಸಿಗರೇ ಪ್ರಕಾರ ಆಯ್ಕೆ — ಗೇಟ್‌ನಲ್ಲಿ ಪರಿಶೀಲನೆಗೆ ಸೂಚನೆ'],
     ['Booking needs a smartphone & WhatsApp', 'ಬುಕಿಂಗ್‌ಗೆ ಸ್ಮಾರ್ಟ್‌ಫೋನ್, ವಾಟ್ಸಾಪ್ ಬೇಕು',
-      'Staff can sell a pass on the spot, with the UPI payment photographed as proof', 'ಗೇಟ್‌ನಲ್ಲೇ ಪಾಸ್ ಮಾರಾಟ — UPI ಪಾವತಿಯ ಫೋಟೋ ಸಾಕ್ಷಿಯಾಗಿ'],
+      'On-spot booking can be enabled subject to the Department\'s approved payment and operational procedure', 'ಇಲಾಖೆಯ ಅನುಮೋದಿತ ಪಾವತಿ ಮತ್ತು ಕಾರ್ಯವಿಧಾನಕ್ಕೆ ಒಳಪಟ್ಟು ಸ್ಥಳದಲ್ಲೇ ಬುಕಿಂಗ್'],
     /* Said exactly as it behaves. "Keeps working offline" was true of checking
        a pass and untrue of selling one, and the gap would have shown itself at
        the gate rather than in this room (verified against the gate app's queue,
@@ -754,7 +752,7 @@ function limitations(pptx) {
       'ಫೋನ್‌ನಲ್ಲಿರುವ ಪಟ್ಟಿಯಿಂದ ಪ್ರವೇಶ ಮುಂದುವರಿಕೆ — ಸಿಗ್ನಲ್ ಬಂದಾಗ ಸಿಂಕ್'],
     /* Its own row, not a clause of the one above (user, 2026-09-15). */
     ['Selling a new pass needs signal', 'ಹೊಸ ಪಾಸ್ ಮಾರಾಟಕ್ಕೆ ಸಿಗ್ನಲ್ ಬೇಕು',
-      'Check-ins continue; sales resume with signal, so no pass, invoice or slot place is issued twice',
+      'Check-ins continue; sales wait for signal to help prevent duplicate passes, invoices and slot places',
       'ಪರಿಶೀಲನೆ ಮುಂದುವರಿಕೆ; ಮಾರಾಟ ಸಿಗ್ನಲ್ ಬಂದಾಗ — ಪಾಸ್, ಇನ್‌ವಾಯ್ಸ್ ಎರಡು ಬಾರಿ ಆಗದಂತೆ'],
     ['Payment confirmations can be delayed', 'ಪಾವತಿ ದೃಢೀಕರಣ ತಡವಾಗಬಹುದು',
       'Payments auto-reconciled every 45 seconds; unpaid holds released automatically', 'ಪ್ರತಿ 45 ಸೆಕೆಂಡಿಗೆ ಸ್ವಯಂ ಹೊಂದಾಣಿಕೆ; ಪಾವತಿಯಾಗದ ಸ್ಥಾನ ಸ್ವಯಂ ಬಿಡುಗಡೆ'],
@@ -800,7 +798,7 @@ function limitations(pptx) {
     s.addShape('roundRect', { x: rightX, y, w: rightW, h: boxH, fill: { color: C.mist }, line: { color: C.mist2 }, rectRadius: 0.06 });
     s.addShape('rect', { x: rightX, y, w: 0.07, h: boxH, fill: { color: C.accent }, line: { color: C.accent } });
     s.addText([
-      { text: re, options: { fontFace: F.en, fontSize: 11.5, color: C.ink, breakLine: true } },
+      { text: re, options: { fontFace: F.en, fontSize: re.length > 90 ? 10 : re.length > 80 ? 10.5 : 11.5, color: C.ink, breakLine: true } },
       { text: rk, options: { fontFace: F.kn, fontSize: KN(8.5), color: C.brand2 } },
     ], { x: rightX + 0.22, y, w: rightW - 0.32, h: boxH, valign: 'middle', margin: 0 });
   });
@@ -906,10 +904,10 @@ function journey(pptx) {
   const end = cell(7);
   s.addShape('roundRect', { x: end.x, y: end.y, w: cardW, h: cardH, fill: { color: C.brand }, line: { color: C.brand }, rectRadius: 0.08 });
   s.addText([
-    { text: 'About a minute', options: { fontFace: F.enBold, fontSize: 22, color: C.white, breakLine: true } },
-    { text: 'ಸುಮಾರು ಒಂದು ನಿಮಿಷ', options: { fontFace: F.kn, fontSize: KN(12), color: 'CFE5DC', breakLine: true } },
-    { text: 'from "Hi" to the pass in hand', options: { fontFace: F.en, fontSize: 12, color: C.white, breakLine: true, paraSpaceBefore: 8 } },
-    { text: '"Hi" ಇಂದ ಕೈಯಲ್ಲಿ ಪಾಸ್‌ವರೆಗೆ', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC' } },
+    { text: 'Quick booking', options: { fontFace: F.enBold, fontSize: 22, color: C.white, breakLine: true } },
+    { text: 'ತ್ವರಿತ ಬುಕಿಂಗ್', options: { fontFace: F.kn, fontSize: KN(12), color: 'CFE5DC', breakLine: true } },
+    { text: 'Designed for a quick booking journey, from "Hi" to the pass', options: { fontFace: F.en, fontSize: 12, color: C.white, breakLine: true, paraSpaceBefore: 8 } },
+    { text: '"Hi" ಇಂದ ಪಾಸ್‌ವರೆಗೆ ಸುಲಭ ಪ್ರಯಾಣ', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC' } },
   ], { x: end.x + 0.2, y: end.y, w: cardW - 0.4, h: cardH, align: 'center', valign: 'middle', margin: 0 });
 }
 
@@ -1043,8 +1041,7 @@ function staffFlow(pptx) {
   bullets(sx, sideW, C.accent, [
     ['Vehicle decides type and price', 'ವಾಹನದಿಂದಲೇ ಪ್ರಕಾರ, ದರ'],
     ['No record? Staff choose the type', 'ದಾಖಲೆ ಇಲ್ಲವೇ? ಸಿಬ್ಬಂದಿ ಆಯ್ಕೆ'],
-    ['Cash, UPI or card', 'ನಗದು, UPI ಅಥವಾ ಕಾರ್ಡ್'],
-    ['Photo of the UPI screen as proof', 'UPI ಪರದೆಯ ಫೋಟೋ ಸಾಕ್ಷಿ'],
+    ['Subject to the Department\'s approved payment procedure', 'ಇಲಾಖೆಯ ಅನುಮೋದಿತ ಪಾವತಿ ವಿಧಾನದಂತೆ'],
   ]);
 
   const ox = sx + sideW + pGap;
@@ -1052,7 +1049,7 @@ function staffFlow(pptx) {
   bullets(ox, sideW, 'D97706', [
     ['Checks run from the saved list', 'ಉಳಿಸಿದ ಪಟ್ಟಿಯಿಂದ ಪರಿಶೀಲನೆ'],
     ['Entries queued, sent when back', 'ಪ್ರವೇಶಗಳು ಸಾಲಿನಲ್ಲಿ, ನಂತರ ಕಳುಹಿಕೆ'],
-    ['Each entry recorded only once', 'ಪ್ರತಿ ಪ್ರವೇಶ ಒಂದೇ ಬಾರಿ ದಾಖಲು'],
+    ['Duplicate entries are reconciled', 'ಪುನರಾವರ್ತಿತ ಪ್ರವೇಶಗಳ ಹೊಂದಾಣಿಕೆ'],
     ['Conflicts shown to staff & office', 'ಸಮಸ್ಯೆಗಳು ಸಿಬ್ಬಂದಿ, ಕಚೇರಿಗೆ'],
   ]);
 }
@@ -1133,7 +1130,7 @@ function architecture(pptx) {
     ['Booking & payment pages', 'vehicle check, slots, checkout'],
     ['Staff API', 'today\'s passes, gate entries, on-spot sales'],
     ['Admin API', 'dashboards, capacity, watchlist, reports'],
-    ['Background jobs', 'payment reconciler · 8 PM WhatsApp report'],
+    ['Background jobs', 'payment reconciler · scheduled daily summary'],
   ];
   const modTop = top + 0.74;
   const dbH = 0.78;
@@ -1252,8 +1249,8 @@ function flows(pptx) {
   s.addShape('downArrow', { x: lx + panelW / 2 - 0.14, y: resultY - 0.02, w: 0.28, h: 0.22, fill: { color: C.accent }, line: { color: C.accent } });
   s.addShape('roundRect', { x: lx + 0.25, y: resultY + 0.24, w: panelW - 0.5, h: 0.56, fill: { color: C.brand }, line: { color: C.brand }, rectRadius: 0.06 });
   s.addText([
-    { text: 'Whichever arrives first issues the pass — exactly once', options: { fontFace: F.enBold, fontSize: 12, color: C.white, breakLine: true } },
-    { text: 'ಮೊದಲು ಬಂದ ದೃಢೀಕರಣದಿಂದ ಪಾಸ್ — ಒಂದೇ ಬಾರಿ', options: { fontFace: F.kn, fontSize: KN(8.5), color: 'CFE5DC' } },
+    { text: 'Multiple payment confirmations are reconciled to prevent duplicate ticket issuance', options: { fontFace: F.enBold, fontSize: 12, color: C.white, breakLine: true } },
+    { text: 'ಪುನರಾವರ್ತಿತ ಪಾಸ್ ತಡೆಯಲು ಪಾವತಿ ದೃಢೀಕರಣಗಳ ಹೊಂದಾಣಿಕೆ', options: { fontFace: F.kn, fontSize: KN(8.5), color: 'CFE5DC' } },
   ], { x: lx + 0.4, y: resultY + 0.24, w: panelW - 0.8, h: 0.56, align: 'center', valign: 'middle', margin: 0 });
   s.addText([
     { text: 'The place is held while paying and released automatically if unpaid', options: { fontFace: F.en, fontSize: 10, italic: true, color: C.muted, breakLine: true } },
@@ -1267,7 +1264,7 @@ function flows(pptx) {
     ['Today\'s passes are saved on the phone', 'ಇಂದಿನ ಪಾಸ್‌ಗಳು ಫೋನ್‌ನಲ್ಲಿ ಉಳಿತಾಯ'],
     ['Type 4 digits → pick the vehicle → approve', '4 ಅಂಕೆ → ವಾಹನ ಆಯ್ಕೆ → ಅನುಮೋದನೆ'],
     ['Verdict: valid · already used · wrong day · unpaid · cancelled', 'ಮಾನ್ಯ · ಬಳಕೆಯಾಗಿದೆ · ತಪ್ಪು ದಿನ · ಪಾವತಿ ಇಲ್ಲ · ರದ್ದು'],
-    ['No signal? Entry queued and sent when back — recorded once', 'ನೆಟ್‌ವರ್ಕ್ ಬಂದಾಗ ಕಳುಹಿಕೆ — ಒಂದೇ ಬಾರಿ ದಾಖಲು'],
+    ['No signal? Entry queued and sent when back — duplicates reconciled', 'ನೆಟ್‌ವರ್ಕ್ ಬಂದಾಗ ಕಳುಹಿಕೆ — ಪುನರಾವರ್ತನೆ ಹೊಂದಾಣಿಕೆ'],
     ['Any conflict is flagged to the staff and the office', 'ಯಾವುದೇ ಸಮಸ್ಯೆ ಸಿಬ್ಬಂದಿ, ಕಚೇರಿಗೆ ತಿಳಿಸಲಾಗುತ್ತದೆ'],
   ];
   const gTop = top + 0.95;
@@ -1282,7 +1279,7 @@ function flows(pptx) {
     ], { x: rx + 0.8, y, w: panelW - 1.0, h: gPitch, valign: 'middle', margin: 0 });
   });
   s.addText([
-    { text: 'On-spot sales wait for signal — the last place is never sold twice', options: { fontFace: F.en, fontSize: 10, italic: true, color: C.muted, breakLine: true } },
+    { text: 'On-spot sales need signal, so capacity is checked against the live record', options: { fontFace: F.en, fontSize: 10, italic: true, color: C.muted, breakLine: true } },
     { text: 'ಸ್ಥಳದಲ್ಲೇ ಮಾರಾಟಕ್ಕೆ ನೆಟ್‌ವರ್ಕ್ ಅಗತ್ಯ', options: { fontFace: F.kn, fontSize: KN(8), color: C.muted } },
   ], { x: rx + 0.25, y: top + panelH - 0.46, w: panelW - 0.5, h: 0.42, align: 'center', valign: 'middle', margin: 0 });
 
@@ -1291,8 +1288,8 @@ function flows(pptx) {
   const stripH = H - FOOTER_H - 0.14 - stripY;
   s.addShape('roundRect', { x: GUTTER, y: stripY, w: W - GUTTER * 2, h: stripH, fill: { color: C.deep }, line: { color: C.deep }, rectRadius: 0.08 });
   s.addText([
-    { text: 'The QR on the PDF pass opens a live status page — the database decides, never the paper', options: { fontFace: F.enBold, fontSize: 12.5, color: C.white, breakLine: true } },
-    { text: 'PDF ಪಾಸ್‌ನ QR ನೇರ ಸ್ಥಿತಿ ತೋರಿಸುತ್ತದೆ — ಕಾಗದವಲ್ಲ, ದಾಖಲೆಯೇ ಅಂತಿಮ', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC' } },
+    { text: 'Entry is verified against the system record by vehicle or pass number — the PDF itself does not decide entry', options: { fontFace: F.enBold, fontSize: 12.5, color: C.white, breakLine: true } },
+    { text: 'ವಾಹನ ಅಥವಾ ಪಾಸ್ ಸಂಖ್ಯೆಯಿಂದ ವ್ಯವಸ್ಥೆಯ ದಾಖಲೆಯಲ್ಲಿ ಪರಿಶೀಲನೆ — PDF ಪ್ರವೇಶವನ್ನು ನಿರ್ಧರಿಸುವುದಿಲ್ಲ', options: { fontFace: F.kn, fontSize: KN(9), color: 'CFE5DC' } },
   ], { x: GUTTER + 0.3, y: stripY, w: W - GUTTER * 2 - 0.6, h: stripH, align: 'center', valign: 'middle', margin: 0 });
 }
 
@@ -1317,8 +1314,8 @@ function roadmap(pptx, opts = {}) {
   /* The promise the slide rests on. */
   const introY = 1.86;
   s.addText([
-    { text: opts.intro || 'Once live, Pravesha runs on its own — development does not stop.', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
-    { text: `   ·   ${opts.introKn || 'ಆರಂಭದ ನಂತರವೂ ಅಭಿವೃದ್ಧಿ ನಿರಂತರ'}`, options: { fontFace: F.kn, fontSize: KN(10), color: C.muted } },
+    { text: opts.intro || 'Additional features can be introduced based on Department requirements.', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
+    { text: `   ·   ${opts.introKn || 'ಇಲಾಖೆಯ ಅಗತ್ಯಕ್ಕೆ ತಕ್ಕಂತೆ ಹೆಚ್ಚಿನ ಸೌಲಭ್ಯಗಳನ್ನು ಸೇರಿಸಬಹುದು'}`, options: { fontFace: F.kn, fontSize: KN(10), color: C.muted } },
   ], { x: GUTTER, y: introY, w: W - GUTTER * 2, h: 0.4, valign: 'middle', margin: 0 });
 
   const PRIORITY = { label: 'PRIORITY', kn: 'ಆದ್ಯತೆ', color: 'DC2626' };
@@ -1327,35 +1324,38 @@ function roadmap(pptx, opts = {}) {
 
   /* One line of English and one of Kannada per point, and one-line titles: in
      a card this narrow anything longer runs into the line below. */
+  /* Four items for the first meeting (review, 2026-09-17): no multi-entry
+     passes, concessions or peak-day pricing yet. */
+  const PLANNED = { label: 'PLANNED', kn: 'ಯೋಜಿತ', color: '2563EB' };
   const cards = opts.cards || [
-    { phase: PRIORITY, en: 'Pass Postpone', kn: 'ಪಾಸ್ ಮುಂದೂಡಿಕೆ',
+    { phase: PRIORITY, en: 'Pass Postponement', kn: 'ಪಾಸ್ ಮುಂದೂಡಿಕೆ',
       points: [
-        ['New date within 2 weeks', '2 ವಾರಗಳೊಳಗೆ ಹೊಸ ದಿನಾಂಕ'],
-        ['Free or small fee, as decided', 'ಉಚಿತ ಅಥವಾ ಸಣ್ಣ ಶುಲ್ಕ'],
-        ['Also if the visit was missed', 'ಭೇಟಿ ತಪ್ಪಿದರೂ ಅವಕಾಶ'],
+        ['Move a pass to a new date', 'ಪಾಸ್ ಹೊಸ ದಿನಾಂಕಕ್ಕೆ'],
+        ['Rules and any fee as decided', 'ನಿಯಮ, ಶುಲ್ಕ ಇಲಾಖೆಯ ನಿರ್ಧಾರ'],
+        ['Subject to approval', 'ಅನುಮೋದನೆಗೆ ಒಳಪಟ್ಟು'],
       ],
       gain: ['Visitor convenience', 'ಪ್ರವಾಸಿಗರ ಅನುಕೂಲ'] },
-    { phase: GOOD, en: 'Multi-entry Passes', kn: 'ಬಹು-ಪ್ರವೇಶ ಪಾಸ್',
-      points: [
-        ['Paid re-entry, same day', 'ಶುಲ್ಕ ಸಹಿತ ಮರು-ಪ್ರವೇಶ'],
-        ['Day pass — many entries', 'ದಿನದ ಪಾಸ್ — ಹಲವು ಪ್ರವೇಶ'],
-        ['Weekly pass for regulars', 'ವಾರದ ಪಾಸ್'],
-      ],
-      gain: ['New revenue for the department', 'ಇಲಾಖೆಗೆ ಹೊಸ ಆದಾಯ'] },
-    { phase: GOOD, en: 'Visitor Concessions', kn: 'ಪ್ರವಾಸಿಗರಿಗೆ ರಿಯಾಯಿತಿ',
-      points: [
-        ['For frequent visitors', 'ನಿಯಮಿತ ಪ್ರವಾಸಿಗರಿಗೆ'],
-        ['Known from visit history', 'ಭೇಟಿ ದಾಖಲೆಯಿಂದ ಗುರುತು'],
-        ['Rules set by the department', 'ನಿಯಮ ಇಲಾಖೆಯಿಂದ'],
-      ],
-      gain: ['Goodwill & repeat visits', 'ಸದ್ಭಾವನೆ, ಮರುಭೇಟಿ'] },
-    { phase: LATER, en: 'Cancellation & Refunds', kn: 'ರದ್ದತಿ ಮತ್ತು ಮರುಪಾವತಿ',
+    { phase: PLANNED, en: 'Cancellation & Refund', kn: 'ರದ್ದತಿ ಮತ್ತು ಮರುಪಾವತಿ',
       points: [
         ['Cancel before the visit', 'ಭೇಟಿಗೂ ಮುನ್ನ ರದ್ದತಿ'],
-        ['Fee kept by days left', 'ಉಳಿದ ದಿನಗಳಂತೆ ಕಡಿತ'],
+        ['Deduction by days left', 'ಉಳಿದ ದಿನಗಳಂತೆ ಕಡಿತ'],
         ['Refund to original payment', 'ಮೂಲ ಪಾವತಿಗೆ ಮರುಪಾವತಿ'],
       ],
       gain: ['Fair to visitors, revenue protected', 'ನ್ಯಾಯಯುತ, ಆದಾಯ ರಕ್ಷಣೆ'] },
+    { phase: PLANNED, en: 'Closure / Weather Alerts', kn: 'ಮುಚ್ಚುವಿಕೆ / ಹವಾಮಾನ ಎಚ್ಚರಿಕೆ',
+      points: [
+        ['Slot closed for rain or landslide', 'ಮಳೆ, ಭೂಕುಸಿತಕ್ಕೆ ಸ್ಲಾಟ್ ಬಂದ್'],
+        ['WhatsApp alert to bookers', 'ವಾಟ್ಸಾಪ್‌ನಲ್ಲಿ ಸೂಚನೆ'],
+        ['Before they start the drive', 'ಪ್ರಯಾಣಕ್ಕೂ ಮುನ್ನ'],
+      ],
+      gain: ['Safety & trust', 'ಸುರಕ್ಷತೆ, ವಿಶ್ವಾಸ'] },
+    { phase: PLANNED, en: 'Waitlist for Full Slots', kn: 'ಭರ್ತಿ ಸ್ಲಾಟ್‌ಗೆ ಕಾಯುವ ಪಟ್ಟಿ',
+      points: [
+        ['Join a waitlist when full', 'ಭರ್ತಿಯಾದಾಗ ಕಾಯುವ ಪಟ್ಟಿ'],
+        ['Alert when a place frees up', 'ಸ್ಥಾನ ಖಾಲಿಯಾದಾಗ ಸೂಚನೆ'],
+        ['Fewer places left unused', 'ಖಾಲಿ ಸ್ಥಾನ ಕಡಿಮೆ'],
+      ],
+      gain: ['Visitors served, places used', 'ಪ್ರವಾಸಿಗರಿಗೆ ಅವಕಾಶ, ಪೂರ್ಣ ಬಳಕೆ'] },
   ];
 
   const top = introY + 0.56;
@@ -1608,16 +1608,17 @@ function costStructure(pptx, ctx) {
 
   /* D — transaction-based: taken from each payment, never spent up front. */
   costPanel(s, { x: rx, y: by, w, h, letter: 'D', en: 'Payment Processing', kn: 'ಪಾವತಿ ಪ್ರಕ್ರಿಯೆ ಶುಲ್ಕ', period: 'Per transaction', color: '64748B' });
-  /* Per pass, not per year: a yearly figure here reads as a bill. */
-  const rzPer = Object.fromEntries(['BIKE', 'CAR', 'TOOFAN', 'TT'].map((code) => [code, passInclusive(ctx.prices[code], feesOf(ctx)[code], ctx.gst, ctx.gateway, insideOf(ctx)).gateway]));
-  /* Toofan and TT tickets differ now (₹180 and ₹230), so one figure becomes a range. */
-  const rzHeavy = rzPer.TOOFAN === rzPer.TT ? rupees(rzPer.TT) : `${rupees(Math.min(rzPer.TOOFAN, rzPer.TT))}–${rupees(Math.max(rzPer.TOOFAN, rzPer.TT)).slice(1)}`;
-  costRow(s, { x: rx, y: by + 0.56, w, h: 0.5, en: 'Razorpay payment gateway', kn: '', note: `${ctx.gateway}% of the whole payment · Route / settlement as applicable`, value: `${ctx.gateway}% per payment` });
-  costRow(s, { x: rx, y: by + 1.08, w, h: 0.5, en: `GST ${ctx.gst}% on the gateway fee`, kn: '', note: `All-in ${gatewayAllIn(ctx)}% — ${rupees(rzPer.BIKE)} bike, ${rupees(rzPer.CAR)} car, ${rzHeavy} Toofan/TT`, value: `${gatewayAllIn(ctx)}% all-in`, valueColor: C.brand });
+  /*
+   * TWO SEPARATE CHARGES (review, 2026-09-17): the gateway's charge on each
+   * payment, and Razorpay Route's charge on each transfer when the payment is
+   * split between the department and ServerPe — not one all-in figure.
+   */
+  costRow(s, { x: rx, y: by + 0.56, w, h: 0.5, en: 'Payment gateway charge', kn: '', note: `${ctx.gateway}% of each payment + applicable GST on the gateway fee`, value: `${ctx.gateway}% + GST` });
+  costRow(s, { x: rx, y: by + 1.08, w, h: 0.5, en: 'Route / settlement transfer charge', kn: '', note: '0.25% of each transfer + applicable GST, where Route is used', value: '0.25% + GST', valueColor: C.brand });
   s.addShape('roundRect', { x: rx + 0.16, y: by + h - 0.62, w: w - 0.32, h: 0.5, fill: { color: 'F1F5F9' }, line: { color: 'CBD5E1' }, rectRadius: 0.06 });
   s.addText([
-    { text: 'Paid by ServerPe out of its service fee — never billed to the department', options: { fontFace: F.enBold, fontSize: 10, color: '334155', breakLine: true } },
-    { text: 'ServerPe ತನ್ನ ಸೇವಾ ಶುಲ್ಕದಿಂದ ಭರಿಸುತ್ತದೆ — ಇಲಾಖೆಗೆ ಶುಲ್ಕವಿಲ್ಲ', options: { fontFace: F.kn, fontSize: KN(8), color: C.muted } },
+    { text: 'Razorpay payment and settlement charges, as applicable, will be borne by ServerPe', options: { fontFace: F.enBold, fontSize: 10, color: '334155', breakLine: true } },
+    { text: 'Razorpay ಪಾವತಿ ಮತ್ತು ಹಣ ಇತ್ಯರ್ಥ ಶುಲ್ಕ ServerPe ಭರಿಸುತ್ತದೆ', options: { fontFace: F.kn, fontSize: KN(8), color: C.muted } },
   ], { x: rx + 0.28, y: by + h - 0.62, w: w - 0.56, h: 0.5, valign: 'middle', margin: 0 });
 }
 
@@ -1628,10 +1629,10 @@ function amc(pptx, ctx) {
 
   s.addText([
     ...(ctx.plan.kind === 'contract'
-      ? [{ text: `One AMC contract for ${PLAN_YEARS} years`, options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
-        { text: `   ·   ${PLAN_YEARS} ವರ್ಷದ ಒಂದೇ AMC ಒಪ್ಪಂದ`, options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } }]
-      : [{ text: 'AMC renewed every year on payment', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
-        { text: '   ·   ಪಾವತಿಯೊಂದಿಗೆ ಪ್ರತಿ ವರ್ಷ AMC ನವೀಕರಣ', options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } }]),
+      ? [{ text: `Support/AMC for up to ${PLAN_YEARS} years, if agreed`, options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
+        { text: `   ·   ${PLAN_YEARS} ವರ್ಷಗಳವರೆಗೆ ಬೆಂಬಲ/AMC, ಒಪ್ಪಿದರೆ`, options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } }]
+      : [{ text: 'Annual support/AMC, if agreed', options: { fontFace: F.enBold, fontSize: 13, color: C.brand } },
+        { text: '   ·   ಒಪ್ಪಿದರೆ ವಾರ್ಷಿಕ ಬೆಂಬಲ/AMC', options: { fontFace: F.kn, fontSize: KN(9.5), color: C.muted } }]),
   ], { x: GUTTER, y: 1.84, w: W - GUTTER * 2, h: 0.36, valign: 'middle', margin: 0 });
 
   const covered = [
@@ -1697,10 +1698,10 @@ function amc(pptx, ctx) {
   /* This proposal's figure, what follows it, and the three years. */
   const p = ctx.plan;
   const card = p.kind === 'contract'
-    ? { tag: `${PLAN_YEARS}-year contract`, kn: `${PLAN_YEARS} ವರ್ಷದ ಒಪ್ಪಂದ`, big: inrFull(p.total), note: `One contract for ${PLAN_YEARS} years`,
+    ? { tag: `Up to ${PLAN_YEARS} years, if agreed`, kn: `${PLAN_YEARS} ವರ್ಷಗಳವರೆಗೆ, ಒಪ್ಪಿದರೆ`, big: inrFull(p.total), note: `For up to ${PLAN_YEARS} years`,
       lines: ['Training & on-spot fixes included free', 'First-month visits & on-spot training free'] }
     : { tag: 'Year by year', kn: 'ಪ್ರತಿ ವರ್ಷ ನವೀಕರಣ', big: inrFull(year1Of(p)), note: `Year 1: ${lakhShort(p.startup)} start-up + ${lakhShort(p.amc)} AMC`,
-      lines: [`Then ${inrFull(p.amc)} a year`, 'Renewed yearly on payment'] };
+      lines: [`Then ${inrFull(p.amc)} a year`, 'Annual support/AMC, if agreed'] };
   s.addText([
     { text: card.tag, options: { fontFace: F.enBold, fontSize: 12, color: C.sun, breakLine: true } },
     { text: card.kn, options: { fontFace: F.kn, fontSize: KN(8), color: 'CFE5DC', breakLine: true } },
@@ -1847,13 +1848,13 @@ function yearCompare(pptx, ctx) {
     ...{
       yearly: () => [
         { text: `${inrFull(year1Of(p))} in Year 1, then ${inrFull(p.amc)} a year — `, options: { fontFace: F.enBold, fontSize: 11, color: C.sun } },
-        { text: 'the table beside it, renewed each year on payment.', options: { fontFace: F.en, fontSize: 11, color: C.white, breakLine: true } },
+        { text: 'the table beside it — annual support/AMC, if agreed.', options: { fontFace: F.en, fontSize: 11, color: C.white, breakLine: true } },
         { text: ' ', options: { fontFace: F.en, fontSize: 5, breakLine: true } },
         { text: `Over ${PLAN_YEARS} years: ${inrFull(threeYearsOf(p))}, GST ${ctx.gst}% added.`, options: { fontFace: F.en, fontSize: 10.5, color: 'CFE5DC', breakLine: true } },
       ],
       contract: () => [
         { text: `${inrFull(p.total)} for ${PLAN_YEARS} years — `, options: { fontFace: F.enBold, fontSize: 11, color: C.sun } },
-        { text: 'one contract; training, on-spot fixes, first-month visits and on-spot training included free.', options: { fontFace: F.en, fontSize: 11, color: C.white, breakLine: true } },
+        { text: `for up to ${PLAN_YEARS} years, if agreed; training, on-spot fixes, first-month visits and on-spot training included free.`, options: { fontFace: F.en, fontSize: 11, color: C.white, breakLine: true } },
         { text: ' ', options: { fontFace: F.en, fontSize: 5, breakLine: true } },
         { text: `GST ${ctx.gst}% added.`, options: { fontFace: F.en, fontSize: 10.5, color: 'CFE5DC', breakLine: true } },
       ],
@@ -1868,7 +1869,7 @@ function yearCompare(pptx, ctx) {
   s.addShape('roundRect', { x: GUTTER, y: stripY, w: W - GUTTER * 2, h: stripH, fill: { color: C.deep }, line: { color: C.deep }, rectRadius: 0.08 });
   s.addText([
     /* The same point on the slide that lists the costs themselves (user, 2026-09-17). */
-    { text: 'In lakhs, before GST · server, domain, WhatsApp and SMS charges rise over time, so the service fee is revised yearly · Razorpay comes out of the service fee', options: { fontFace: F.en, fontSize: 10.5, color: C.white } },
+    { text: digitalOf(ctx) ? 'In lakhs, before GST · server, domain, WhatsApp and SMS charges rise over time · final service fee subject to approval by the competent authority' : 'In lakhs, before GST · server, domain, WhatsApp and SMS charges rise over time, so the service fee is revised yearly · Razorpay charges, as applicable, borne by ServerPe', options: { fontFace: F.en, fontSize: 10.5, color: C.white } },
   ], { x: GUTTER + 0.25, y: stripY, w: W - GUTTER * 2 - 0.5, h: stripH, align: 'center', valign: 'middle', margin: 0 });
 }
 
@@ -1916,23 +1917,35 @@ const feesOf = (ctx) => (ctx.plan && ctx.plan.fees) || SERVICE_FEE;
  */
 const PLAN_YEARS = 3;
 const PLANS = [
-  { file: 'Pravesha-Commercial-AMC-Yearly-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000 },
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-Annual-AMC-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000 },
   /* The fee as 10% of each entry fee — ₹5 bike, ₹10 car, ₹15 Toofan, ₹20 TT — on
      top of the entry fee with GST inside it, and the same ₹6 L / ₹4 L yearly AMC
      (user, 2026-09-17). */
-  { file: 'Pravesha-Commercial-10-Percent-Fee-AMC-Yearly-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
-  { file: 'Pravesha-Commercial-AMC-3-Year-Contract-10L.pptx', kind: 'contract', total: 1000000 },
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-Percent-Annual-AMC-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-AMC-Up-To-3-Years-10L.pptx', kind: 'contract', total: 1000000 },
   /*
    * INSIDE THE ENTRY FEE (user, 2026-09-17). The visitor pays the entry fee and
-   * nothing more — ₹100 for a car — and ServerPe's share, 10% with GST inside it,
-   * comes out of it: ₹90 to the department, ₹10 to ServerPe. Offered with the
-   * yearly ₹6 L / ₹4 L AMC and with the ₹10 L three-year contract.
+   * nothing more — ₹100 for a car — and ServerPe's share, GST inside it, comes
+   * out of it. Two ways to set the share, each offered with the yearly
+   * ₹6 L / ₹4 L AMC and with the ₹10 L three-year contract:
+   *   10%            ₹5 · ₹10 · ₹15 · ₹20
+   *   by type        ₹10 bike · ₹20 car · ₹30 Toofan and Tempo Traveller
    */
-  { file: 'Pravesha-Commercial-Included-In-Entry-Fee-AMC-Yearly-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000, inside: true, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
-  { file: 'Pravesha-Commercial-Included-In-Entry-Fee-AMC-3-Year-Contract-10L.pptx', kind: 'contract', total: 1000000, inside: true, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
-  { file: 'Pravesha-Commercial-AMC-Yearly-4L-then-3L.pptx', kind: 'yearly', startup: 100000, amc: 300000 },
-  /* No AMC, so a higher fee: ₹12 bike, ₹22 car, ₹32 Toofan, ₹33 TT, GST inside (user, 2026-09-17). */
-  { file: 'Pravesha-Commercial-Service-Fee-Only.pptx', kind: 'none', fees: { BIKE: 12, CAR: 22, TOOFAN: 32, TT: 33 } },
+  ...[
+    ['10-Percent', { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 }],
+    ['10-20-30-30', { BIKE: 10, CAR: 20, TOOFAN: 30, TT: 30 }],
+  ].flatMap(([name, fees]) => [
+    { file: `Pravesha-Commercial-Included-In-Entry-Fee-${name}-Annual-AMC-6L-then-4L.pptx`, kind: 'yearly', startup: 200000, amc: 400000, inside: true, fees },
+    { file: `Pravesha-Commercial-Included-In-Entry-Fee-${name}-AMC-Up-To-3-Years-10L.pptx`, kind: 'contract', total: 1000000, inside: true, fees },
+  ]),
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-Annual-AMC-4L-then-3L.pptx', kind: 'yearly', startup: 100000, amc: 300000 },
+  /*
+   * A 10% DIGITAL SERVICE FEE, NO AMC (user, 2026-09-17). The visitor pays the
+   * department's prescribed entry fee plus 10% — ₹100 + ₹10 = ₹110 for a car —
+   * GST inside the ₹10, and the department pays nothing annually. Worded exactly
+   * as the user gave it, with the approval of the competent authority stated.
+   */
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-Percent-No-AMC.pptx', kind: 'none', digital: true, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
 ];
 const year1Of = (p) => (p.kind === 'yearly' ? p.startup + p.amc : null);
 const perYearOf = (p) => ({ yearly: p.amc, contract: p.total / PLAN_YEARS, none: null }[p.kind]);
@@ -1972,6 +1985,16 @@ function passInclusive(entry, fee, gstPct, gatewayPct, inside = false) {
   return { entry, dept, fee, gst, pays, gatewayFee: gateway, gatewayGst: (gateway * gstPct) / 100, gateway: gateway * (1 + gstPct / 100) };
 }
 const insideOf = (ctx) => Boolean(ctx.plan && ctx.plan.inside);
+const digitalOf = (ctx) => Boolean(ctx.plan && ctx.plan.digital);
+
+/* How the share is described: a percentage when every vehicle's share is the
+   same percentage of its fee, a flat amount when every vehicle pays the same,
+   otherwise the amounts by vehicle type. */
+function shareWords(fig, feeList) {
+  if (fig.pct) return { top: `${fig.pct}% of each entry fee (${feeList})`, head: `${fig.pct}% · GST included`, dept: `${100 - fig.pct}% of entry fee`, strip: `${fig.pct}% of each entry fee`, deptNote: `${100 - fig.pct}% of every entry fee` };
+  if (!feeList.includes('·')) return { top: `a flat ${feeList} per vehicle`, head: `flat ${feeList} · GST incl.`, dept: `entry fee − ${feeList}`, strip: `flat ${feeList} per booking`, deptNote: `the entry fee less ${feeList}` };
+  return { top: `${feeList} by vehicle type`, head: 'by vehicle · GST incl.', dept: 'entry fee − share', strip: `${feeList} by vehicle type`, deptNote: 'the entry fee less ServerPe\'s share' };
+}
 
 /** The gateway rate once Razorpay's own GST is counted: 2.2% → 2.6%. */
 const gatewayAllIn = (ctx) => Math.round(ctx.gateway * (1 + ctx.gst / 100) * 100) / 100;
@@ -2003,18 +2026,21 @@ function commercial(pptx, ctx) {
   const fig = commercialFigures(ctx, feesOf(ctx));
   /* Each distinct fee once: Toofan and TT share ₹30, so "₹10 · ₹20 · ₹30". */
   const feeList = [...new Set(COMMERCIAL_ROWS.map(([, , code]) => feesOf(ctx)[code]))].map(rupees).join(' · ');
+  const share = shareWords(fig, feeList);
 
   /* What is being proposed, and what the fee is for. */
   s.addShape('roundRect', { x: GUTTER, y: 1.8, w: W - GUTTER * 2, h: 0.62, fill: { color: 'FFFBEB' }, line: { color: C.sun }, rectRadius: 0.06 });
   s.addText([
-    { text: '★  Proposed: ', options: { fontFace: F.enBold, fontSize: 12, color: 'B45309' } },
-    ...(insideOf(ctx)
-      ? [{ text: `nothing added for visitors — ServerPe's share is ${fig.pct}% of each entry fee (${feeList}), GST included`, options: { fontFace: F.enBold, fontSize: 12, color: C.ink } },
-        { text: '   ·   ಪ್ರವೇಶ ಶುಲ್ಕದೊಳಗೇ ಪಾಲು', options: { fontFace: F.kn, fontSize: KN(8.5), color: C.muted, breakLine: true } },
-        { text: 'The share funds WhatsApp messaging, payment charges, hosting, support and continuous development — visitors pay the entry fee alone', options: { fontFace: F.en, fontSize: 9.5, color: C.ink } }]
+    { text: digitalOf(ctx) ? '★  Proposed: ' : '★  Proposed service fee: ', options: { fontFace: F.enBold, fontSize: 12, color: 'B45309' } },
+    ...(digitalOf(ctx)
+      ? [{ text: `${fig.pct}% digital service fee on the applicable entry fee — GST included`, options: { fontFace: F.enBold, fontSize: 12, color: C.ink, breakLine: true } },
+        { text: 'The service fee is paid by the visitor and covers WhatsApp messaging, payment processing, hosting, technical support and platform maintenance.', options: { fontFace: F.en, fontSize: 9.5, color: C.ink } }]
+      : insideOf(ctx)
+      ? [{ text: `nothing added for visitors — ServerPe's share is ${share.top}, GST incl.`, options: { fontFace: F.enBold, fontSize: 12, color: C.ink, breakLine: true } },
+        { text: 'Funds WhatsApp messaging, payment charges, hosting, support and development — subject to Department approval and applicable payment/procurement arrangements', options: { fontFace: F.en, fontSize: 9.5, color: C.ink } }]
       : [{ text: `one all-inclusive service fee per vehicle — ${feeList}, GST included`, options: { fontFace: F.enBold, fontSize: 12, color: C.ink } },
         { text: "   ·   ಪ್ರಸ್ತಾವನೆ: ಪ್ರತಿ ವಾಹನಕ್ಕೆ ಒಂದೇ ಶುಲ್ಕ (GST ಸಹಿತ)", options: { fontFace: F.kn, fontSize: KN(8.5), color: C.muted, breakLine: true } },
-        { text: 'The fee funds WhatsApp messaging, payment charges, hosting, support and continuous development — the department pays nothing per booking', options: { fontFace: F.en, fontSize: 9.5, color: C.ink } }]),
+        { text: 'Funds WhatsApp messaging, payment charges, hosting, support and development — subject to Department approval and applicable payment/procurement arrangements', options: { fontFace: F.en, fontSize: 9.5, color: C.ink } }]),
   ], { x: GUTTER + 0.2, y: 1.8, w: W - GUTTER * 2 - 0.4, h: 0.62, valign: 'middle', margin: 0 });
 
   const top = 2.52;
@@ -2034,14 +2060,14 @@ function commercial(pptx, ctx) {
   s.addShape('rect', { x: tx + 0.12, y: headY, w: tableW - 0.24, h: headH, fill: { color: C.deep }, line: { color: C.deep } });
   (insideOf(ctx) ? [
     ['Vehicle', '', 'ವಾಹನ'],
-    ['To Department', `${100 - fig.pct}% of entry fee`, 'ಇಲಾಖೆಗೆ'],
-    ['ServerPe share', `${fig.pct}% · GST included`, 'GST ಸಹಿತ'],
+    ['To Department', share.dept, 'ಇಲಾಖೆಗೆ'],
+    ['ServerPe share', share.head, 'GST ಸಹಿತ'],
     ['Visitor pays', 'entry fee only', 'ಒಟ್ಟು ಪಾವತಿ'],
   ] : [
     ['Vehicle', '', 'ವಾಹನ'],
     ['Entry fee', 'to Department', 'ಇಲಾಖೆಗೆ'],
     ['Service fee', 'all-inclusive', 'GST ಸಹಿತ'],
-    ['Visitor pays', 'nothing extra', 'ಒಟ್ಟು ಪಾವತಿ'],
+    ['Visitor pays', 'entry + service fee', 'ಒಟ್ಟು ಪಾವತಿ'],
   ]).forEach(([en, sub, kn], i) => {
     const runs = [{ text: en, options: { fontFace: F.enBold, fontSize: 11.5, color: C.white, breakLine: true } }];
     if (sub) runs.push({ text: sub, options: { fontFace: F.en, fontSize: 8.5, color: 'CFE5DC', breakLine: true } });
@@ -2071,13 +2097,20 @@ function commercial(pptx, ctx) {
   const notesY = headY + headH + COMMERCIAL_ROWS.length * rowH + 0.08;
   const notes = insideOf(ctx) ? [
     ['Visitors pay the entry fee alone — nothing is added at booking or at the counter', 'ಪ್ರವೇಶ ಶುಲ್ಕ ಮಾತ್ರ'],
-    [`Department receives ${100 - fig.pct}% of every entry fee; ServerPe's ${fig.pct}% includes GST`, `ಇಲಾಖೆಗೆ ${100 - fig.pct}%`],
-    [`Razorpay's ${ctx.gateway}% + ${ctx.gst}% GST on it — about ${gatewayAllIn(ctx)}% per payment — borne by ServerPe`, 'Razorpay ಶುಲ್ಕ, GST ಸಹಿತ'],
+    [`Department receives ${share.deptNote}; ServerPe's share includes GST`, 'ಉಳಿದದ್ದು ಇಲಾಖೆಗೆ'],
+    ['Razorpay payment and settlement charges, as applicable, will be borne by ServerPe', 'ServerPe ಭರಿಸುತ್ತದೆ'],
     ["Split at payment: the department's share settles straight to its own account", 'ಪಾವತಿಯಲ್ಲೇ ಹಂಚಿಕೆ'],
+  ] : digitalOf(ctx) ? [
+    ['Official entry fee remains as prescribed by the Department', 'ಅಧಿಕೃತ ಪ್ರವೇಶ ಶುಲ್ಕ ಇಲಾಖೆ ನಿಗದಿಪಡಿಸಿದಂತೆಯೇ'],
+    ["Visitor pays the Department's prescribed entry fee plus the approved Pravesha service fee", 'ಪ್ರವೇಶ ಶುಲ್ಕ + ಸೇವಾ ಶುಲ್ಕ'],
+    ['Razorpay payment and settlement charges, as applicable, will be borne by ServerPe', 'ServerPe ಭರಿಸುತ್ತದೆ'],
+    ['No annual AMC is proposed for the Department', 'ಇಲಾಖೆಗೆ ವಾರ್ಷಿಕ AMC ಇಲ್ಲ'],
   ] : [
     ['Department keeps 100% of every entry fee', 'ಪ್ರವೇಶ ಶುಲ್ಕದ 100% ಇಲಾಖೆಗೆ'],
-    [`All-inclusive: GST is inside the fee${fig.pct ? ` (${fig.pct}% of the entry fee)` : ''} — nothing added at the counter`, 'GST ಶುಲ್ಕದೊಳಗೇ'],
-    [`Razorpay's ${ctx.gateway}% + ${ctx.gst}% GST on it — about ${gatewayAllIn(ctx)}% per payment — borne by ServerPe`, 'Razorpay ಶುಲ್ಕ, GST ಸಹಿತ'],
+    /* Fee on top (review, 2026-09-17): the visitor pays more than the entry fee,
+       so nothing may suggest otherwise. */
+    ["Visitor pays the Department's prescribed entry fee plus the approved Pravesha service fee", 'ಪ್ರವೇಶ + ಸೇವಾ ಶುಲ್ಕ'],
+    ['Razorpay payment and settlement charges, as applicable, will be borne by ServerPe', 'ServerPe ಭರಿಸುತ್ತದೆ'],
     [`If the department prefers GST charged separately: visitor pays ${COMMERCIAL_ROWS.map(([, , code]) => rupees(fig.added[code].pays)).join(' · ')}`, 'GST ಪ್ರತ್ಯೇಕವಾದರೆ'],
   ];
   const noteH = (bodyBottom - notesY - 0.06) / notes.length;
@@ -2120,13 +2153,13 @@ function commercial(pptx, ctx) {
   /* This proposal's annual charge, what it covers, and its three years. */
   const p = ctx.plan;
   if (p.kind === 'yearly') {
-    section(top + 0.52, 'AMC', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣಾ ಒಪ್ಪಂದ', 'Renewed yearly');
+    section(top + 0.52, 'AMC', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣಾ ಒಪ್ಪಂದ', 'Annual, if agreed');
     line(top + 0.86, 'Year 1 — start-up + AMC', inrFull(year1Of(p)));
     line(top + 1.14, 'Year 2 onward, per year', inrFull(p.amc));
     covers(top + 1.46, `Start-up ${inrFull(p.startup)}: deployment, training, on-spot fixes & presence, travel, etc.`, 'ಆರಂಭಿಕ: ನಿಯೋಜನೆ, ತರಬೇತಿ, ಸ್ಥಳದಲ್ಲಿ ದೋಷ ನಿವಾರಣೆ, ಪ್ರಯಾಣ', 0.5);
-    covers(top + 2.02, 'Renewed each year on payment', 'ಪಾವತಿಯೊಂದಿಗೆ ಪ್ರತಿ ವರ್ಷ ನವೀಕರಣ', 0.44);
+    covers(top + 2.02, 'Annual support/AMC, if agreed', 'ಒಪ್ಪಿದರೆ ವಾರ್ಷಿಕ ಬೆಂಬಲ/AMC', 0.44);
   } else if (p.kind === 'contract') {
-    section(top + 0.52, 'AMC', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣಾ ಒಪ್ಪಂದ', `${PLAN_YEARS}-year contract`);
+    section(top + 0.52, 'AMC', 'ವಾರ್ಷಿಕ ನಿರ್ವಹಣಾ ಒಪ್ಪಂದ', `Up to ${PLAN_YEARS} years`);
     line(top + 0.86, `AMC for ${PLAN_YEARS} years`, inrFull(p.total));
     line(top + 1.14, 'Works out per year', `≈ ${inrFull(Math.round(p.total / PLAN_YEARS))}`);
     covers(top + 1.46, 'Training, on-spot fixes, frequent visits in the first month and on-spot training — included free', 'ತರಬೇತಿ, ಸ್ಥಳದಲ್ಲಿ ದೋಷ ನಿವಾರಣೆ, ಮೊದಲ ತಿಂಗಳ ಭೇಟಿಗಳು — ಉಚಿತ', 0.62);
@@ -2134,7 +2167,7 @@ function commercial(pptx, ctx) {
     section(top + 0.52, 'Annual charge', 'ವಾರ್ಷಿಕ ಶುಲ್ಕ', 'Service fee only');
     line(top + 0.86, 'AMC', 'Nil');
     line(top + 1.14, 'Charged per booking', 'Nil');
-    covers(top + 1.46, 'The per-pass service fee, paid by the visitor, is the only charge', 'ಪ್ರವಾಸಿಗರು ಪಾವತಿಸುವ ಸೇವಾ ಶುಲ್ಕವೊಂದೇ ಶುಲ್ಕ', 0.5);
+    covers(top + 1.46, digitalOf(ctx) ? 'No annual AMC is proposed for the Department. The service fee, paid by the visitor, is the only charge.' : 'The per-pass service fee, paid by the visitor, is the only charge', 'ಪ್ರವಾಸಿಗರು ಪಾವತಿಸುವ ಸೇವಾ ಶುಲ್ಕವೊಂದೇ ಶುಲ್ಕ', 0.5);
   }
 
   const sumY = bodyBottom - 0.52;
@@ -2165,7 +2198,7 @@ function commercial(pptx, ctx) {
         { text: 'ಸೇವಾ ಶುಲ್ಕ — ಪ್ರವಾಸಿಗರಿಂದ, ಪ್ರತಿ ಬುಕಿಂಗ್‌ಗೆ', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } }]
       : insideOf(ctx)
       ? [{ text: 'Two charges', options: { fontFace: F.enBold, fontSize: 11, color: C.sun, breakLine: true } },
-        { text: `${fig.pct}% of each entry fee, per booking · Annual charge — department`, options: { fontFace: F.enBold, fontSize: 11, color: C.white, breakLine: true } },
+        { text: `${share.strip} · Annual charge — department`, options: { fontFace: F.enBold, fontSize: 11, color: C.white, breakLine: true } },
         { text: 'ಪ್ರತಿ ಬುಕಿಂಗ್‌ನ ಪ್ರವೇಶ ಶುಲ್ಕದ ಪಾಲು · ವಾರ್ಷಿಕ ಶುಲ್ಕ — ಇಲಾಖೆಯಿಂದ', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } }]
       : [{ text: 'Two separate charges', options: { fontFace: F.enBold, fontSize: 11, color: C.sun, breakLine: true } },
         { text: 'Service fee — visitor, per booking · Annual charge — department', options: { fontFace: F.enBold, fontSize: 11, color: C.white, breakLine: true } },
@@ -2176,9 +2209,14 @@ function commercial(pptx, ctx) {
     /* THE FEE MAY RISE EACH YEAR (user, 2026-09-17): server, domain, messaging and
        payment charges go up, and the service fee is revised with them. Said on
        the slide that sets the fee, so it is agreed with the fee, not after it. */
-    { text: `Proposed term — ${PLAN_YEARS} years${{ yearly: ' · AMC renewed yearly', contract: ` · one ${PLAN_YEARS}-year AMC`, none: '' }[p.kind]}`, options: { fontFace: F.enBold, fontSize: 11, color: C.sun, breakLine: true } },
-    { text: insideOf(ctx) ? 'ServerPe share revised yearly with server, domain & messaging charges' : 'Service fee revised yearly with server, domain, WhatsApp, SMS & payment charges', options: { fontFace: F.enBold, fontSize: 10.5, color: C.white, breakLine: true } },
-    { text: 'ಸರ್ವರ್, ಡೊಮೇನ್, ಸಂದೇಶ ವೆಚ್ಚಕ್ಕೆ ಅನುಗುಣವಾಗಿ ಸೇವಾ ಶುಲ್ಕ ವಾರ್ಷಿಕ ಪರಿಷ್ಕರಣೆ', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } },
+    /* No contract is promised (review, 2026-09-17): a term of up to three
+       years, and support/AMC only if agreed. */
+    ...(digitalOf(ctx)
+      ? [{ text: 'Final service fee, payment settlement mechanism and commercial terms subject to approval by the competent authority and applicable procedure.', options: { fontFace: F.enBold, fontSize: 9.5, color: C.white, breakLine: true } },
+        { text: 'ಸಕ್ಷಮ ಪ್ರಾಧಿಕಾರದ ಅನುಮೋದನೆ ಮತ್ತು ನಿಯಮಾನುಸಾರ ಪ್ರಕ್ರಿಯೆಗೆ ಒಳಪಟ್ಟು', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } }]
+      : [{ text: `Proposed term: up to ${PLAN_YEARS} years, subject to Department approval and applicable procedure`, options: { fontFace: F.enBold, fontSize: 9.5, color: C.sun, breakLine: true } },
+        { text: `${p.kind === 'none' ? '' : 'Annual support/AMC, if agreed · '}${insideOf(ctx) ? 'share' : 'fee'} revised yearly with server, domain & messaging charges`, options: { fontFace: F.en, fontSize: 9.5, color: C.white, breakLine: true } },
+        { text: 'ಇಲಾಖೆಯ ಅನುಮೋದನೆಗೆ ಒಳಪಟ್ಟು · ಶುಲ್ಕ ವಾರ್ಷಿಕ ಪರಿಷ್ಕರಣೆ', options: { fontFace: F.kn, fontSize: KN(7), color: 'CFE5DC' } }]),
   ], { x: GUTTER + half + 0.3, y: stripY, w: half - 0.5, h: stripH, valign: 'middle', margin: 0 });
 }
 
@@ -2355,7 +2393,7 @@ function goLive(pptx) {
     ['WhatsApp Business number', 'ವಾಟ್ಸಾಪ್ ವ್ಯವಹಾರ ಸಂಖ್ಯೆ',
       'Official number moved to the platform, display name and message templates approved by Meta', 'ಅಧಿಕೃತ ಸಂಖ್ಯೆ, ಹೆಸರು ಮತ್ತು ಸಂದೇಶಗಳಿಗೆ Meta ಅನುಮೋದನೆ'],
     ['Vehicle records — ULIP', 'ವಾಹನ ದಾಖಲೆಗಳು — ULIP',
-      "The live server's address whitelisted with ULIP for Parivahan look-ups", 'ಪರಿವಾಹನ್ ದಾಖಲೆಗಳಿಗೆ ಸರ್ವರ್ ಅನುಮತಿ'],
+      'Required ULIP access/whitelisting completed for the production environment', 'ಉತ್ಪಾದನಾ ಪರಿಸರಕ್ಕೆ ಅಗತ್ಯ ULIP ಪ್ರವೇಶ/ಅನುಮತಿ'],
     ['SMS sign-in codes', 'SMS ಲಾಗಿನ್ ಕೋಡ್',
       'Registered sender and message templates (DLT) for staff and officer sign-in', 'ಸಿಬ್ಬಂದಿ ಲಾಗಿನ್‌ಗೆ DLT ನೋಂದಣಿ'],
     ['Staff onboarding & training', 'ಸಿಬ್ಬಂದಿ ನೋಂದಣಿ ಮತ್ತು ತರಬೇತಿ',
@@ -2401,8 +2439,8 @@ function requirements(pptx, ctx) {
   heading(s, item.en, item.kn);
 
   s.addText([
-    { text: 'Small items only — a decision, a name or a number, and Pravesha is ready', options: { fontFace: F.enBold, fontSize: 12.5, color: C.brand } },
-    { text: '   ·   ಸಣ್ಣ ವಿಷಯಗಳಷ್ಟೇ — ನಿರ್ಧಾರ, ಹೆಸರು ಅಥವಾ ಸಂಖ್ಯೆ', options: { fontFace: F.kn, fontSize: KN(9), color: C.muted } },
+    { text: 'Key decisions and approvals required before deployment', options: { fontFace: F.enBold, fontSize: 12.5, color: C.brand } },
+    { text: '   ·   ನಿಯೋಜನೆಗೆ ಮುನ್ನ ಅಗತ್ಯವಿರುವ ಪ್ರಮುಖ ನಿರ್ಧಾರಗಳು ಮತ್ತು ಅನುಮೋದನೆಗಳು', options: { fontFace: F.kn, fontSize: KN(9), color: C.muted } },
   ], { x: GUTTER, y: 1.8, w: W - GUTTER * 2, h: 0.36, valign: 'middle', margin: 0 });
 
   const top = 2.28;
@@ -2422,11 +2460,15 @@ function requirements(pptx, ctx) {
   ], { x: lx + 0.22, y: top, w: leftW - 0.44, h: 0.56, valign: 'middle', margin: 0 });
 
   const asks = [
-    ['Where Pravesha is deployed — department server or ServerPe cloud', 'ನಿಯೋಜನೆ ಎಲ್ಲಿ — ಇಲಾಖೆ ಸರ್ವರ್ ಅಥವಾ ServerPe'],
-    ['The domain name to be used', 'ಬಳಸಬೇಕಾದ ಡೊಮೇನ್ ಹೆಸರು'],
-    ['The WhatsApp mobile number visitors will book on', 'ಬುಕಿಂಗ್‌ಗೆ ವಾಟ್ಸಾಪ್ ಮೊಬೈಲ್ ಸಂಖ್ಯೆ'],
-    ['Sanction to use the department and Karnataka Tourism logos', 'ಲೋಗೋ ಬಳಕೆಗೆ ಅನುಮತಿ'],
-    ['Approval for publicity, promotion and marketing', 'ಪ್ರಚಾರ ಮತ್ತು ಮಾರ್ಕೆಟಿಂಗ್‌ಗೆ ಅನುಮೋದನೆ'],
+    ['Deployment environment', 'ನಿಯೋಜನೆಯ ಪರಿಸರ'],
+    ['Domain', 'ಡೊಮೇನ್'],
+    ['Official WhatsApp number', 'ಅಧಿಕೃತ ವಾಟ್ಸಾಪ್ ಸಂಖ್ಯೆ'],
+    ['Logo and publicity permissions', 'ಲೋಗೋ ಮತ್ತು ಪ್ರಚಾರ ಅನುಮತಿ'],
+    ['Data ownership and governance', 'ದತ್ತಾಂಶ ಮಾಲೀಕತ್ವ ಮತ್ತು ಆಡಳಿತ'],
+    ['Access permissions', 'ಪ್ರವೇಶ ಅನುಮತಿಗಳು'],
+    ['Reporting requirements', 'ವರದಿ ಅಗತ್ಯತೆಗಳು'],
+    ['Payment and settlement arrangement', 'ಪಾವತಿ ಮತ್ತು ಹಣ ಇತ್ಯರ್ಥ ವ್ಯವಸ್ಥೆ'],
+    ['Integration and access to required government systems', 'ಅಗತ್ಯ ಸರ್ಕಾರಿ ವ್ಯವಸ್ಥೆಗಳ ಸಂಪರ್ಕ ಮತ್ತು ಪ್ರವೇಶ'],
   ];
   const listTop = top + 0.66;
   const pitch = (bottom - listTop - 0.14) / asks.length;
@@ -2458,7 +2500,7 @@ function requirements(pptx, ctx) {
       const dot = tone || sub;
       s.addShape('ellipse', { x: rx + 0.26, y: ly + lPitch / 2 - 0.06, w: 0.12, h: 0.12, fill: { color: dot }, line: { color: dot } });
       s.addText([
-        { text: le, options: { fontFace: tone ? F.enBold : F.en, fontSize: 10.5, color: tone || fg, breakLine: true } },
+        { text: le, options: { fontFace: tone ? F.enBold : F.en, fontSize: le.length > 60 ? 9.5 : 10.5, color: tone || fg, breakLine: true } },
         { text: lk, options: { fontFace: F.kn, fontSize: KN(7.5), color: tone || sub } },
       ], { x: rx + 0.5, y: ly, w: rw - 0.74, h: lPitch, valign: 'middle', margin: 0 });
     });
@@ -2466,14 +2508,13 @@ function requirements(pptx, ctx) {
 
   card(top, 'Access, Deployment & Data Governance', 'ಪ್ರವೇಶ ನಿಯಂತ್ರಣ ಮತ್ತು ದತ್ತಾಂಶ ಆಡಳಿತ', C.white, C.ink, C.muted, [
     ['Role-based logins — admin, gate and reports', 'ಯಾರಿಗೆ ಯಾವ ಪ್ರವೇಶ'],
-    ['Deployment approval and server access', 'ಸರ್ವರ್ ಮತ್ತು ಡೇಟಾಬೇಸ್ ಪ್ರವೇಶ'],
-    ['The data remains the department\'s', 'ದತ್ತಾಂಶ ಇಲಾಖೆಯದ್ದೇ'],
+    ['Data ownership, access, retention and governance will be defined by the Department', 'ದತ್ತಾಂಶ ನಿಯಮಗಳು ಇಲಾಖೆಯ ನಿರ್ಧಾರ'],
     ['No personal detail shared without permission', 'ಅನುಮತಿ ಇಲ್ಲದೆ ಹಂಚಿಕೆ ಇಲ್ಲ', 'B91C1C'],
   ]);
 
   card(top + cardH + 0.24, 'Reports & Information Sharing', 'ವರದಿಗಳು ಮತ್ತು ಮಾಹಿತಿ ಹಂಚಿಕೆ', C.brand, C.white, 'CFE5DC', [
     ['Which reports, to whom, and how often', 'ಯಾವ ವರದಿ, ಯಾರಿಗೆ, ಎಷ್ಟು ಬಾರಿ'],
-    ['Officers to receive the 8 PM WhatsApp summary', 'ರಾತ್ರಿ 8 ಗಂಟೆಯ ವರದಿ ಯಾರಿಗೆ'],
+    ['Officers to receive the optional daily summary', 'ಐಚ್ಛಿಕ ದೈನಂದಿನ ಸಾರಾಂಶ ಯಾರಿಗೆ'],
     ['Their mobile numbers, for reports and alerts', 'ಅಧಿಕಾರಿಗಳ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಗಳು'],
   ]);
 }
@@ -2703,7 +2744,7 @@ function priceView(pptx, ctx) {
 
 /* The main presentation: nothing commercial (user, 2026-09-17). */
 const SLIDES = [welcome, agenda, orgProfile, whatWeDo, products, scope, benefits, limitations, journey, staffFlow, architecture, flows,
-  roadmap, roadmapMore,
+  roadmap,
   requirements, goLive,
   closing];
 
