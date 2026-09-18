@@ -1,0 +1,359 @@
+[
+  {
+    "name": "pv_passissuedetails_v1",
+    "status": "APPROVED",
+    "language": "en",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "Entry pass issued"
+      },
+      {
+        "type": "BODY",
+        "text": "Hello *{{1}}*,\n\nYour entry pass details is here:\n\nPass number: *{{2}}*\nVehicle number: *{{3}}*\nVehicle type: *{{4}}*\nPlace of visit: *{{5}}*\nDate of visit: *{{6}}*\nTime slot: *{{7}}*\nPass type: *{{8}}*\n\nEntry is verified by your vehicle number, so no printout is needed.\n\nPravesha,\nPowered by: *ServerPe App Solutions.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "PRVC7PXGMVD",
+              "KA31N8147",
+              "Car",
+              "Mullayanagiri, Chikkamagaluru",
+              "Thursday, 17 Sept 2026",
+              "06:00 - 09:00",
+              "Complimentory"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "Pravesha - Tourism Department (Karnataka)"
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          {
+            "type": "URL",
+            "text": "View pass",
+            "url": "https://pravesha.in/karnataka-tourism/entry-pass/verify/%7B%7B1%7D%7D{{1}}",
+            "example": [
+              "https://pravesha.in/karnataka-tourism/entry-pass/verify/PRVC7PXGMVD"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": "2248743372367465"
+  },
+  {
+    "name": "pv_checkpoststaffandadmineodreport_v1",
+    "status": "APPROVED",
+    "language": "en",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "Shift report — {{1}}",
+        "example": {
+          "header_text": [
+            "15 Sept 2026"
+          ]
+        }
+      },
+      {
+        "type": "BODY",
+        "text": "Namaskara *{{1}}*,\n\nShift report for *{{2}}* at *{{3}}*.\n🕐 *Shift:* *{{4}}*\n🚗 *Vehicles checked:* *{{5}}*\n✅ *Allowed in:* *{{6}}*\n⚠️ *Allowed outside slot:* *{{7}}*\n🎫 *Passes sold at the gate:* *{{8}}*\n\nPlease make sure the verification matches this report.\n\nPravesha\nPowered by: *ServerPe App Solutions.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "Suhas",
+              "Mullayanagiri Main Gate",
+              "6:02 AM – 2:10 PM",
+              "142",
+              "128",
+              "5",
+              "9"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "Pravesha - Tourism Department (Karnataka)"
+      }
+    ],
+    "id": "1103863282575850"
+  },
+  {
+    "name": "pv_feedback_kn_v3",
+    "status": "APPROVED",
+    "language": "kn",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "ನಿಮ್ಮ ಭೇಟಿ ಹೇಗಿತ್ತು?"
+      },
+      {
+        "type": "BODY",
+        "text": "ನಮಸ್ಕಾರ *{{1}}*,\n\n*{{2}}* ಗೆ ಭೇಟಿ ನೀಡಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ಪ್ರಯಾಣ ಸುಖಕರವಾಗಿತ್ತು ಎಂದು ಆಶಿಸುತ್ತೇವೆ.\n\nಇಂದಿನ ನಿಮ್ಮ ಅನುಭವ ಹೇಗಿತ್ತು? ಒಂದು ನಿಮಿಷಕ್ಕಿಂತ ಕಡಿಮೆ ಸಮಯ ಸಾಕು — ಕೆಳಗೆ ಟ್ಯಾಪ್ ಮಾಡಿ ರೇಟಿಂಗ್ ನೀಡಿ.\n\nಪ್ರವೇಶ,\nಸೇವೆ ಒದಗಿಸುವವರು: *ಸರ್ವರ್‌ಪೇ ಆಪ್ ಸೊಲ್ಯೂಷನ್ಸ್.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "Mullaingiri"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "ಪ್ರವೇಶ - ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ (ಕರ್ನಾಟಕ)"
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          {
+            "type": "URL",
+            "text": "ಪ್ರತಿಕ್ರಿಯೆಯನ್ನು ಒದಗಿಸಿ",
+            "url": "https://pravesha.in/karnataka-tourism/entry-pass/verify/%7B%7B1%7D%7D{{1}}",
+            "example": [
+              "https://pravesha.in/karnataka-tourism/entry-pass/verify/WERT23423EEF"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": "1823578822145822"
+  },
+  {
+    "name": "pv_feedback_en_v1",
+    "status": "APPROVED",
+    "language": "en",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "How was your visit?"
+      },
+      {
+        "type": "BODY",
+        "text": "Hello *{{1}}*,\n\nThank you for visiting *{{2}}*. We hope you had a good time.\n\nHow was your experience today? It takes less than a minute — tap below to rate your visit.\n\nPravesha,\n*Powered by: ServerPe App Solutions.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "Mullayangiri"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "Pravesha - Tourism Department (Karnataka)"
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          {
+            "type": "URL",
+            "text": "Provide feedback",
+            "url": "https://api.pravesha.in/rate/%7B%7B1%7D%7D{{1}}",
+            "example": [
+              "https://api.pravesha.in/rate/kl54h3rn23o4n32"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": "1391821656372843"
+  },
+  {
+    "name": "pv_feedback_kn_v1",
+    "status": "APPROVED",
+    "language": "kn",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "ನಿಮ್ಮ ಭೇಟಿ ಹೇಗಿತ್ತು?"
+      },
+      {
+        "type": "BODY",
+        "text": "ನಮಸ್ಕಾರ *{{1}}*,\n\n*{{2}}* ಗೆ ಭೇಟಿ ನೀಡಿದ್ದಕ್ಕಾಗಿ ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ಪ್ರಯಾಣ ಸುಖಕರವಾಗಿತ್ತು ಎಂದು ಆಶಿಸುತ್ತೇವೆ.\n\nಇಂದಿನ ನಿಮ್ಮ ಅನುಭವ ಹೇಗಿತ್ತು? ಒಂದು ನಿಮಿಷಕ್ಕಿಂತ ಕಡಿಮೆ ಸಮಯ ಸಾಕು — ಕೆಳಗೆ ಟ್ಯಾಪ್ ಮಾಡಿ ರೇಟಿಂಗ್ ನೀಡಿ.\n\nಪ್ರವೇಶ,\nಸೇವೆ ಒದಗಿಸುವವರು: *ಸರ್ವರ್‌ಪೇ ಆಪ್ ಸೊಲ್ಯೂಷನ್ಸ್.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "Mullayangiri"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "ಪ್ರವೇಶ - ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ (ಕರ್ನಾಟಕ)"
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          {
+            "type": "URL",
+            "text": "Visit website",
+            "url": "https://api.pravesha.in/rate/%7B%7B1%7D%7D{{1}}",
+            "example": [
+              "https://api.pravesha.in/rate/vasdfas34523fc4c"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": "1864393014926445"
+  },
+  {
+    "name": "pv_checkpostentry_kn_v3",
+    "status": "APPROVED",
+    "language": "kn",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "ಪ್ರವೇಶ ದಾಖಲಾಗಿದೆ"
+      },
+      {
+        "type": "BODY",
+        "text": "ನಮಸ್ಕಾರ *{{1}}*,\n\nನಿಮ್ಮ ವಾಹನದ ಪ್ರವೇಶವನ್ನು ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ದಾಖಲಿಸಲಾಗಿದೆ.\n\nವಾಹನ ಸಂಖ್ಯೆ: *{{2}}*\nವಾಹನದ ವಿಧ: *{{3}}*\nಪಾಸ್ ಸಂಖ್ಯೆ: *{{4}}*\nಸ್ಥಳ: *{{5}}*\nಚೆಕ್‌ಪೋಸ್ಟ್: *{{6}}*\nಭೇಟಿಯ ದಿನಾಂಕ: *{{7}}*\nಸಮಯದ ಸ್ಲಾಟ್: *{{8}}*\nಪ್ರವೇಶ ದಾಖಲಾದ ಸಮಯ: *{{9}}*\nಸ್ಥಿತಿ: *{{10}}*\n\nಸುರಕ್ಷಿತವಾಗಿ ಪ್ರಯಾಣಿಸಿ ಮತ್ತು ಪರಿಸರವನ್ನು ಸ್ವಚ್ಛವಾಗಿಡಿ.\n\n*ಸೇವೆ ಒದಗಿಸುವವರು: ಸರ್ವರ್‌ಪೇ ಆಪ್ ಸೊಲ್ಯೂಷನ್ಸ್.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "KA31N8147",
+              "ಕಾರು",
+              "PRVPZBCZQ34",
+              "ಮುಳ್ಳಯ್ಯನಗಿರಿ, ಚಿಕ್ಕಮಗಳೂರು",
+              "Mullayanagiri Main Gate",
+              "ಶನಿವಾರ, 12 ಸೆಪ್ಟೆಂಬರ್ 2026",
+              "ಬೆಳಿಗ್ಗೆ 6:00 - ಮಧ್ಯಾಹ್ನ 12:00",
+              "12 ಸೆಪ್ಟೆಂಬರ್ 2026, ಬೆಳಿಗ್ಗೆ 10:07",
+              "ಪ್ರವೇಶ ದಾಖಲಾಗಿದೆ"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "ಪ್ರವೇಶ - ಪ್ರವಾಸೋದ್ಯಮ ಇಲಾಖೆ (ಕರ್ನಾಟಕ)"
+      }
+    ],
+    "id": "1801945830824796"
+  },
+  {
+    "name": "pv_checkpostreport_v1",
+    "status": "APPROVED",
+    "language": "en",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "Pravesha {{1}} report",
+        "example": {
+          "header_text": [
+            "daily"
+          ]
+        }
+      },
+      {
+        "type": "BODY",
+        "text": "For *{{1}}* at *{{2}}*.\n\nPasses booked: *{{3}}*\nVehicles entered: *{{4}}*\nNo show: *{{5}}*\n\nDepartment collection: *{{6}}*\n\nBusiest hour: *{{7}}*\nSlot occupancy %age: *{{8}}*\n\nFigures from the *Pravesha* entry system.\n*Powered by: ServerPe App Solutions.*",
+        "example": {
+          "body_text": [
+            [
+              "Sat, 12 Sep 2026",
+              "Mullayanagiri",
+              "9",
+              "8 (bike 3, car 4, TT 1)",
+              "1 (11%)",
+              "Rs 800",
+              "11 am - 4 vehicles",
+              "Morning 1%, Afternoon 1%"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "Pravesha - Tourism Department (Karnataka)"
+      }
+    ],
+    "id": "1655269146215466"
+  },
+  {
+    "name": "pv_checkpostentry_en_v2",
+    "status": "APPROVED",
+    "language": "en",
+    "category": "UTILITY",
+    "parameter_format": "POSITIONAL",
+    "components": [
+      {
+        "type": "HEADER",
+        "format": "TEXT",
+        "text": "Entry recorded at checkpost"
+      },
+      {
+        "type": "BODY",
+        "text": "Hello *{{1}}*,\n\nYour entry at the checkpost has been recorded. ✅\n\nVehicle number: *{{2}}*\nVehicle type: *{{3}}*\nPass number: *{{4}}*\nPlace of visit: *{{5}}*\nCheckpost: *{{6}}*\nDate of visit: *{{7}}*\nTime slot: *{{8}}*\nEntry recorded at: *{{9}}*\nStatus: *{{10}}*\n\nPlease drive safely, follow the directions of the checkpost and forest staff, and do not litter.\nKeep the environment clean.\n\nThank you for visiting responsibly.\n\n*Powered by: ServerPe App Solutions.*",
+        "example": {
+          "body_text": [
+            [
+              "Shiva",
+              "ka31n8147",
+              "car",
+              "PRV2S3B9NSV",
+              "Mullayanagiri, Chikkamagaluru",
+              "Mullayanagiri Main Gate",
+              "Saturday, 12 Sep 2026",
+              "Afternoon 12:00 PM - 6:00 PM",
+              "12 Sep 2026, 12:42 PM IST",
+              "Entry recorded"
+            ]
+          ]
+        }
+      },
+      {
+        "type": "FOOTER",
+        "text": "Pravesha · Department of Tourism, Govt. of Karnataka"
+      },
+      {
+        "type": "BUTTONS",
+        "buttons": [
+          {
+            "type": "URL",
+            "text": "Booking reference",
+            "url": "https://pravesha.in/karnataka-tourism/entry-pass/verify/%7B%7B1%7D%7D{{1}}",
+            "example": [
+              "https://pravesha.in/karnataka-tourism/entry-pass/verify/prv2s3b9nsv"
+            ]
+          }
+        ]
+      }
+    ],
+    "id": "1867323327972099"
+  }
+]
