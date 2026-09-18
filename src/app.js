@@ -131,6 +131,7 @@ app.listen(PORT, () => {
   if (!realOtp && String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
     console.warn('  WARNING  IS_REAL_OTP is off on production: anyone who knows a user mobile number can sign in with the fixed code.');
   }
+  console.log(`  payments Razorpay ${require('./gatepass/checkout').isLive() ? 'LIVE — real money' : 'TEST mode — no real money'}`);
   console.log(`  replies  ${String(process.env.WHATSAPP_REPLY_ENABLED) !== 'false' ? 'enabled' : 'disabled'}`
     + `${String(process.env.WHATSAPP_DRY_RUN) === 'true' ? ' (DRY RUN)' : ''}\n`);
 });

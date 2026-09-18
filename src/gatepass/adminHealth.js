@@ -222,7 +222,7 @@ function configuration() {
       note: `Sending messages · replies ${String(process.env.WHATSAPP_REPLY_ENABLED) === 'true' ? 'enabled' : 'disabled'}${String(process.env.WHATSAPP_DRY_RUN) === 'true' ? ' · dry run' : ''}` },
     { key: 'whatsapp_webhook', label: 'WhatsApp webhook', ready: set('WHATSAPP_VERIFY_TOKEN') && set('WHATSAPP_APP_SECRET'), note: 'Receiving and verifying messages' },
     { key: 'razorpay', label: 'Razorpay keys', ready: (set('RAZORPAY_LIVE_KEY') && set('RAZORPAY_LIVE_SECRET')) || (set('RAZORPAY_TEST_KEY') && set('RAZORPAY_TEST_SECRET')),
-      note: set('RAZORPAY_LIVE_KEY') ? 'Live keys present' : set('RAZORPAY_TEST_KEY') ? 'Test keys only' : 'No keys' },
+      note: `${require('./checkout').isLive() ? 'Live mode' : 'Test mode'} · ${set('RAZORPAY_LIVE_KEY') ? 'live keys present' : set('RAZORPAY_TEST_KEY') ? 'test keys only' : 'no keys'}` },
     { key: 'razorpay_webhook', label: 'Razorpay webhook secret', ready: set('RAZORPAY_WEBHOOK'), note: 'Confirms payment even if the visitor closes the page' },
     { key: 'vehicle', label: 'Vehicle look-up', ready: set('VEHICLE_SOURCE') && (source === 'ulip' ? set('ULIP_USERNAME') && set('ULIP_PASSWORD') : set('GATEWAY_BASE_URL') && set('VEHICLE_LOOKUP_KEY')),
       note: `Source: ${source}` },

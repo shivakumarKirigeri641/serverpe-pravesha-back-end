@@ -26,21 +26,34 @@ const Razorpay = require('razorpay');
 const { query, one } = require('./db');
 
 /**
- * Keys follow NODE_ENV and nothing else.
+ * Keys follow the mode, and the mode is a deployment fact.
  *
  * An earlier version preferred live keys whenever they were present, which
  * meant a laptop with live keys in its .env quietly charged real cards. Mode is
- * now a deployment fact, not a consequence of which variables happen to be set.
+ * never a consequence of which variables happen to be set.
+ *
+ *   RAZORPAY_MODE=test   test keys, even on the production server — the
+ *                        demo runs there before the Department approves
+ *                        going live (user, 2026-09-18)
+ *   RAZORPAY_MODE=live   live keys
+ *   unset                live under NODE_ENV=production, test elsewhere
  */
+function isLive() {
+  const mode = String(process.env.RAZORPAY_MODE || '').trim().toLowerCase();
+  if (mode === 'test') return false;
+  if (mode === 'live') return true;
+  return process.env.NODE_ENV === 'production';
+}
+
 function keys() {
-  const live = process.env.NODE_ENV === 'production';
+  const live = isLive();
   const id = live ? process.env.RAZORPAY_LIVE_KEY : process.env.RAZORPAY_TEST_KEY;
   const secret = live ? process.env.RAZORPAY_LIVE_SECRET : process.env.RAZORPAY_TEST_SECRET;
   if (!id || !secret) {
     throw new Error(`Razorpay ${live ? 'live' : 'test'} keys are not configured`);
   }
-  if (live && !id.startsWith('rzp_live')) throw new Error('NODE_ENV=production but the key is not a live key');
-  if (!live && id.startsWith('rzp_live')) throw new Error('live Razorpay key outside production — refusing');
+  if (live && !id.startsWith('rzp_live')) throw new Error('Razorpay live mode but the key is not a live key');
+  if (!live && id.startsWith('rzp_live')) throw new Error('live Razorpay key in test mode — refusing');
   return { id, secret, live };
 }
 
@@ -206,6 +219,6 @@ async function fetchPayment(rzpPaymentId) {
 }
 
 module.exports = {
-  keys, linkFor, byToken, ensureOrder, verifyCallback, verifyWebhook,
+  isLive, keys, linkFor, byToken, ensureOrder, verifyCallback, verifyWebhook,
   markPaid, markFailed, fetchOrderPayments, fetchPayment, baseUrl,
 };
