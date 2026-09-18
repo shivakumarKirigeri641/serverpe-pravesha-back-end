@@ -71,6 +71,10 @@ async function available(placeId, slotId, categoryId, travelDate) {
  * and will try again tomorrow expecting it to be free.
  */
 async function forDate(placeId, categoryId, travelDate) {
+  /* SLOTS_TYPE=1: Omniware's sold counts are brought in first (omniwareSlots.js).
+     Cached and time-limited, so this never holds up the form. */
+  await require('./omniwareSlots').refreshDate(placeId, travelDate);
+
   const slots = await query(
     /* A slot with opening or closing dates is only offered between them. */
     `SELECT id, code, regexp_replace(label, '[[:space:]]+', ' ', 'g') AS label, label_kn, starts_at, ends_at FROM place_slots

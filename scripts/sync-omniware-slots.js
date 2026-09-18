@@ -41,18 +41,8 @@ const { pool: getPool, query, one, tx } = require('../src/gatepass/db');
 const inventory = require('../src/gatepass/inventory');
 const slotTime = require('../src/gatepass/slotTime');
 
-const URL = 'https://pgbiz.omniware.in/getavailableslots';
-const MERC_ID = '570375';
-
-/* Our destination code → Omniware's location text. Add a place here once its
-   exact text is copied from the booking site. */
-const LOCATIONS = { MULLAYANAGIRI: 'Mullayanagiri Peak ,Inam Dattathreya Peeta' };
-
-/* Our slot start → Omniware's half-day. */
-const HALVES = { '06:00': 'First Half (6AM-12PM)', '13:00': 'Second Half (1PM-6PM)' };
-
-/* Our category → Omniware's vehicle type. 'Bike', not 'Bike/SUV': the latter answers 0. */
-const TYPES = { BIKE: 'Bike', CAR: 'Car/SUV', TOOFAN: 'Toofan', TT: 'Tempo Traveler' };
+/* One set of mappings, shared with the live refresh (src/gatepass/omniwareSlots.js). */
+const { URL, MERC_ID, LOCATIONS, HALVES, TYPES } = require('../src/gatepass/omniwareSlots');
 
 const args = process.argv.slice(2);
 const has = (name) => args.includes(`--${name}`);
