@@ -38,6 +38,9 @@ const TTL_MINUTES = 120;
 const TTL_BY_PURPOSE = {
   booking: TTL_MINUTES,
   feedback: 48 * 60,
+  /* Support and postpone (user, 2026-09-19): often read later, like a rating link. */
+  support: 24 * 60,
+  postpone: 24 * 60,
 };
 
 const secret = () => {
@@ -131,4 +134,9 @@ const linkFor = (token, placeId = null) =>
    the other way round. */
 const feedbackLinkFor = (token) => `${base()}/rate/${token}`;
 
-module.exports = { issue, verify, spend, linkFor, feedbackLinkFor, TTL_MINUTES, TTL_BY_PURPOSE };
+/* The support form and the postpone page, each with its own purpose so no link
+   can be spent on another page. */
+const supportLinkFor = (token) => `${base()}/support/${token}`;
+const postponeLinkFor = (token) => `${base()}/postpone/${token}`;
+
+module.exports = { issue, verify, spend, linkFor, feedbackLinkFor, supportLinkFor, postponeLinkFor, TTL_MINUTES, TTL_BY_PURPOSE };

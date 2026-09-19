@@ -105,13 +105,29 @@ const askLanguage = (to, customer) =>
     { id: 'LANG_KN', title: t('btnKannada', 'kn') },
   ], 'Pravesha · ಪ್ರವೇಶ');
 
+/*
+ * A LIST, NOT BUTTONS (user, 2026-09-19). Postpone and Support joined Book, My
+ * passes and Help — five choices, and WhatsApp allows three buttons. One "Menu"
+ * button opens all five, each with a line saying what it does.
+ */
 const sendMenu = (to, customer) => {
   const lang = langOf(customer);
-  return send.buttons(to, menu(customer), [
-    { id: 'BOOK', title: t('btnBook', lang) },
-    { id: 'MY_PASSES', title: t('btnMyPasses', lang) },
-    { id: 'HELP', title: t('btnHelp', lang) },
-  ], t('menuHeader', lang));
+  const row = (id, key) => ({ id, title: t(key, lang), description: t(`${key}Desc`, lang) });
+  return send.list(to, {
+    header: t('menuHeader', lang),
+    body: menu(customer),
+    button: t('menuButton', lang),
+    sections: [{
+      title: t('menuSection', lang),
+      rows: [
+        row('BOOK', 'rowBook'),
+        row('MY_PASSES', 'rowMyPasses'),
+        row('POSTPONE', 'rowPostpone'),
+        row('SUPPORT', 'rowSupport'),
+        row('HELP', 'rowHelp'),
+      ],
+    }],
+  });
 };
 
 /**

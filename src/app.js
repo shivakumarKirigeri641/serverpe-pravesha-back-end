@@ -40,6 +40,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/', require('./routes/policy'));
 app.use('/', require('./routes/bookWeb'));
 app.use('/', require('./routes/feedbackWeb'));
+/* Support and Postpone, opened from the WhatsApp menu (2026-09-19). */
+app.use('/', require('./routes/visitorPages'));
 app.use('/', require('./routes/checkout'));
 app.use('/', require('./routes/verify'));
 app.use('/', require('./routes/legal'));

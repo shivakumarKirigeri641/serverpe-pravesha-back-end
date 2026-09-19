@@ -267,6 +267,42 @@ async function handle(msg, contact) {
     return;
   }
 
+  /*
+   * POSTPONE (user, 2026-09-19). The terms first, in the chat, then a single-use
+   * link to the page where the pass, date and slot are chosen and the terms are
+   * agreed to again with a tick. Nobody to send the link to if nothing can move.
+   */
+  if (action === 'POSTPONE' || /^\s*(postpone|reschedule|change\s+date)\s*$/i.test(body)) {
+    const lang = langOf(customer);
+    const pp = require('../gatepass/postpone');
+    const rules = await pp.rules();
+    const movable = (await pp.forCustomer(customer.id)).filter((x) => x.verdict.ok);
+    if (!movable.length) {
+      await send.text(to, t('postponeNone', lang, { hours: rules.cutoffHours }));
+      return;
+    }
+    const tok = await webToken.issue(customer.id, 'postpone');
+    await send.ctaUrl(to, {
+      body: t('postponeIntro', lang, { hours: rules.cutoffHours, days: rules.windowDays }),
+      displayText: t('postponeCta', lang),
+      url: webToken.postponeLinkFor(tok),
+    });
+    return;
+  }
+
+  /* SUPPORT (user, 2026-09-19): a page to write the concern; it is emailed to
+     the team and answered here. */
+  if (action === 'SUPPORT' || /^\s*(support|complaint|contact)\s*$/i.test(body)) {
+    const lang = langOf(customer);
+    const tok = await webToken.issue(customer.id, 'support');
+    await send.ctaUrl(to, {
+      body: t('supportIntro', lang),
+      displayText: t('supportCta', lang),
+      url: webToken.supportLinkFor(tok),
+    });
+    return;
+  }
+
   /* Not understood, and not silently dropped: a reply that goes nowhere reads
      as a broken service. */
   await welcome.send(to, customer);

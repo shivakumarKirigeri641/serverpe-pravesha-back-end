@@ -84,6 +84,50 @@ router.post(`${P}/:id/cancel`, auth, needs('tickets.cancel'), handle(async (req,
  * Send the pass to the visitor again. The message goes to the number on the
  * pass and nowhere else, and whatsapp/send.js refuses test numbers outright.
  */
+/*
+ * Postpone (user, 2026-09-19) — for a visitor who asks by phone or at the desk.
+ * The same rules the visitor's own page applies (gatepass/postpone.js): once,
+ * until 24 hours before the slot, within 30 days, into a slot with room. The
+ * updated pass is sent to the visitor, and the move is in the audit trail with
+ * the administrator's name and reason.
+ */
+router.get(`${P}/:id/postpone`, auth, needs('tickets.postpone'), handle(async (req, res) => {
+  const pp = require('../gatepass/postpone');
+  const t = await pp.load('t.id = $1', [req.params.id]);
+  if (!t) return res.status(404).json({ error: 'not_found', message: 'No such pass.' });
+  const check = await pp.check(t);
+  const w = await pp.window(t);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : null;
+  const slots = date && check.ok ? await pp.slotsFor(t, date) : null;
+  res.set('Cache-Control', 'no-store').json({ ok: true, allowed: check.ok, reason: check.reason || null, message: check.message || null,
+    window: { from: w.from, to: w.to }, rules: w.rules, slots: slots && slots.ok ? slots.slots : [], slotsError: slots && !slots.ok ? slots.message : null });
+}));
+
+router.post(`${P}/:id/postpone`, auth, needs('tickets.postpone'), handle(async (req, res) => {
+  const pp = require('../gatepass/postpone');
+  const reason = String(req.body?.reason || '').trim().slice(0, 300);
+  if (reason.length < 3) return res.status(400).json({ error: 'reason', message: 'Say why — for example "visitor called, rain".' });
+  const out = await pp.move({ ticketId: req.params.id, date: String(req.body?.date || ''), slotId: req.body?.slotId,
+    by: 'admin', adminId: req.admin.admin_id, reason });
+  if (!out.ok) return res.status(409).json({ error: out.reason, message: out.message });
+
+  /* The visitor's copy: a line saying what changed, then the updated pass. */
+  const t = await pp.load('t.id = $1', [out.ticketId]);
+  const L = require('../localize');
+  const { t: tr, langOf } = require('../i18n');
+  const lang = langOf(await require('../gatepass/db').one('SELECT language FROM customers WHERE id = $1', [t.customer_id]));
+  const to = require('../whatsapp/phone').toWa(t.mobile);
+  const send = require('../whatsapp/send');
+  (async () => {
+    if (await send.windowOpen(to)) {
+      await send.text(to, tr('postponedDone', lang, { ticket: t.ticket_no, date: L.longDate(t.travel_date, lang), slot: L.slotLabel(t, lang) }));
+    }
+    await deliver.resendPass(t.id);
+  })().catch((e) => console.error('[postpone] notify %s: %s', t.ticket_no, e.message));
+
+  res.json({ ok: true, ticketNo: out.ticketNo, from: out.from, to: out.to });
+}));
+
 router.post(`${P}/:id/resend`, auth, needs('tickets.resend'), handle(async (req, res) => {
   const t = await booking.byId(req.params.id);
   if (!t) return res.status(404).json({ error: 'not_found', message: 'No such pass.' });

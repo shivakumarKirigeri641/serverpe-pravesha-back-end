@@ -53,6 +53,7 @@ const CAPABILITIES = {
   'tickets.view': 'Search and open any pass',
   'tickets.cancel': 'Cancel a pass',
   'tickets.resend': 'Send a pass to the visitor again',
+  'tickets.postpone': 'Postpone a pass to another date and slot',
   'tickets.free': 'Issue free passes',
   'tickets.onspot': 'Sell on-spot passes',
   'destinations.view': 'See destinations and checkposts',
@@ -94,7 +95,7 @@ const ROLES = {
     label: 'Checkpost Manager',
     description: 'Runs the gate: live activity, negative tracking, staff and on-spot passes.',
     can: ['dashboard.view', 'live.view', 'reports.view', 'conversations.view', 'negative.view', 'negative.act',
-      'tickets.view', 'tickets.resend', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view',
+      'tickets.view', 'tickets.resend', 'tickets.postpone', 'tickets.onspot', 'settings.staff', 'alerts.view', 'alerts.act', 'destinations.view',
       'unverified.view', 'vehicles.view', 'watchlist.manage', 'capacity.today', 'onspot.view', 'feedback.view', 'health.view'],
   },
   finance: {
@@ -121,7 +122,7 @@ const ROLES = {
  */
 const NOT_FOR_DC = [
   'settings.pricing',
-  'tickets.onspot', 'tickets.resend', 'settings.staff', 'watchlist.manage', 'capacity.today', 'negative.act', 'alerts.act',
+  'tickets.onspot', 'tickets.resend', 'tickets.postpone', 'settings.staff', 'watchlist.manage', 'capacity.today', 'negative.act', 'alerts.act',
   'settings.users', 'settings.gst', 'demo.simulate', 'demo.reset', 'vehicles.check',
 ];
 ROLES.dc = {

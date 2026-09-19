@@ -48,6 +48,62 @@ const S = {
   btnBook: { en: '🎟️ Book pass', kn: '🎟️ ಪಾಸ್ ಪಡೆಯಿರಿ' },
   btnMyPasses: { en: '📋 My passes', kn: '📋 ನನ್ನ ಪಾಸ್‌ಗಳು' },
   btnHelp: { en: '❓ Help', kn: '❓ ಸಹಾಯ' },
+
+  /* The menu as a list (2026-09-19): five choices, more than WhatsApp's three
+     buttons. Row titles 24 characters, descriptions 72. */
+  menuButton: { en: 'Menu', kn: 'ಮೆನು' },
+  menuSection: { en: 'Pravesha', kn: 'ಪ್ರವೇಶ' },
+  rowBook: { en: '🎟️ Book pass', kn: '🎟️ ಪಾಸ್ ಪಡೆಯಿರಿ' },
+  rowBookDesc: { en: 'Choose date, slot and vehicle, and pay', kn: 'ದಿನಾಂಕ, ಸ್ಲಾಟ್, ವಾಹನ ಆಯ್ಕೆಮಾಡಿ ಪಾವತಿಸಿ' },
+  rowMyPasses: { en: '📋 My passes', kn: '📋 ನನ್ನ ಪಾಸ್‌ಗಳು' },
+  rowMyPassesDesc: { en: 'Get your upcoming passes again', kn: 'ನಿಮ್ಮ ಮುಂಬರುವ ಪಾಸ್‌ಗಳನ್ನು ಮತ್ತೆ ಪಡೆಯಿರಿ' },
+  rowPostpone: { en: '📅 Postpone pass', kn: '📅 ಪಾಸ್ ಮುಂದೂಡಿ' },
+  rowPostponeDesc: { en: 'Move a pass to another date — once, no fee', kn: 'ಪಾಸ್ ಅನ್ನು ಬೇರೆ ದಿನಾಂಕಕ್ಕೆ — ಒಮ್ಮೆ, ಶುಲ್ಕವಿಲ್ಲ' },
+  rowSupport: { en: '🛟 Support', kn: '🛟 ಬೆಂಬಲ' },
+  rowSupportDesc: { en: 'Write to us about any problem', kn: 'ಯಾವುದೇ ಸಮಸ್ಯೆಯ ಬಗ್ಗೆ ನಮಗೆ ಬರೆಯಿರಿ' },
+  rowHelp: { en: '❓ Help', kn: '❓ ಸಹಾಯ' },
+  rowHelpDesc: { en: 'How Pravesha works', kn: 'ಪ್ರವೇಶ ಹೇಗೆ ಕೆಲಸ ಮಾಡುತ್ತದೆ' },
+
+  /* Postpone: the terms are shown in the chat before the link (user, 2026-09-19),
+     the same rules the page asks the visitor to agree to. */
+  postponeIntro: {
+    en: '📅 *Postpone your pass*\n\nBefore you continue, please read the postponement terms:\n\n'
+      + '• A pass can be postponed *only once*.\n'
+      + '• Allowed until *{hours} hours before* your booked slot starts.\n'
+      + '• The new date must be within the next *{days} days*, in a slot that still has room.\n'
+      + '• *No fee, no refund* and no difference in amount — the pass, vehicle and amount paid stay the same.\n'
+      + '• The pass number stays the same; your old date and slot are released.\n'
+      + '• Used passes cannot be postponed.\n\n'
+      + 'By continuing you agree to these terms and to the Pravesha Terms & Privacy Policy. You will confirm again on the next page.',
+    kn: '📅 *ನಿಮ್ಮ ಪಾಸ್ ಮುಂದೂಡಿ*\n\nಮುಂದುವರಿಯುವ ಮೊದಲು ದಯವಿಟ್ಟು ಮುಂದೂಡಿಕೆಯ ನಿಯಮಗಳನ್ನು ಓದಿ:\n\n'
+      + '• ಒಂದು ಪಾಸ್ ಅನ್ನು *ಒಮ್ಮೆ ಮಾತ್ರ* ಮುಂದೂಡಬಹುದು.\n'
+      + '• ನಿಮ್ಮ ಸ್ಲಾಟ್ ಆರಂಭಕ್ಕೆ *{hours} ಗಂಟೆ ಮುಂಚೆ*ವರೆಗೆ ಮಾತ್ರ.\n'
+      + '• ಹೊಸ ದಿನಾಂಕ ಮುಂದಿನ *{days} ದಿನಗಳೊಳಗೆ*, ಸ್ಥಳವಿರುವ ಸ್ಲಾಟ್‌ನಲ್ಲಿ.\n'
+      + '• *ಶುಲ್ಕವಿಲ್ಲ, ಮರುಪಾವತಿಯಿಲ್ಲ* — ಪಾಸ್, ವಾಹನ ಮತ್ತು ಪಾವತಿಸಿದ ಮೊತ್ತ ಬದಲಾಗುವುದಿಲ್ಲ.\n'
+      + '• ಪಾಸ್ ಸಂಖ್ಯೆ ಅದೇ ಇರುತ್ತದೆ; ಹಳೆಯ ದಿನಾಂಕ ಮತ್ತು ಸ್ಲಾಟ್ ರದ್ದಾಗುತ್ತದೆ.\n'
+      + '• ಬಳಸಿದ ಪಾಸ್‌ಗಳನ್ನು ಮುಂದೂಡಲಾಗುವುದಿಲ್ಲ.\n\n'
+      + 'ಮುಂದುವರಿಯುವ ಮೂಲಕ ನೀವು ಈ ನಿಯಮಗಳು ಹಾಗೂ ಪ್ರವೇಶ ನಿಯಮಗಳು ಮತ್ತು ಗೌಪ್ಯತಾ ನೀತಿಗೆ ಒಪ್ಪುತ್ತೀರಿ. ಮುಂದಿನ ಪುಟದಲ್ಲಿ ಮತ್ತೆ ಖಚಿತಪಡಿಸುತ್ತೀರಿ.',
+  },
+  postponeCta: { en: 'Choose new date', kn: 'ಹೊಸ ದಿನಾಂಕ ಆಯ್ಕೆ' },
+  postponeNone: {
+    en: 'You have no pass that can be postponed right now. Only paid passes that have not been used or moved before can be postponed, until {hours} hours before the slot.',
+    kn: 'ಈಗ ಮುಂದೂಡಬಹುದಾದ ಯಾವುದೇ ಪಾಸ್ ನಿಮ್ಮಲ್ಲಿಲ್ಲ. ಬಳಸದ ಮತ್ತು ಹಿಂದೆ ಮುಂದೂಡದ ಪಾವತಿಸಿದ ಪಾಸ್‌ಗಳನ್ನು ಮಾತ್ರ, ಸ್ಲಾಟ್‌ಗೆ {hours} ಗಂಟೆ ಮುಂಚೆವರೆಗೆ ಮುಂದೂಡಬಹುದು.',
+  },
+  postponedDone: {
+    en: '✅ *Pass postponed*\n\nPass *{ticket}* is now for *{date}*, *{slot}*.\nYour updated pass follows. Your old date and slot are no longer valid.',
+    kn: '✅ *ಪಾಸ್ ಮುಂದೂಡಲಾಗಿದೆ*\n\nಪಾಸ್ *{ticket}* ಈಗ *{date}*, *{slot}* ಕ್ಕೆ.\nಹೊಸ ಪಾಸ್ ಕೆಳಗಿದೆ. ಹಳೆಯ ದಿನಾಂಕ ಮತ್ತು ಸ್ಲಾಟ್ ಇನ್ನು ಮಾನ್ಯವಲ್ಲ.',
+  },
+
+  /* Support (user, 2026-09-19). */
+  supportIntro: {
+    en: '🛟 *Support*\n\nTell us about any problem — booking, payment, your pass or entry. Our team reads every message and replies here on WhatsApp.',
+    kn: '🛟 *ಬೆಂಬಲ*\n\nಬುಕ್ಕಿಂಗ್, ಪಾವತಿ, ಪಾಸ್ ಅಥವಾ ಪ್ರವೇಶ — ಯಾವುದೇ ಸಮಸ್ಯೆಯ ಬಗ್ಗೆ ತಿಳಿಸಿ. ನಮ್ಮ ತಂಡ ಪ್ರತಿ ಸಂದೇಶವನ್ನು ಓದಿ ಇಲ್ಲಿಯೇ WhatsApp ನಲ್ಲಿ ಉತ್ತರಿಸುತ್ತದೆ.',
+  },
+  supportCta: { en: 'Write to us', kn: 'ನಮಗೆ ಬರೆಯಿರಿ' },
+  supportReceived: {
+    en: '🛟 We have received your message (ref *{ref}*). Our team will reply here on WhatsApp as soon as possible.',
+    kn: '🛟 ನಿಮ್ಮ ಸಂದೇಶ ತಲುಪಿದೆ (ಉಲ್ಲೇಖ *{ref}*). ನಮ್ಮ ತಂಡ ಆದಷ್ಟು ಬೇಗ ಇಲ್ಲಿಯೇ WhatsApp ನಲ್ಲಿ ಉತ್ತರಿಸುತ್ತದೆ.',
+  },
   /* Offered straight after a pass is delivered: families arrive in two cars and
      the second one should not mean finding the menu again. WhatsApp allows 20
      characters on a button, so the wording is short by necessity, not by

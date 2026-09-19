@@ -105,4 +105,47 @@ function contactMail({ to, id, name, email, mobile, subject, message, ip }) {
   };
 }
 
-module.exports = { send, contactMail, configured };
+/**
+ * A support request from a visitor on WhatsApp (user, 2026-09-19). Unlike the
+ * website form there is usually no email to reply to — the number is the way
+ * back, so it is shown in full, with the visitor's upcoming passes, so support
+ * can act without asking who they are.
+ */
+function supportMail({ to, id, name, mobile, email, topic, message, passes = [] }) {
+  const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const ref = `PVS${String(id).padStart(5, '0')}`;
+  const passLines = passes.map((p) => `${p.ticketNo} · ${p.what} · ${p.date} · ${p.status}`);
+  const lines = [
+    `From:    ${name || 'WhatsApp visitor'}`,
+    `Mobile:  ${mobile} (WhatsApp)`,
+    email ? `Email:   ${email}` : null,
+    `Topic:   ${topic || '—'}`,
+    `When:    ${when} IST`,
+    `Ref:     ${ref}`,
+    passLines.length ? `Passes:  ${passLines.join('\n         ')}` : null,
+    '',
+    message,
+  ].filter(Boolean);
+
+  return {
+    to,
+    subject: `Pravesha support ${ref}: ${topic || 'Visitor request'}`,
+    ...(email ? { replyTo: `${name || 'Visitor'} <${email}>` } : {}),
+    text: lines.join('\n'),
+    html: `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;color:#0d1b1e">
+  <p style="margin:0 0 16px;font-weight:600">Support request from WhatsApp · ${esc(ref)}</p>
+  <table style="border-collapse:collapse;font-size:14px">
+    <tr><td style="padding:2px 12px 2px 0;color:#5d7169">From</td><td><b>${esc(name || 'WhatsApp visitor')}</b></td></tr>
+    <tr><td style="padding:2px 12px 2px 0;color:#5d7169">Mobile</td><td><a href="https://wa.me/91${esc(String(mobile).slice(-10))}">${esc(mobile)}</a> (WhatsApp)</td></tr>
+    ${email ? `<tr><td style="padding:2px 12px 2px 0;color:#5d7169">Email</td><td><a href="mailto:${esc(email)}">${esc(email)}</a></td></tr>` : ''}
+    <tr><td style="padding:2px 12px 2px 0;color:#5d7169">Topic</td><td>${esc(topic) || '—'}</td></tr>
+    <tr><td style="padding:2px 12px 2px 0;color:#5d7169">When</td><td>${esc(when)} IST</td></tr>
+    ${passLines.length ? `<tr><td style="padding:2px 12px 2px 0;color:#5d7169;vertical-align:top">Passes</td><td>${passLines.map(esc).join('<br>')}</td></tr>` : ''}
+  </table>
+  <div style="margin-top:18px;padding:14px 16px;background:#f2f6f4;border-radius:10px;white-space:pre-wrap">${esc(message)}</div>
+  <p style="margin-top:18px;color:#5d7169;font-size:13px">${email ? 'Reply to this email to answer them by email, or' : 'No email given —'} answer on WhatsApp from the admin panel (Conversations).</p>
+</div>`,
+  };
+}
+
+module.exports = { send, contactMail, supportMail, configured };
