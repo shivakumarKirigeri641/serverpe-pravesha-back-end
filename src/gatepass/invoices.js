@@ -39,6 +39,16 @@ async function issue(ticketId) {
   /* The prefix is a setting; its length is validated where it is changed, so the
      number stays within the sixteen characters a GST invoice number may carry. */
   const prefix = await settings.str('invoice_prefix', 'PRV');
+  /* The supplier as at issue, frozen on the row like the amounts (062): no PDF
+     is kept, so this is what every later rendering of the invoice shows. */
+  const supplier = {
+    legalName: await settings.str('legal_name', 'ServerPe App Solutions'),
+    address: await settings.str('business_address', ''),
+    gstin: await settings.str('gstin', ''),
+    udyam: await settings.str('udyam_number', ''),
+    email: await settings.str('contact_email', ''),
+    website: await settings.str('website', 'www.serverpe.in'),
+  };
 
   return tx(async (client) => {
     const t = (await client.query('SELECT * FROM tickets WHERE id = $1 FOR UPDATE', [ticketId])).rows[0];
@@ -54,10 +64,10 @@ async function issue(ticketId) {
 
     const r = await client.query(
       `INSERT INTO invoices (invoice_no, ticket_id, customer_id, entry_paise, service_paise,
-                             taxable_paise, gst_paise, total_paise, gst_percent, place_of_supply, sac_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+                             taxable_paise, gst_paise, total_paise, gst_percent, place_of_supply, sac_code, supplier)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [formatNo(seq, undefined, prefix), t.id, t.customer_id, t.entry_paise, service, taxable, service - taxable,
-       t.total_paise, gstPct, pos, sac]);
+       t.total_paise, gstPct, pos, sac, JSON.stringify(supplier)]);
     return r.rows[0];
   });
 }

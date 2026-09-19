@@ -56,12 +56,15 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
   let y = header(doc, { heading: `Pravesha — ${settings.productTagline}`,
     dept: 'Department of Tourism, Government of Karnataka', title: 'TAX INVOICE', chip: 'PAID' });
 
+  /* The supplier as it was when the invoice was issued (062), not as it is today;
+     an invoice from before that column falls back to the current settings. */
+  const sup = { ...settings, ...(inv.supplier || {}) };
   const left = kvTable(doc, M, y, colW, 'Supplier', [
-    ['Name', settings.legalName],
-    ['Address', settings.address],
-    ['GSTIN', settings.gstin],
-    ['UDYAM', settings.udyam],
-    ['Contact', `${settings.email} · ${settings.website}`],
+    ['Name', sup.legalName],
+    ['Address', sup.address],
+    ['GSTIN', sup.gstin],
+    ['UDYAM', sup.udyam],
+    ['Contact', `${sup.email} · ${sup.website}`],
   ], { labelW: 0.3 });
   const right = kvTable(doc, M + colW + gap, y, colW, 'Invoice', [
     ['Invoice number', inv.invoice_no],
