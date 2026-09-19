@@ -111,8 +111,8 @@ async function fetchCrossings(regNo) {
   const p = r.payload || {};
   if (/^FAIL/i.test(String(p.result || ''))) {
     const err = String(p?.vehicle?.errCode ?? p.respCode ?? '');
-    // 740 = no tag, so no crossings either. A normal answer.
-    return { crossings: [], crossings_error: err === '740' ? null : `code ${err || 'unknown'}`, call };
+    // 740 or 233 = no tag, so no crossings either. A normal answer.
+    return { crossings: [], crossings_error: (err === '740' || err === '233') ? null : `code ${err || 'unknown'}`, call };
   }
 
   const txns = p?.vehicle?.vehltxnList?.txn;
@@ -159,7 +159,10 @@ async function fetchFastag(regNo, _opts = {}) {
   // Dataset-level failure nested inside a successful envelope.
   if (/^FAIL/i.test(String(p.result || ''))) {
     const err = String(p?.vehicle?.errCode ?? p.respCode ?? '');
-    if (err === '740') return { ok: true, data: { ...noTag(), ...travel }, calls };
+    /* 740 = no tag. 233 is what vehicles with no tag answer too — two-wheelers,
+       which cannot carry one (seen for KA02EX1480, a Splendor, 2026-09-19) —
+       so it is "no FASTag", not a failure to retry. */
+    if (err === '740' || err === '233') return { ok: true, data: { ...noTag(), ...travel }, calls };
     // 239 appears in ULIP's own samples with no explanation. Treated as
     // retryable: guessing "no tag" would tell a customer something false,
     // while guessing "retry" costs at most one extra call.
