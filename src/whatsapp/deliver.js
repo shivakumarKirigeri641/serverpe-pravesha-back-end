@@ -170,6 +170,8 @@ async function deliverTicket(ticketId) {
     followUp = await send.buttons(to, tr('afterPass', lang), [
       { id: 'BOOK', title: tr('btnBookAnother', lang) },
       { id: 'MY_PASSES', title: tr('btnMyPasses', lang) },
+      /* The rest — Postpone, Support, Help — one tap away (2026-09-19). */
+      { id: 'MENU', title: tr('btnMore', lang) },
     ]);
   } catch (e) {
     console.error('[deliver] follow-up buttons for %s: %s', t.ticket_no, e.message);

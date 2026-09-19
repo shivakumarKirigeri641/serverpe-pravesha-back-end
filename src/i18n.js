@@ -128,12 +128,14 @@ const S = {
     kn: 'ಇನ್ನೊಂದು ವಾಹನಕ್ಕೆ ಪಾಸ್ ಬೇಕೇ, ಅಥವಾ ನಿಮ್ಮ ಪಾಸ್‌ಗಳನ್ನು ನೋಡಬೇಕೇ?',
   },
   btnAgree: { en: '✅ Agree & continue', kn: '✅ ಒಪ್ಪಿ ಮುಂದುವರಿಸಿ' },
+  /* Opens the whole menu (Postpone, Support…) where only three buttons fit. */
+  btnMore: { en: '☰ More options', kn: '☰ ಇನ್ನಷ್ಟು ಆಯ್ಕೆ' },
 
   thanks: { en: '✅ Thank you.', kn: '✅ ಧನ್ಯವಾದಗಳು.' },
 
   help: {
-    en: '*Pravesha help*\n\nSend *hi* at any time to start over.\n\nEntry passes are issued for two-wheelers, cars, Toofans and Tempo Travellers.\n\nAutos, buses, trucks, tractors and trailers are not permitted on these routes.',
-    kn: '*ಪ್ರವೇಶ ಸಹಾಯ*\n\nಮತ್ತೆ ಪ್ರಾರಂಭಿಸಲು ಯಾವಾಗ ಬೇಕಾದರೂ *hi* ಎಂದು ಕಳುಹಿಸಿ.\n\nದ್ವಿಚಕ್ರ ವಾಹನ, ಕಾರು, ಟೂಫಾನ್ ಮತ್ತು ಟೆಂಪೋ ಟ್ರಾವೆಲರ್‌ಗಳಿಗೆ ಪ್ರವೇಶ ಪಾಸ್ ನೀಡಲಾಗುತ್ತದೆ.\n\nಆಟೋ, ಬಸ್, ಟ್ರಕ್, ಟ್ರ್ಯಾಕ್ಟರ್ ಮತ್ತು ಟ್ರೇಲರ್‌ಗಳಿಗೆ ಈ ಮಾರ್ಗಗಳಲ್ಲಿ ಅನುಮತಿ ಇಲ್ಲ.',
+    en: '*Pravesha help*\n\nSend *hi* at any time for the menu:\n🎟️ *Book pass* — choose date, slot and vehicle, and pay\n📋 *My passes* — get your upcoming passes again\n📅 *Postpone pass* — move a pass to another date, once, until 24 hours before, no fee\n🛟 *Support* — write to us about any problem\n\nYou can also type *postpone*, *support*, *my passes* or *delete my data*.\n\nEntry passes are issued for two-wheelers, cars, Toofans and Tempo Travellers.\n\nAutos, buses, trucks, tractors and trailers are not permitted on these routes.',
+    kn: '*ಪ್ರವೇಶ ಸಹಾಯ*\n\nಮೆನುಗಾಗಿ ಯಾವಾಗ ಬೇಕಾದರೂ *hi* ಎಂದು ಕಳುಹಿಸಿ:\n🎟️ *ಪಾಸ್ ಪಡೆಯಿರಿ* — ದಿನಾಂಕ, ಸ್ಲಾಟ್, ವಾಹನ ಆಯ್ಕೆಮಾಡಿ ಪಾವತಿಸಿ\n📋 *ನನ್ನ ಪಾಸ್‌ಗಳು* — ಮುಂಬರುವ ಪಾಸ್‌ಗಳನ್ನು ಮತ್ತೆ ಪಡೆಯಿರಿ\n📅 *ಪಾಸ್ ಮುಂದೂಡಿ* — ಒಮ್ಮೆ, 24 ಗಂಟೆ ಮುಂಚೆವರೆಗೆ, ಶುಲ್ಕವಿಲ್ಲ\n🛟 *ಬೆಂಬಲ* — ಯಾವುದೇ ಸಮಸ್ಯೆಯ ಬಗ್ಗೆ ನಮಗೆ ಬರೆಯಿರಿ\n\n*postpone*, *support*, *my passes* ಅಥವಾ *delete my data* ಎಂದೂ ಟೈಪ್ ಮಾಡಬಹುದು.\n\nದ್ವಿಚಕ್ರ ವಾಹನ, ಕಾರು, ಟೂಫಾನ್ ಮತ್ತು ಟೆಂಪೋ ಟ್ರಾವೆಲರ್‌ಗಳಿಗೆ ಪ್ರವೇಶ ಪಾಸ್ ನೀಡಲಾಗುತ್ತದೆ.\n\nಆಟೋ, ಬಸ್, ಟ್ರಕ್, ಟ್ರ್ಯಾಕ್ಟರ್ ಮತ್ತು ಟ್ರೇಲರ್‌ಗಳಿಗೆ ಈ ಮಾರ್ಗಗಳಲ್ಲಿ ಅನುಮತಿ ಇಲ್ಲ.',
   },
 
   bookHeader: { en: 'Book your entry pass', kn: 'ಪ್ರವೇಶ ಪಾಸ್ ಕಾಯ್ದಿರಿಸಿ' },

@@ -267,6 +267,13 @@ async function handle(msg, contact) {
     return;
   }
 
+  /* The whole menu, from a "More options" button: straight to it, without the
+     language question a greeting asks. */
+  if (action === 'MENU') {
+    await welcome.sendMenu(to, customer);
+    return;
+  }
+
   /*
    * POSTPONE (user, 2026-09-19). The terms first, in the chat, then a single-use
    * link to the page where the pass, date and slot are chosen and the terms are

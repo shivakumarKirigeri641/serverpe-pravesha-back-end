@@ -66,6 +66,7 @@ async function show(to, customer) {
   if (!upcoming.length) {
     return send.buttons(to, t('noUpcoming', lang), [
       { id: 'BOOK', title: t('btnBook', lang) },
+      { id: 'MENU', title: t('btnMore', lang) },
     ], t('myHeader', lang));
   }
 
