@@ -52,7 +52,10 @@ async function termsVersionNow() {
   return termsVersion.value;
 }
 
-const base = () => (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+/* The website's policy pages once it is live (SITE_URL, e.g. https://www.pravesha.in
+   → www.pravesha.in/policy/terms, user 2026-09-19); until then this app's own
+   copy of the same text (routes/policy.js), so the link never 404s. */
+const base = () => (process.env.SITE_URL || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 const termsUrl = () => `${base()}/policy/terms`;
 const privacyUrl = () => `${base()}/policy/privacy`;
 

@@ -117,7 +117,7 @@ app.listen(PORT, () => {
   console.log(`\nPravesha listening on :${PORT}`);
   console.log(`  public   ${process.env.PUBLIC_BASE_URL || '(PUBLIC_BASE_URL not set)'}`);
   console.log(`  webhook  ${process.env.PUBLIC_BASE_URL || ''}${require('./config/paths').PREFIX}/whatsapp/webhook`);
-  console.log(`  terms    ${process.env.PUBLIC_BASE_URL || ''}/policy/terms`);
+  console.log(`  terms    ${(process.env.SITE_URL || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '')}/policy/terms`);
   console.log(`  vehicles ${require('./ulip/config').config.source() === 'ulip'
     ? 'ULIP direct (this server must be whitelisted)'
     : `gateway ${process.env.GATEWAY_BASE_URL || '(GATEWAY_BASE_URL not set)'}`}`);
