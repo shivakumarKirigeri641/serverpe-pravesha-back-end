@@ -78,8 +78,27 @@ function describe(message) {
   return message.type || 'message';
 }
 
+/**
+ * ONLY THESE NUMBERS, WHILE TESTING (user, 2026-09-19).
+ *
+ * WHATSAPP_ONLY_TO=9886122415[,…] — when set, a message to any other number is
+ * not sent, only recorded with the reason, so the transcript still shows what
+ * would have gone out. Unset, everyone booking receives their messages as usual.
+ * Checked here, below every caller, so no path can forget it.
+ */
+const allowedOnly = () => String(process.env.WHATSAPP_ONLY_TO || '')
+  .split(',').map((m) => phone.toLocal(m.trim())).filter(Boolean);
+
 async function post(to, message) {
   const payload = { messaging_product: 'whatsapp', recipient_type: 'individual', to, ...message };
+
+  const only = allowedOnly();
+  if (only.length && !only.includes(phone.toLocal(to))) {
+    await record({ mobile: to, direction: 'out', type: message.type, payload,
+      body: message.text?.body, error: 'not_on_allowlist_not_sent' });
+    console.log('[wa] not sent to %s — WHATSAPP_ONLY_TO allows only %s', to, only.join(', '));
+    return { ok: true, dryRun: true, notAllowed: true };
+  }
 
   if (await isTestRecipient(to)) {
     await record({ mobile: to, direction: 'out', type: message.type, payload,
@@ -186,6 +205,15 @@ function ctaUrl(to, { body, header, footer, displayText, url }) {
  * collide with another pass issued in the same second.
  */
 async function document(to, buffer, { filename, caption } = {}) {
+  /* Not on the testing allowlist: not even uploaded (see allowedOnly). */
+  const only = allowedOnly();
+  if (only.length && !only.includes(phone.toLocal(to))) {
+    await record({ mobile: to, direction: 'out', type: 'document',
+      payload: { document: { filename, caption, bytes: buffer.length } },
+      body: caption, error: 'not_on_allowlist_not_sent' });
+    return { ok: true, dryRun: true, notAllowed: true };
+  }
+
   if (await isTestRecipient(to)) {
     await record({ mobile: to, direction: 'out', type: 'document',
       payload: { document: { filename, caption, bytes: buffer.length } },
