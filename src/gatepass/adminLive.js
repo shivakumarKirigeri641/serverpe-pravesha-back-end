@@ -11,11 +11,11 @@
  *
  * TWO THINGS THE SYSTEM CANNOT SEE, AND SAYS SO:
  *
- *   Vehicles inside. Nothing records an exit — a visitor drives out past a gate
- *   nobody is stood at. "Inside" is therefore an estimate: vehicles that entered
- *   and whose slot has not ended. It is labelled as an estimate everywhere it
- *   appears, because a number presented as a count of vehicles on a hill had
- *   better be one.
+ *   Vehicles inside. Since check-out (063, 2026-09-19) the gate records exits,
+ *   so "inside" is a count: entered today and not yet checked out. A vehicle
+ *   still inside after its slot has ended is flagged "not checked out" — either
+ *   still up the hill, or it left without the exit being recorded — which is the
+ *   list worth having at closing time.
  *
  *   Vehicle mismatch. Staff look a vehicle up by its own number, so a pass
  *   cannot be presented against a different vehicle. Null, not zero.
@@ -63,9 +63,12 @@ async function visitors(today, yesterday, nowTime, hour) {
                           AND (s.ends_at - make_interval(mins => $2::int)) > $3::time) AS yet_to_arrive,
        count(*) FILTER (WHERE t.status = 'paid'
                           AND (s.ends_at - make_interval(mins => $2::int)) <= $3::time) AS skipped,
-       /* Entered, and their slot has not ended: still on the hill, as far as
-          anything here can tell. */
-       count(*) FILTER (WHERE t.status = 'used' AND s.ends_at > $3::time)     AS inside
+       /* Check-out (063): entered and not yet out; out; and still inside after
+          their slot ended. */
+       count(*) FILTER (WHERE t.status = 'used' AND t.exited_at IS NULL)      AS inside,
+       count(*) FILTER (WHERE t.status = 'used' AND t.exited_at IS NOT NULL)  AS exited,
+       count(*) FILTER (WHERE t.status = 'used' AND t.exited_at IS NULL
+                          AND s.ends_at <= $3::time)                          AS overdue
      FROM tickets t JOIN place_slots s ON s.id = t.slot_id
     WHERE t.travel_date = $1`, [today, buffer, nowTime]);
 
@@ -109,8 +112,10 @@ async function visitors(today, yesterday, nowTime, hour) {
     checkedAtGate: delta(n(arrived.today), n(arrivedY.yesterday)),
     yetToArrive: { value: n(t.yet_to_arrive) },
     skipped: { value: n(t.skipped) },
-    /* An estimate, and labelled as one: no exit is recorded anywhere. */
-    inside: { value: n(t.inside), estimated: true },
+    /* A count since check-out (063), no longer an estimate. */
+    inside: { value: n(t.inside), estimated: false },
+    exited: { value: n(t.exited) },
+    notCheckedOut: { value: n(t.overdue) },
     totalEntries: delta(n(entriesToday.n), n(entriesY.n)),
     comparedAtHour: hour,
   };
@@ -688,13 +693,45 @@ async function slotEntries(today) {
 }
 
 /** Everything the live screen needs, in one call. */
+/**
+ * Who is inside right now (063): entered today, not checked out. Oldest entry
+ * first, and each marked when its slot has ended — "not checked out", the list
+ * an officer wants at closing time or when the weather turns.
+ */
+async function insideNow(today, nowTime) {
+  const rows = await rowsOf(
+    `SELECT t.ticket_no, t.reg_no, t.pass_kind, t.persons, t.used_at, t.mobile,
+            s.label AS slot_label, s.ends_at, c.label AS category_label,
+            cu.name AS customer_name, cu.wa_profile_name,
+            (s.ends_at <= $2::time) AS overdue
+       FROM tickets t
+       JOIN place_slots s ON s.id = t.slot_id
+       JOIN vehicle_categories c ON c.id = t.category_id
+       JOIN customers cu ON cu.id = t.customer_id
+      WHERE t.travel_date = $1 AND t.status = 'used' AND t.exited_at IS NULL
+      ORDER BY (s.ends_at <= $2::time) DESC, t.used_at
+      LIMIT 500`, [today, nowTime]);
+  return rows.map((r) => ({
+    ticketNo: r.ticket_no,
+    regNo: r.reg_no,
+    persons: r.pass_kind === 'person' ? Number(r.persons) || 1 : null,
+    type: r.category_label,
+    visitor: r.customer_name || r.wa_profile_name || null,
+    mobile: r.mobile,
+    slot: String(r.slot_label || '').replace(/\s+/g, ' '),
+    slotEnds: String(r.ends_at).slice(0, 5),
+    enteredAt: r.used_at,
+    overdue: Boolean(r.overdue),
+  }));
+}
+
 async function live() {
   const now = slotTime.nowIST();
   const today = now.date;
   const yesterday = previousDay(today);
   const nowTime = `${slotTime.hhmm(now.minutes)}:59`;
 
-  const [v, veh, hours, byCat, acts, people, perf, verds, current, counts, bySlot] = await Promise.all([
+  const [v, veh, hours, byCat, acts, people, perf, verds, current, counts, bySlot, inside] = await Promise.all([
     visitors(today, yesterday, nowTime, slotTime.hhmm(now.minutes)),
     vehicles(today, yesterday, nowTime),
     hourly(today, yesterday),
@@ -706,6 +743,7 @@ async function live() {
     currentVehicle(today),
     activityCounts(today),
     slotEntries(today),
+    insideNow(today, nowTime),
   ]);
 
   return {
@@ -727,7 +765,8 @@ async function live() {
     verdicts: verds,
     current,
     slots: bySlot,
+    inside,
   };
 }
 
-module.exports = { live, pulse, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle, slotEntries };
+module.exports = { live, pulse, activity, shapeActivity, activityCounts, visitors, vehicles, hourly, staff, performance, verdicts, currentVehicle, slotEntries, insideNow };

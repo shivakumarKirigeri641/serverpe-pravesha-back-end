@@ -39,7 +39,7 @@ const who = (t) => (t && t.reg_no) || `${(t && t.persons) || 1} persons`;
 
 /* The gate is only ever interested in a pass that was paid for. */
 const LIST_COLUMNS = `
-  t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.mobile,
+  t.id, t.ticket_no, t.reg_no, t.travel_date, t.status, t.used_at, t.exited_at, t.mobile,
   t.total_paise, t.place_id, t.entry_source, t.pass_kind, t.persons,
   s.code AS slot_code, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot_label,
   s.label_kn AS slot_label_kn, s.starts_at, s.ends_at,
@@ -61,6 +61,8 @@ const shape = (r) => ({
   travelDate: r.travel_date instanceof Date ? r.travel_date.toISOString().slice(0, 10) : String(r.travel_date),
   status: r.status,
   usedAt: r.used_at,
+  /* When it came back out (063); null while it is still inside. */
+  exitedAt: r.exited_at || null,
   /* 'gate' when a staff member checked it, 'self' when the visitor recorded it
      themselves at the payment sheet — the screens say which, because they are
      not the same fact. */
@@ -110,6 +112,9 @@ async function arrivals(checkpost, date) {
       expected: list.length,
       entered: list.filter((p) => p.status === 'used').length,
       pending: list.filter((p) => p.status !== 'used').length,
+      /* Check-out (063): came back out, and still inside right now. */
+      exited: list.filter((p) => p.status === 'used' && p.exitedAt).length,
+      inside: list.filter((p) => p.status === 'used' && !p.exitedAt).length,
       slots: [...bySlot.values()],
     },
   };
@@ -461,6 +466,100 @@ async function recordOffline({ session, checkpost, ticketNo, clientId, at, overr
     message: 'Entry recorded.', pass: { ...detail(t), status: 'used', usedAt: claimed } };
 }
 
+/**
+ * Record a vehicle leaving (063, user 2026-09-19).
+ *
+ * The other half of a visit. Only a pass that went in can come out, once, and
+ * at a gate of the same destination; the time is kept on the pass and a row in
+ * exits says who recorded it. The Department then knows at any moment who is
+ * still up the hill.
+ *
+ * OFFLINE AS FOR ENTRIES. With `clientId` and `at` this is an exit the phone
+ * recorded without signal: taken at the phone's time (kept within reason) and
+ * recorded once however often the phone sends it.
+ *
+ * NEVER A REFUSAL AT THE BARRIER. The vehicle is leaving whatever we say; a pass
+ * that was never checked in is reported to the staff member, not stopped.
+ */
+async function recordExit({ session, checkpost, ticketNo, clientId = null, at = null }) {
+  const offlineId = clientId ? String(clientId) : null;
+  if (offlineId && !/^[A-Za-z0-9_-]{8,64}$/.test(offlineId)) {
+    return { ok: false, error: 'bad_client_id', message: 'This saved exit has no id and cannot be recorded.' };
+  }
+  if (offlineId) {
+    const seen = await one('SELECT exited_at FROM exits WHERE client_id = $1', [offlineId]);
+    if (seen) return { ok: true, duplicate: true, verdict: 'exited', exitedAt: seen.exited_at, message: 'Already recorded.' };
+  }
+
+  const t = ticketNo ? await booking.byTicketNo(ticketNo) : null;
+  if (!t) return { ok: false, verdict: 'unknown_ticket', message: 'No pass found with that number.' };
+  if (String(t.place_id) !== String(checkpost.place_id)) {
+    return { ok: false, verdict: 'wrong_place', message: `This pass is for ${t.place_name}, not this checkpost.`, pass: detail(t) };
+  }
+  if (t.status !== 'used') {
+    return { ok: false, verdict: 'not_entered', pass: detail(t),
+      message: 'This vehicle was never checked in. Check it in first if it is going up; if it is leaving, the entry was missed.' };
+  }
+  if (t.exited_at) {
+    return { ok: false, verdict: 'already_exited', exitedAt: t.exited_at, pass: detail(t),
+      message: 'This vehicle has already been checked out.' };
+  }
+
+  /* The phone's time for an offline exit, kept within reason and never before
+     the entry; otherwise now. */
+  const nowMs = Date.now();
+  let when = at ? new Date(at) : new Date(nowMs);
+  if (!Number.isFinite(when.getTime()) || when.getTime() > nowMs + 5 * 60 * 1000 || when.getTime() < nowMs - 36 * 3600 * 1000) {
+    when = new Date(nowMs);
+  }
+  if (t.used_at && when < new Date(t.used_at)) when = new Date(t.used_at);
+
+  const exitedAt = await tx(async (client) => {
+    const { rows } = await client.query(
+      `UPDATE tickets SET exited_at = $2, modified_at = now()
+        WHERE id = $1 AND status = 'used' AND exited_at IS NULL
+        RETURNING exited_at`, [t.id, when]);
+    if (!rows.length) return null;
+    await client.query(
+      `INSERT INTO exits (ticket_id, checkpost_id, staff_id, session_id, exited_at, synced_at, was_offline, client_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [t.id, checkpost.id, session.staff_id, session.session_id, when,
+        offlineId ? new Date() : null, Boolean(offlineId), offlineId]);
+    return rows[0].exited_at;
+  });
+
+  if (!exitedAt) {
+    const fresh = await booking.byTicketNo(t.ticket_no);
+    return { ok: false, verdict: 'already_exited', exitedAt: fresh ? fresh.exited_at : null,
+      message: 'This vehicle was checked out a moment ago.', pass: detail(fresh || t) };
+  }
+
+  require('../log').gate('exit', `${t.ticket_no}  ${who(t)} · out · ${checkpost.name}${offlineId ? ' · recorded offline, sent later' : ''}`);
+  notifyExit(t, checkpost, exitedAt).catch((e) => console.error('[checkin] exit notify %s: %s', t.ticket_no, e.message));
+
+  return { ok: true, verdict: 'exited', exitedAt, offline: Boolean(offlineId),
+    message: 'Exit recorded.', pass: { ...detail(t), exitedAt } };
+}
+
+/**
+ * "Thank you for visiting", with the exit time. The approved template when there
+ * is one; until then a plain message if the visitor's chat is still open. Never
+ * allowed to affect the exit.
+ */
+async function notifyExit(t, checkpost, exitedAt) {
+  const templates = require('../whatsapp/templates');
+  const phone = require('../whatsapp/phone');
+  const send = require('../whatsapp/send');
+  const { langOf } = require('../i18n');
+  const customer = await one('SELECT language FROM customers WHERE id = $1', [t.customer_id]);
+  const lang = langOf(customer);
+  const to = phone.toWa(t.mobile);
+  const sent = await templates.sendExitRecorded(to, t, { checkpost, exitedAt }, lang);
+  if (sent && sent.ok) return;
+  console.warn('[checkin] exit template not sent for %s (%s) — plain message if the chat is open', t.ticket_no, sent && sent.error);
+  if (await send.windowOpen(to)) await send.text(to, templates.exitRecordedText(t, { checkpost, exitedAt }, lang));
+}
+
 /** The visitor's copy: the approved template, in the language they chose. */
 async function notify(t, checkpost, recordedAt) {
   const templates = require('../whatsapp/templates');
@@ -780,4 +879,4 @@ async function passes(checkpost, { date = null, status = null, q = '', limit = 5
   };
 }
 
-module.exports = { arrivals, search, inspect, record, recordOffline, recent, history, passes, vehicle, verdictFor, notify };
+module.exports = { arrivals, search, inspect, record, recordOffline, recordExit, recent, history, passes, vehicle, verdictFor, notify };

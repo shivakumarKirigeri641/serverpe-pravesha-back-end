@@ -213,6 +213,25 @@ router.post(`${P}/entry/offline`, json, auth, safe(async (req, res) => {
 }));
 
 /*
+ * Check-out (063): the vehicle is coming back down. Recorded once per pass;
+ * never a refusal — the answer tells the staff member if the pass was never
+ * checked in, or already out.
+ */
+router.post(`${P}/exit`, json, auth, safe(async (req, res) => {
+  const { ticketNo } = req.body || {};
+  if (!ticketNo) return res.status(400).json({ error: 'missing_pass', message: 'Choose a pass first.' });
+  res.json(await checkin.recordExit({ session: req.session, checkpost: req.checkpost, ticketNo }));
+}));
+
+/* An exit recorded with no signal, sent later; the phone's id makes a resend harmless. */
+router.post(`${P}/exit/offline`, json, auth, safe(async (req, res) => {
+  const { ticketNo, clientId, recordedAt } = req.body || {};
+  if (!ticketNo) return res.status(400).json({ error: 'missing_pass', message: 'Choose a pass first.' });
+  if (!clientId) return res.status(400).json({ error: 'bad_client_id', message: 'This saved exit has no id.' });
+  res.json(await checkin.recordExit({ session: req.session, checkpost: req.checkpost, ticketNo, clientId, at: recordedAt }));
+}));
+
+/*
  * Selling a pass at the barrier.
  *
  * The same sale the panel makes and the same one WhatsApp makes: the vehicle

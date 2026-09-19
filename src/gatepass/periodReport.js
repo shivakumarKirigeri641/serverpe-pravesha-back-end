@@ -146,6 +146,16 @@ async function build({ kind = 'daily', anchor = null, placeId = null } = {}) {
     ? await one(`SELECT id, name FROM places WHERE id = $1`, [placeId])
     : await one(`SELECT id, name FROM places WHERE is_active ORDER BY id LIMIT 1`);
 
+  /* Check-out (063): how many came back out, and how many were never checked
+     out — still up the hill at report time, or left without the exit recorded. */
+  const exits = await one(
+    `SELECT count(*) FILTER (WHERE t.exited_at IS NOT NULL) AS exited,
+            count(*) FILTER (WHERE t.exited_at IS NULL)     AS not_out
+       FROM tickets t
+      WHERE t.status = 'used' AND t.travel_date BETWEEN $1::date AND $2::date
+        AND ($3::bigint IS NULL OR t.place_id = $3)`,
+    [period.from, period.to, place ? place.id : null]);
+
   const [traffic, revenue, gate, miss, slots] = await Promise.all([
     analytics.traffic(period.from, period.to),
     finance.summary({ from: period.from, to: period.to }),
@@ -170,6 +180,8 @@ async function build({ kind = 'daily', anchor = null, placeId = null } = {}) {
     figures: {
       entered: n(traffic.vehicles),
       split,
+      exited: n(exits && exits.exited),
+      notCheckedOut: n(exits && exits.not_out),
       sold: miss.sold,
       neverCame: miss.neverCame,
       neverCamePercent: miss.sold ? Math.round((miss.neverCame / miss.sold) * 100) : 0,
@@ -241,6 +253,9 @@ function asText(report) {
     '',
     `Passes booked: ${v.body[2]}`,
     `Vehicles entered: ${v.body[3]}`,
+    /* Not in the approved WhatsApp template (its eight values are fixed); here
+       for the panel and any copy sent another way. */
+    `Checked out: ${inr(report.figures.exited)} · Not checked out: ${inr(report.figures.notCheckedOut)}`,
     `No show: ${v.body[4]}`,
     '',
     `Department collection: ${v.body[5]}`,

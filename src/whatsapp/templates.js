@@ -99,6 +99,61 @@ function entryRecorded(t, opts, lang) {
 const sendEntryRecorded = (to, t, opts, lang) =>
   sendInLanguage(to, (l) => entryRecorded(t, opts, l), lang);
 
+/* ── Exit recorded (063, user 2026-09-19) ───────────────────────────────── */
+
+const EXIT_RECORDED = {
+  en: { name: 'pv_checkpostexit_en_v1', language: 'en' },
+  kn: { name: 'pv_checkpostexit_kn_v1', language: 'kn' },
+};
+
+/** "2 h 15 min" / "2 ಗಂ 15 ನಿ" between entry and exit. */
+function visitLength(from, to, lang) {
+  const mins = Math.max(0, Math.round((new Date(to) - new Date(from)) / 60000));
+  if (!Number.isFinite(mins) || !from) return lang === 'kn' ? 'ಲಭ್ಯವಿಲ್ಲ' : 'Not available';
+  const h = Math.floor(mins / 60); const m = mins % 60;
+  if (lang === 'kn') return h ? `${h} ಗಂ ${m} ನಿ` : `${m} ನಿ`;
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+function exitRecordedParams(t, { checkpost, exitedAt }, lang) {
+  const na = lang === 'kn' ? 'ಅನ್ವಯಿಸುವುದಿಲ್ಲ' : 'Not applicable';
+  return [
+    t.customer_name || t.wa_profile_name || (lang === 'kn' ? 'ಸಂದರ್ಶಕರೇ' : 'Visitor'), // {{1}} name
+    t.reg_no || (lang === 'kn' ? `${t.persons || 1} ಜನರು` : `${t.persons || 1} ${Number(t.persons) === 1 ? 'person' : 'persons'}`), // {{2}}
+    t.ticket_no,                                 // {{3}} pass number
+    L.placeWithDistrict(t, lang),                // {{4}} place
+    L.checkpostName(checkpost, lang, t) || na,   // {{5}} checkpost
+    t.used_at ? L.dateTime(t.used_at, lang) : na, // {{6}} entered at
+    L.dateTime(exitedAt, lang),                  // {{7}} exited at
+    visitLength(t.used_at, exitedAt, lang),      // {{8}} time spent
+  ];
+}
+
+function exitRecorded(t, opts, lang) {
+  const tpl = EXIT_RECORDED[lang === 'kn' ? 'kn' : 'en'];
+  return {
+    type: 'template',
+    template: {
+      name: tpl.name,
+      language: { code: tpl.language },
+      components: [
+        { type: 'body', parameters: exitRecordedParams(t, opts, lang).map((text) => ({ type: 'text', text: String(text) })) },
+      ],
+    },
+  };
+}
+
+const sendExitRecorded = (to, t, opts, lang) =>
+  sendInLanguage(to, (l) => exitRecorded(t, opts, l), lang);
+
+/** The same words as a plain message, for an open chat while the template waits for approval. */
+function exitRecordedText(t, opts, lang) {
+  const [name, what, pass, place, cp, inAt, outAt, spent] = exitRecordedParams(t, opts, lang);
+  return lang === 'kn'
+    ? `ನಮಸ್ಕಾರ *${name}*,\n\nನಿಮ್ಮ ನಿರ್ಗಮನ ದಾಖಲಾಗಿದೆ. ✅\n\nವಾಹನ: *${what}*\nಪಾಸ್ ಸಂಖ್ಯೆ: *${pass}*\nಸ್ಥಳ: *${place}*\nಚೆಕ್‌ಪೋಸ್ಟ್: *${cp}*\nಪ್ರವೇಶ: *${inAt}*\nನಿರ್ಗಮನ: *${outAt}*\nಕಳೆದ ಸಮಯ: *${spent}*\n\nಭೇಟಿ ನೀಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. ಸುರಕ್ಷಿತವಾಗಿ ಪ್ರಯಾಣಿಸಿ.`
+    : `Hello *${name}*,\n\nYour exit has been recorded. ✅\n\nVehicle: *${what}*\nPass number: *${pass}*\nPlace: *${place}*\nCheckpost: *${cp}*\nEntered: *${inAt}*\nExited: *${outAt}*\nTime spent: *${spent}*\n\nThank you for visiting. Have a safe journey.`;
+}
+
 /* ── The feedback request ───────────────────────────────────────────────── */
 
 /**
@@ -297,6 +352,7 @@ module.exports = {
   sendInLanguage,
   passIssued, passIssuedParams, sendPassIssued, PASS_ISSUED,
   entryRecorded, entryRecordedParams, sendEntryRecorded, ENTRY_RECORDED,
+  exitRecorded, exitRecordedParams, sendExitRecorded, exitRecordedText, EXIT_RECORDED,
   feedbackRequest, feedbackParams, sendFeedbackRequest, FEEDBACK_REQUEST,
   periodReport, sendPeriodReport, PERIOD_REPORT,
   slotNotice, slotNoticeParams, sendSlotNotice, SLOT_NOTICE,

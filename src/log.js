@@ -65,7 +65,8 @@ const log = {
     event('pay', 'paid', `₹${Math.round(Number(amountPaise || 0) / 100)}  ${paymentId || ''}  ${ticketNo || ''}`.trimEnd()),
   payFailed: (reason, orderId) => event('pay', 'failed', `${reason || 'unknown'}  ${orderId || ''}`.trimEnd()),
 
-  gate: (verdict, detail) => event('gate', verdict === 'valid' || verdict === 'valid_override' ? 'ENTER' : 'REFUSE', detail),
+  gate: (verdict, detail) => event('gate', verdict === 'exit' ? 'EXIT'
+    : verdict === 'valid' || verdict === 'valid_override' ? 'ENTER' : 'REFUSE', detail),
 
   admin: (who, action, subject) => event('admin', 'did', `${who} · ${String(action).replace(/_/g, ' ')}${subject ? ` · ${subject}` : ''}`),
 

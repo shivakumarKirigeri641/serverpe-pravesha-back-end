@@ -72,7 +72,7 @@ async function search({ q = null, state = null, from = null, to = null, placeId 
   const skip = Math.max(0, Number(offset) || 0);
 
   const rows = await rowsOf(
-    `SELECT t.id, t.ticket_no, t.reference_id, t.reg_no, t.mobile, t.travel_date, t.status, t.total_paise, t.used_at, t.created_at,
+    `SELECT t.id, t.ticket_no, t.reference_id, t.reg_no, t.mobile, t.travel_date, t.status, t.total_paise, t.used_at, t.exited_at, t.created_at,
             ${STATE_SQL} AS state,
             pl.name AS place, regexp_replace(s.label, '[[:space:]]+', ' ', 'g') AS slot, c.label AS vehicle_type,
             cu.name AS visitor, cu.wa_profile_name,
@@ -131,6 +131,7 @@ async function search({ q = null, state = null, from = null, to = null, placeId 
       amount: rupees(r.total_paise),
       paid: Boolean(r.paid_at),
       enteredAt: r.entered_at || r.used_at,
+      exitedAt: r.exited_at || null,
       invoiceNo: r.invoice_no,
       issuedAs: r.grant_kind,
       bookedAt: r.created_at,
@@ -186,6 +187,12 @@ async function detail(id) {
   const entered = scans.find((s) => s.verdict === 'valid' || s.verdict === 'valid_override');
   const refundedFull = t.payment_status === 'refunded';
 
+  /* Check-out (063): when it came back out, where, and who recorded it. */
+  const exit = await one(
+    `SELECT x.exited_at, x.was_offline, st.name AS staff, cp.name AS checkpost
+       FROM exits x LEFT JOIN staff st ON st.id = x.staff_id LEFT JOIN checkposts cp ON cp.id = x.checkpost_id
+      WHERE x.ticket_id = $1`, [t.id]);
+
   const timeline = [
     { at: t.created_at, what: grant ? `Pass issued from the panel (${grant.kind === 'free' ? 'free' : 'on-spot'})` : 'Pass booked', detail: t.reference_id },
     t.paid_at && { at: t.paid_at, what: grant?.kind === 'onspot' ? 'Paid at the counter' : 'Payment received', detail: [t.payment_id, grant?.payment_method].filter(Boolean).join(' · ') || null },
@@ -196,6 +203,7 @@ async function detail(id) {
       what: VERDICTS[s.verdict] || s.verdict,
       detail: [s.checkpost, s.staff, s.duration_ms ? `${(s.duration_ms / 1000).toFixed(1)} sec` : null].filter(Boolean).join(' · ') || null,
     })),
+    exit && { at: exit.exited_at, what: 'Checked out', detail: [exit.checkpost, exit.staff, exit.was_offline ? 'recorded offline' : null].filter(Boolean).join(' · ') || null },
     t.refunded_at && { at: t.refunded_at, what: refundedFull ? 'Refunded in full' : 'Partly refunded', detail: [`₹${rupees(t.refunded_paise)}`, t.refund_reason].filter(Boolean).join(' · ') },
     ...audit.map((a) => ({ at: a.created_at, what: `${AUDIT[a.action] || a.action.replace(/_/g, ' ')} by ${a.who || 'an administrator'}`, detail: a.reason })),
   ].filter(Boolean).sort((a, b) => new Date(a.at) - new Date(b.at));
@@ -284,6 +292,14 @@ async function detail(id) {
       metresFromGate: t.self_checkin_m === null || t.self_checkin_m === undefined ? null : Number(t.self_checkin_m),
       attempts: scans.map((s) => ({ verdict: s.verdict, label: VERDICTS[s.verdict] || s.verdict, at: s.scanned_at, checkpost: s.checkpost, staff: s.staff })),
     },
+    /* Check-out (063). Null until it leaves; minutes is the length of the visit. */
+    exit: exit ? {
+      at: exit.exited_at,
+      checkpost: exit.checkpost || null,
+      staff: exit.staff || null,
+      offline: Boolean(exit.was_offline),
+      minutes: t.used_at ? Math.max(0, Math.round((new Date(exit.exited_at) - new Date(t.used_at)) / 60000)) : null,
+    } : null,
     timeline,
   };
 }
