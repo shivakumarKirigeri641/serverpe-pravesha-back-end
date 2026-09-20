@@ -590,7 +590,7 @@ async function render(report, { reportNo, generatedAt, generatedBy, settings = {
   footer(doc, {
     generated: `${reportNo} · generated ${istDateTime(generatedAt)}`,
     pageOf: (i, nPages) => `Page ${i} of ${nPages}`,
-    productLine: 'Pravesha is a product of ServerPe App Solutions — Smart Clicks, Smart Taps. (www.serverpe.in)',
+    productLine: 'Pravesha is a product of ServerPe App Solutions™ — Smart Clicks, Smart Taps. (www.serverpe.in)',
   });
 
   return toBuffer(doc);

@@ -145,10 +145,30 @@ function header(doc, { heading, dept, title, chip }) {
 
   const tx = M + 68;
   const tw = W - 2 * M - 136;
-  doc.fillColor('#ffffff').font('B').fontSize(19)
-     .text(heading, tx, 24, { width: tw, align: 'center', lineBreak: false });
-  doc.font('R').fontSize(11).fillColor('#d9fdd3')
-     .text(dept, tx, 53, { width: tw, align: 'center', lineBreak: false });
+
+  /*
+   * THE HEADING IS FITTED, NOT FIXED (user, 2026-09-20). It carries a product
+   * name and a tagline, both of which are settings, so its width is not known
+   * here. At a fixed 19pt "Pravesha — Entry made simple & secured." ran past the
+   * emblem and PDFKit dropped the last word onto the line below, straight
+   * through "Department of Tourism". Shrinking until it fits keeps one line
+   * whatever the tagline is later changed to.
+   */
+  const fitted = (text, font, start, floor) => {
+    doc.font(font);
+    let size = start;
+    while (size > floor && doc.fontSize(size).widthOfString(text) > tw) size -= 0.5;
+    return size;
+  };
+
+  /* ellipsis: at the floor a still-too-long line is cut with a "…" rather than
+     running on under the department's emblem. */
+  const hSize = fitted(heading, 'B', 19, 11);
+  doc.fillColor('#ffffff').font('B').fontSize(hSize)
+     .text(heading, tx, 24 + (19 - hSize) / 2, { width: tw, align: 'center', lineBreak: false, ellipsis: true });
+  const dSize = fitted(dept, 'R', 11, 8);
+  doc.font('R').fontSize(dSize).fillColor('#d9fdd3')
+     .text(dept, tx, 53 + (11 - dSize) / 2, { width: tw, align: 'center', lineBreak: false, ellipsis: true });
 
   doc.save().rect(0, 92, W, 30).fill(C.brand2).restore();
   doc.fillColor('#ffffff').font('B').fontSize(12)

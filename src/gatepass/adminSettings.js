@@ -178,6 +178,9 @@ async function slots({ placeId } = {}) {
 
   return {
     place: { id: String(place.id), name: place.name },
+    /* Where "what is free" is decided, so the screen showing capacities also
+       says whose numbers they are (user, 2026-09-20). */
+    source: String(await settings.str('slots_source', 'db')).trim() === 'omniware' ? 'omniware' : 'db',
     categories: cats,
     slots: rows.map((s) => {
       const mine = caps.filter((c) => String(c.slot_id) === String(s.id));
@@ -726,6 +729,38 @@ async function updateGst({ body, reason }) {
   return { reason: why, gst: after, audit: { subject: 'settings:gst_business', before: pick(before), after: pick(after) } };
 }
 
+/**
+ * Switch where availability comes from (user, 2026-09-20).
+ *
+ * 'db' is our own database alone. 'omniware' folds the department's live sold
+ * counts in before each date is read, so the two systems cannot both sell the
+ * last place. Turning it off does not need a cleanup here: the next read of
+ * any date takes that date's copied figures back out (omniwareSlots).
+ *
+ * Reasoned and audited like every other settings change, because it decides
+ * whether a visitor is told a slot is full.
+ */
+const SLOT_SOURCES = { db: "Our own database only", omniware: "Include the department's live Omniware counts" };
+
+async function setSlotsSource({ source, reason }) {
+  const why = String(reason || '').trim();
+  if (!SLOT_SOURCES[source]) refuse("Choose either our own database or the department's live counts.");
+  if (why.length < 5) refuse('Give a reason for this change — it is recorded in the audit log.', { code: 'reason_required' });
+  const before = String(await settings.str('slots_source', 'db')).trim() === 'omniware' ? 'omniware' : 'db';
+  if (before === source) refuse('Nothing has changed.', { code: 'no_change' });
+
+  await query(
+    `INSERT INTO app_settings (key, value, note)
+     VALUES ('slots_source', $1, 'Where slot availability comes from: db or omniware')
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, modified_at = now()`, [source]);
+  settings.clear();
+  return {
+    reason: why,
+    source,
+    audit: { subject: 'settings:slots_source', before: { source: before }, after: { source } },
+  };
+}
+
 /* ─────────────────────────────────────────────────────────────── audit ── */
 
 async function auditLog({ q = null, action = null, adminId = null, from = null, to = null, before = null, limit = 50 } = {}) {
@@ -762,7 +797,7 @@ async function auditLog({ q = null, action = null, adminId = null, from = null, 
 
 module.exports = {
   gateOf,
-  Refusal, pricing, updatePricing, slots, createSlot, updateSlot, deleteSlot,
+  Refusal, pricing, updatePricing, slots, createSlot, updateSlot, deleteSlot, setSlotsSource, SLOT_SOURCES,
   staffList, addStaff, updateStaff, setStaffActive, staffActivity,
   users, addUser, updateUser, setUserActive, resetUserPassword, gst, updateGst, auditLog, feeFor,
 };

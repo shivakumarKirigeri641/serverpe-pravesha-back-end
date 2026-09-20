@@ -67,7 +67,7 @@ const LBL = {
     ],
     generated: (at) => `Generated on ${at}`,
     pageOf: (i, n) => `Page ${i} of ${n}`,
-    product: (s) => `Pravesha is a product of ServerPe App Solutions — ${s.vendorTagline} (${s.website})`,
+    product: (s) => `Pravesha is a product of ServerPe App Solutions™ — ${s.vendorTagline} (${s.website})`,
     heading: (s) => `Pravesha — ${s.productTagline}`,
   },
   kn: {

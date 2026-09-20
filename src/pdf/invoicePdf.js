@@ -3,12 +3,14 @@
  *
  * A separate document from the pass because the two readers have almost nothing
  * in common. The pass is read at a barrier. This is read by an accountant, and
- * needs a GSTIN, a SAC code, a place of supply and the pure-agent split stated
+ * needs a GSTIN, a SAC code, a place of supply and the entry-fee split stated
  * in a way that survives a scrutiny notice.
  *
  * THE ENTRY FEE IS NOT OUR SUPPLY. It is collected for the Department of Tourism
- * as a pure agent (Rule 33, CGST Rules 2017) and passed on whole, so it appears
- * as a line with no taxable value. Only the service fee is taxed, and its GST is
+ * and passed on whole, which is what Rule 33 of the CGST Rules 2017 provides
+ * for, so it appears as a line with no taxable value. The invoice says that in
+ * those words rather than calling Pravesha an agent, but the citation stays:
+ * without it the whole amount would be taxable. Only the service fee is taxed, and its GST is
  * shown as CGST + SGST because a visitor is an unregistered person whose place
  * of supply is our own state.
  */
@@ -63,8 +65,9 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
     ['Name', sup.legalName],
     ['Address', sup.address],
     ['GSTIN', sup.gstin],
-    ['UDYAM', sup.udyam],
-    ['Contact', `${sup.email} · ${sup.website}`],
+    /* UDYAM is not required on a tax invoice and is not what anybody writes to
+       (user, 2026-09-20). One contact address, the one that is answered. */
+    ['Contact', sup.email],
   ], { labelW: 0.3 });
   const right = kvTable(doc, M + colW + gap, y, colW, 'Invoice', [
     ['Invoice number', inv.invoice_no],
@@ -101,9 +104,19 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
     { h: 'Amount', w: inner - 446, a: 'right' },
   ];
   const rows = [
-    ['1', `Entry fee — collected as pure agent on behalf of the Department of Tourism, Government of Karnataka (Rule 33, CGST Rules). Not a taxable supply.`,
+    /*
+     * WORDED AS THE PLATFORM, CITED AS THE RULE (user, 2026-09-20). "Pure
+     * agent" is a term of art from Rule 33 and not a description of the
+     * business, and reading it as one is fair — Pravesha is not a broker. But
+     * the rule is the whole reason the entry fee sits outside the taxable
+     * value: drop the basis and the default position is that the entire
+     * amount is consideration for our own supply. So the sentence leads with
+     * what actually happens to the money and keeps the citation at the end,
+     * where an accountant looks for it.
+     */
+    ['1', `Entry fee — collected on behalf of and remitted in full to the Department of Tourism, Government of Karnataka. Not a supply by Pravesha (Rule 33, CGST Rules).`,
       '—', '—', '—', '—', rupee(inv.entry_paise)],
-    ['2', `${settings.feeLabel} — online booking and payment facilitation`,
+    ['2', `${settings.feeLabel} — secure online booking, verified entry pass and payment facilitation`,
       inv.sac_code, rupee(inv.taxable_paise), rupee(cgst), rupee(sgst), rupee(inv.service_paise)],
   ];
 
@@ -152,7 +165,7 @@ async function render(t, inv, { settings, generatedAt = new Date() }) {
   footer(doc, {
     generated: `Generated on ${istDateTime(generatedAt)}`,
     pageOf: (i, n) => `Page ${i} of ${n}`,
-    productLine: `Pravesha is a product of ServerPe App Solutions — ${settings.vendorTagline} (${settings.website})`,
+    productLine: `Pravesha is a product of ServerPe App Solutions™ — ${settings.vendorTagline} (${settings.website})`,
   });
   return toBuffer(doc);
 }

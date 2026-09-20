@@ -72,6 +72,10 @@ router.put(`${P}/settings/pricing`, json, auth, needs('settings.pricing'),
 
 /* ── Slots ─────────────────────────────────────────────────────────────── */
 router.get(`${P}/settings/slots`, auth, needs('settings.slots'), read((req) => settingsAdmin.slots({ placeId: req.query.placeId })));
+/* Our own database, or the department's live counts folded in (user, 2026-09-20). */
+router.post(`${P}/settings/slots/source`, json, auth, needs('settings.slots'),
+  change('slots_source_changed', (req) => settingsAdmin.setSlotsSource({ source: req.body.source, reason: req.body.reason })));
+
 router.post(`${P}/settings/slots`, json, auth, needs('settings.slots'),
   change('slot_created', (req) => settingsAdmin.createSlot({ placeId: req.body.placeId, body: req.body, reason: req.body.reason })));
 router.put(`${P}/settings/slots/:id`, json, auth, needs('settings.slots'),

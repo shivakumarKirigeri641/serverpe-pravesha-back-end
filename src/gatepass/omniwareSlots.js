@@ -33,6 +33,7 @@
 const axios = require('axios');
 const { query, tx } = require('./db');
 const slotTime = require('./slotTime');
+const settings = require('./settings');
 
 const URL = 'https://pgbiz.omniware.in/getavailableslots';
 const MERC_ID = '570375';
@@ -44,7 +45,23 @@ const HALVES = { '06:00': 'First Half (6AM-12PM)', '13:00': 'Second Half (1PM-6P
 /* Our category → Omniware's vehicle type. 'Bike', not 'Bike/SUV': the latter answers 0. */
 const TYPES = { BIKE: 'Bike', CAR: 'Car/SUV', TOOFAN: 'Toofan', TT: 'Tempo Traveler' };
 
-const enabled = () => String(process.env.SLOTS_TYPE || '').trim() === '1';
+/*
+ * WHERE AVAILABILITY COMES FROM IS A SETTING, NOT A DEPLOY (user, 2026-09-20).
+ *
+ * It used to be the SLOTS_TYPE environment variable, which meant changing it
+ * needed an edit on the server and a restart — during a demonstration, with
+ * somebody watching, that is not a switch at all. It now lives in app_settings
+ * as `slots_source` and is flipped from the admin panel:
+ *
+ *   'db'        our own database alone decides what is free   (the default)
+ *   'omniware'  the department's live sold counts are folded in first
+ *
+ * The default is our own database. Mirroring a third party's numbers is the
+ * unusual choice and the one that can fail in public, so it is the one that
+ * has to be asked for. The setting is cached for a minute like every other,
+ * so the toggle takes effect within a minute without a restart.
+ */
+const enabled = async () => String(await settings.str('slots_source', 'db')).trim() === 'omniware';
 const cacheMs = () => Math.max(0, Number(process.env.OMNIWARE_CACHE_SECONDS || 60)) * 1000;
 
 async function ask(date, location, half, type, { timeoutMs = 4000 } = {}) {
@@ -82,7 +99,7 @@ const running = new Map();    // "placeId:date" -> promise
 async function refreshDate(placeId, date, { ask: asker = ask } = {}) {
   /* Switched off: our own figures only, so anything copied in while it was on
      is taken back out of that date. */
-  if (!enabled()) {
+  if (!(await enabled())) {
     const r = await query(
       `UPDATE slot_inventory SET booked = GREATEST(booked - omniware_booked, 0), omniware_booked = 0, modified_at = now()
         WHERE place_id = $1 AND travel_date = $2 AND omniware_booked > 0`, [placeId, date]).catch(() => ({ rowCount: 0 }));
