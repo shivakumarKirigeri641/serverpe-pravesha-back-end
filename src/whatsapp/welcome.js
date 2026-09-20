@@ -170,4 +170,31 @@ async function greet(to, customer) {
   return askLanguage(to, customer);
 }
 
-module.exports = { send: send_, greet, firstTime, menu, askLanguage, sendMenu, termsVersionNow, termsUrl, privacyUrl };
+/**
+ * NO REPLY IS A DEAD END (user, 2026-09-20).
+ *
+ * Several messages used to be the last word in the thread: "you have no pass
+ * that can be postponed", "we have received your message", the postponed
+ * confirmation, Help. Each one left the visitor on a screen with nothing to
+ * tap, and the only way on was to know that typing "hi" starts again — which
+ * nobody knows the first time. So every one of them now carries the way back
+ * to the menu.
+ *
+ * It is sent as buttons rather than appended as text because a sentence saying
+ * "type menu" is an instruction, and a button is a tap. `extra` takes the one
+ * or two choices that are obvious in that particular spot — "Book pass" after
+ * being told there is nothing to postpone — and More options always comes
+ * last, since WhatsApp allows three buttons and the menu behind it holds five.
+ */
+/* `who` is a customer row, or just the language where the caller already has
+   it — the postpone and support pages know the language and not much else. */
+function withMenu(to, who, body, extra = [], header) {
+  const lang = typeof who === 'string' ? who : langOf(who);
+  /* Three is WhatsApp's limit, and More options is the one that must survive
+     it — it is the only button here that leads anywhere else. So the extras
+     give way, not the menu. */
+  const buttons = [...extra.slice(0, 2), { id: 'MENU', title: t('btnMore', lang) }];
+  return send.buttons(to, body, buttons, header);
+}
+
+module.exports = { send: send_, greet, firstTime, menu, askLanguage, sendMenu, withMenu, termsVersionNow, termsUrl, privacyUrl };

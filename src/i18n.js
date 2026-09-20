@@ -123,6 +123,12 @@ const S = {
     en: 'Thank you — that is recorded.',
     kn: 'ಧನ್ಯವಾದಗಳು — ದಾಖಲಾಗಿದೆ.',
   },
+  /* After a pass is sent again — from My passes, or after a postponement. It
+     does not repeat "here is your pass": the pass is right above it. */
+  afterResend: {
+    en: 'Anything else we can do?',
+    kn: 'ಇನ್ನೇನಾದರೂ ಸಹಾಯ ಬೇಕೇ?',
+  },
   afterPass: {
     en: 'Another vehicle to book, or want to see your passes?',
     kn: 'ಇನ್ನೊಂದು ವಾಹನಕ್ಕೆ ಪಾಸ್ ಬೇಕೇ, ಅಥವಾ ನಿಮ್ಮ ಪಾಸ್‌ಗಳನ್ನು ನೋಡಬೇಕೇ?',

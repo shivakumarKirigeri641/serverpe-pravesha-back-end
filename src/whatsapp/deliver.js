@@ -218,6 +218,21 @@ async function resendPass(ticketId) {
   });
 
   await logEvent(t, 'pass_resent', { message: msg.ok, pdf: doc.ok });
+
+  /*
+   * And the way on (user, 2026-09-20). A resent pass is the end of two
+   * journeys — looking a pass up, and postponing one — and both used to stop
+   * on a PDF with nothing to tap. Only in the chat window: outside it this
+   * would be refused, and that path returned above with a template anyway.
+   * A failure here is not the visitor's problem; they have their pass.
+   */
+  try {
+    await require('./welcome').withMenu(to, lang, tr('afterResend', lang),
+      [{ id: 'BOOK', title: tr('btnBookAnother', lang) }]);
+  } catch (e) {
+    console.error('[deliver] follow-up buttons for %s: %s', t.ticket_no, e.message);
+  }
+
   /* A test number or a disabled sender answers ok without anything leaving the
      building; the caller is told, so no screen can claim it was delivered. */
   return { ok: msg.ok && doc.ok, testRecipient: Boolean(msg.testRecipient || doc.testRecipient), dryRun: Boolean(msg.dryRun || doc.dryRun) };

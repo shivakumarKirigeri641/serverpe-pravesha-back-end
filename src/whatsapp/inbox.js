@@ -263,7 +263,11 @@ async function handle(msg, contact) {
   }
 
   if (action === 'HELP' || /^\s*help/i.test(body)) {
-    await send.text(to, t('help', langOf(customer)));
+    /* Help ends with a list of what can be done, so it ends with the way to
+       do it: reading about "Postpone pass" and then having to type it is a
+       step nobody should need (user, 2026-09-20). */
+    await welcome.withMenu(to, customer, t('help', langOf(customer)),
+      [{ id: 'BOOK', title: t('btnBook', langOf(customer)) }]);
     return;
   }
 
@@ -285,7 +289,14 @@ async function handle(msg, contact) {
     const rules = await pp.rules();
     const movable = (await pp.forCustomer(customer.id)).filter((x) => x.verdict.ok);
     if (!movable.length) {
-      await send.text(to, t('postponeNone', lang, { hours: rules.cutoffHours }));
+      /* Nothing to move is the commonest answer here — somebody curious about
+         the option, or whose only pass is already used or already moved. It is
+         also where the thread used to stop dead, so it offers the two things
+         that are actually useful from here (user, 2026-09-20). */
+      await welcome.withMenu(to, customer, t('postponeNone', lang, { hours: rules.cutoffHours }), [
+        { id: 'BOOK', title: t('btnBook', lang) },
+        { id: 'MY_PASSES', title: t('btnMyPasses', lang) },
+      ]);
       return;
     }
     const tok = await webToken.issue(customer.id, 'postpone');

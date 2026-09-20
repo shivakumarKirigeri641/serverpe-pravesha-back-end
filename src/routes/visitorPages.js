@@ -261,9 +261,14 @@ router.post('/support/:token', json, gate('support'), safe(async (req, res) => {
   await token.spend(req.params.token);
 
   /* The visitor's own record of it, in the chat. */
-  const send = require('../whatsapp/send');
   const { t } = require('../i18n');
-  send.text(require('../whatsapp/phone').toWa(cu.mobile), t('supportReceived', req.lang, { ref })).catch(() => {});
+  /* With the way back to the menu on it (user, 2026-09-20): having written in
+     about a problem is exactly the moment somebody also wants their pass again
+     or a new booking, and an acknowledgement with nothing to tap is a wall. */
+  require('../whatsapp/welcome')
+    .withMenu(require('../whatsapp/phone').toWa(cu.mobile), req.lang, t('supportReceived', req.lang, { ref }),
+      [{ id: 'MY_PASSES', title: t('btnMyPasses', req.lang) }])
+    .catch(() => {});
   require('../log').event('wa', 'support', `${ref} · ${'•'.repeat(6)}${String(cu.mobile).slice(-4)} · ${topic || ''} · mail ${out.status}`);
 
   res.json({ ok: true, reference: ref, sentText: c.sentSub(ref) });
