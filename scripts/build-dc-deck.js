@@ -1916,35 +1916,30 @@ const feesOf = (ctx) => (ctx.plan && ctx.plan.fees) || SERVICE_FEE;
  * training, on-spot testing and fixes at the gate, and travel.
  */
 const PLAN_YEARS = 3;
+/*
+ * NO AMC (user, 2026-09-20). The AMC proposals are withdrawn, and the reason is
+ * not price: an annual charge to the Department has to go through tender or
+ * procurement, and that is a budget cycle the platform cannot wait out. A
+ * proposal that costs the Department nothing can be approved on a file note by
+ * the officer who wants it, which is the only route that gets this live.
+ *
+ * So the visitor pays the service fee and the Department pays nothing, ever.
+ * Two decks remain and both are no-AMC — they differ only in the fee, and the
+ * second exists because the first will be pushed on price:
+ *
+ *   by type   ₹10 two-wheeler · ₹20 car · ₹30 Toofan and Tempo Traveller
+ *             (20% of each entry fee, in whole rupees) — what is asked for
+ *   10%       ₹5 · ₹10 · ₹15 · ₹20 — the concession, if the fee is argued
+ *
+ * As before, nothing numbers, ranks or recommends a deck: they are opened one
+ * at a time as the discussion goes. The eight AMC decks were deleted on
+ * 2026-09-20; `git show` the commit before that to bring any of them back, as
+ * every deck is generated from this file.
+ */
 const PLANS = [
-  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-Annual-AMC-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000 },
-  /* The fee as 10% of each entry fee — ₹5 bike, ₹10 car, ₹15 Toofan, ₹20 TT — on
-     top of the entry fee with GST inside it, and the same ₹6 L / ₹4 L yearly AMC
-     (user, 2026-09-17). */
-  { file: 'Pravesha-Commercial-Fee-On-Top-10-Percent-Annual-AMC-6L-then-4L.pptx', kind: 'yearly', startup: 200000, amc: 400000, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
-  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-AMC-Up-To-3-Years-10L.pptx', kind: 'contract', total: 1000000 },
-  /*
-   * INSIDE THE ENTRY FEE (user, 2026-09-17). The visitor pays the entry fee and
-   * nothing more — ₹100 for a car — and ServerPe's share, GST inside it, comes
-   * out of it. Two ways to set the share, each offered with the yearly
-   * ₹6 L / ₹4 L AMC and with the ₹10 L three-year contract:
-   *   10%            ₹5 · ₹10 · ₹15 · ₹20
-   *   by type        ₹10 bike · ₹20 car · ₹30 Toofan and Tempo Traveller
-   */
-  ...[
-    ['10-Percent', { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 }],
-    ['10-20-30-30', { BIKE: 10, CAR: 20, TOOFAN: 30, TT: 30 }],
-  ].flatMap(([name, fees]) => [
-    { file: `Pravesha-Commercial-Included-In-Entry-Fee-${name}-Annual-AMC-6L-then-4L.pptx`, kind: 'yearly', startup: 200000, amc: 400000, inside: true, fees },
-    { file: `Pravesha-Commercial-Included-In-Entry-Fee-${name}-AMC-Up-To-3-Years-10L.pptx`, kind: 'contract', total: 1000000, inside: true, fees },
-  ]),
-  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-Annual-AMC-4L-then-3L.pptx', kind: 'yearly', startup: 100000, amc: 300000 },
-  /*
-   * A 10% DIGITAL SERVICE FEE, NO AMC (user, 2026-09-17). The visitor pays the
-   * department's prescribed entry fee plus 10% — ₹100 + ₹10 = ₹110 for a car —
-   * GST inside the ₹10, and the department pays nothing annually. Worded exactly
-   * as the user gave it, with the approval of the competent authority stated.
-   */
+  { file: 'Pravesha-Commercial-Fee-On-Top-10-20-30-No-AMC.pptx', kind: 'none' },
+  /* Worded as the user gave it — "10% digital service fee on the applicable
+     entry fee" — which is why this one carries `digital` and the other does not. */
   { file: 'Pravesha-Commercial-Fee-On-Top-10-Percent-No-AMC.pptx', kind: 'none', digital: true, fees: { BIKE: 5, CAR: 10, TOOFAN: 15, TT: 20 } },
 ];
 const year1Of = (p) => (p.kind === 'yearly' ? p.startup + p.amc : null);
@@ -2755,7 +2750,7 @@ const proposalSlides = (plan) => [proposalCover, commercial, priceView,
   costStructure, yearCompare, exitTerms, closing];
 
 /** The cover of a commercial deck — the welcome slide's top and bottom, with no proposal named or numbered. */
-function proposalCover(pptx) {
+function proposalCover(pptx, ctx) {
   const s = pptx.addSlide({ masterName: 'COVER' });
   const centre = (w) => (W - w) / 2;
   const line = (text, y, h, opts) => s.addText(text, { x: GUTTER, y, w: W - GUTTER * 2, h, align: 'center', valign: 'middle', margin: 0, ...opts });
@@ -2775,7 +2770,11 @@ function proposalCover(pptx) {
   line('Commercial Proposal', 3.75, 0.7, { fontFace: F.enBold, fontSize: 36, color: C.ink });
   line('ವಾಣಿಜ್ಯ ಪ್ರಸ್ತಾವನೆ', 4.45, 0.55, { fontFace: F.kn, fontSize: KN(22), color: C.brand2 });
   s.addShape('rect', { x: centre(1.1), y: 5.12, w: 1.1, h: 0.06, fill: { color: C.sun }, line: { color: C.sun } });
-  line('Service fee · Annual maintenance · Costs · Terms', 5.26, 0.4, { fontFace: F.en, fontSize: 16, color: C.muted });
+  /* A no-AMC deck must not promise annual maintenance on its cover — that was
+     the first thing the eye landed on (user, 2026-09-20). */
+  line(ctx && ctx.plan && ctx.plan.kind === 'none'
+    ? 'Service fee · Costs · Terms'
+    : 'Service fee · Annual maintenance · Costs · Terms', 5.26, 0.4, { fontFace: F.en, fontSize: 16, color: C.muted });
 
   const labelW = 1.25;
   const markH = 0.72;
