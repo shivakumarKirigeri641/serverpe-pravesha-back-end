@@ -34,6 +34,11 @@ router.get(`${P}/summary`, auth, needs('finance.view'), handle(async (req, res) 
   res.set('Cache-Control', 'no-store').json({ ok: true, ...(await finance.summary(periodOf(req.query))) });
 }));
 
+/* Since day one. No period: the whole history is the question (user, 2026-09-20). */
+router.get(`${P}/lifetime`, auth, needs('finance.view'), handle(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await finance.lifetime()) });
+}));
+
 router.get(`${P}/invoices`, auth, needs('finance.view'), handle(async (req, res) => {
   const period = req.query.preset ? periodOf(req.query) : { from: req.query.from, to: req.query.to };
   res.set('Cache-Control', 'no-store').json({ ok: true, ...(await finance.invoices({

@@ -235,6 +235,311 @@ async function summary(period) {
   };
 }
 
+
+/* ────────────────────────────────────────────────────── since day one ── */
+
+/**
+ * lifetime() — everything, from the first rupee to today, and whose it is.
+ *
+ * WHY A SEPARATE VIEW. summary() answers "how did this period do", and every
+ * figure in it is bounded by the dates at the top of the screen. That is the
+ * right shape for a month's GST return and the wrong shape for the two
+ * questions this screen answers: what has this platform handled altogether,
+ * and of that, what was ever actually ours. Those are asked of the whole
+ * history or not at all — a number that quietly means "since the 1st" is worse
+ * than no number when somebody is about to quote it to a Deputy Commissioner.
+ *
+ * THE SEGREGATION IS THE POINT. Money collected is not money earned, and the
+ * gap is wide here: most of every rupee is the Department's entry fee, which
+ * Pravesha only ever holds on its way past. So the headline splits the whole
+ * collection into the four parties it belongs to, and they add back up to it
+ * exactly:
+ *
+ *   collected = department + governmentGst + gatewayCharges + serverpeNet
+ *
+ * Then serverpeNet — the only part that was ever Pravesha's — has expenses and
+ * the net GST liability taken out of it to give takeHome.
+ *
+ * BASES, AGAIN. Money is counted by payment date and GST by invoice date, as
+ * everywhere else in this file. Over a whole history the two nearly agree, a
+ * pass being invoiced the moment it is paid for; where they do not, it is
+ * because an invoice is missing, which is reported rather than hidden.
+ *
+ * TEST ROWS ARE OUT. Everywhere else they are counted and flagged. This is the
+ * screen somebody reads a number off aloud, so a demo booking has no business
+ * in it.
+ */
+async function lifetime() {
+  const includeGatewayItc = String(await settings.str('itc_include_gateway_gst', 'false')) === 'true';
+  const gstPercent = await settings.num('gst_percent_on_platform', 18);
+
+  const [pay] = await rowsOf(
+    `SELECT count(*) AS payments,
+            COALESCE(sum(amount_paise), 0)   AS gross,
+            COALESCE(sum(entry_paise), 0)    AS department,
+            COALESCE(sum(platform_paise), 0) AS service,
+            COALESCE(sum(gst_paise), 0)      AS gst,
+            COALESCE(sum((raw->'gateway'->>'fee')::bigint), 0) AS gateway_fee,
+            COALESCE(sum((raw->'gateway'->>'tax')::bigint), 0) AS gateway_tax,
+            count(*) FILTER (WHERE raw->'gateway'->>'fee' IS NOT NULL) AS with_fee,
+            count(*) FILTER (WHERE gateway <> 'counter') AS online_payments,
+            COALESCE(sum(amount_paise) FILTER (WHERE gateway <> 'counter'), 0) AS online_gross,
+            count(*) FILTER (WHERE gateway = 'counter')  AS counter_payments,
+            COALESCE(sum(amount_paise) FILTER (WHERE gateway = 'counter'), 0) AS counter_gross,
+            min(paid_at) AS first_at, max(paid_at) AS last_at
+       FROM payments
+      WHERE status <> 'failed' AND paid_at IS NOT NULL AND NOT is_test`);
+
+  const [ref] = await rowsOf(
+    `SELECT count(*) AS refunds, COALESCE(sum(refunded_paise), 0) AS amount,
+            COALESCE(sum(${FEE_REFUNDED}), 0)   AS service,
+            COALESCE(sum(${GST_REFUNDED}), 0)   AS gst,
+            COALESCE(sum(${ENTRY_REFUNDED}), 0) AS entry
+       FROM payments WHERE refunded_at IS NOT NULL AND NOT is_test`);
+
+  const [inv] = await rowsOf(
+    `SELECT count(*) AS invoices,
+            COALESCE(sum(taxable_paise), 0) AS taxable,
+            COALESCE(sum(gst_paise), 0)     AS gst,
+            COALESCE(sum(service_paise), 0) AS service,
+            COALESCE(sum(entry_paise), 0)   AS entry,
+            COALESCE(sum(total_paise), 0)   AS total,
+            min(invoice_no) AS first_no, max(invoice_no) AS last_no
+       FROM invoices WHERE NOT is_test`);
+
+  const [exp] = await rowsOf(
+    `SELECT count(*) AS expenses, COALESCE(sum(amount_paise), 0) AS amount,
+            COALESCE(sum(gst_paise) FILTER (WHERE itc_eligible), 0) AS itc,
+            count(*) FILTER (WHERE itc_eligible) AS itc_bills
+       FROM finance_expenses WHERE removed_at IS NULL`);
+
+  const [miss] = await rowsOf(
+    `SELECT count(*) AS c FROM tickets t JOIN payments p ON p.id = t.payment_id
+      WHERE p.status = 'paid' AND NOT p.is_test AND t.total_paise > 0 AND t.status IN ('paid','used')
+        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.ticket_id = t.id)`);
+
+  const [cnt] = await rowsOf(
+    `SELECT count(*) AS passes,
+            count(*) FILTER (WHERE status = 'used')        AS used,
+            count(*) FILTER (WHERE exited_at IS NOT NULL)  AS exited,
+            count(*) FILTER (WHERE move_count > 0)         AS postponed,
+            count(*) FILTER (WHERE total_paise = 0)        AS free,
+            count(DISTINCT customer_id)                    AS customers,
+            count(DISTINCT reg_no) FILTER (WHERE reg_no IS NOT NULL) AS vehicles,
+            COALESCE(sum(persons), 0)                      AS persons,
+            min(travel_date) AS first_travel, max(travel_date) AS last_travel
+       FROM tickets WHERE NOT is_test AND status IN ('paid','used')`);
+
+  /* A month is the unit a return is filed in and the unit a trend is read in,
+     so it is the only time series here — a daily row per year is unreadable. */
+  const byMonth = await rowsOf(
+    `SELECT to_char(${IST_DAY('paid_at')}, 'YYYY-MM') AS month,
+            count(*) AS payments,
+            COALESCE(sum(amount_paise), 0)   AS gross,
+            COALESCE(sum(entry_paise), 0)    AS department,
+            COALESCE(sum(platform_paise), 0) AS service,
+            COALESCE(sum(gst_paise), 0)      AS gst,
+            COALESCE(sum((raw->'gateway'->>'fee')::bigint), 0) AS gateway
+       FROM payments
+      WHERE status <> 'failed' AND paid_at IS NOT NULL AND NOT is_test
+      GROUP BY 1 ORDER BY 1`);
+
+  const byVehicle = await rowsOf(
+    `SELECT COALESCE(c.label, 'Unknown') AS label, COALESCE(c.code, '?') AS code,
+            min(c.sort_order) AS sort_order,
+            count(*) AS passes,
+            COALESCE(sum(t.total_paise), 0)    AS gross,
+            COALESCE(sum(t.entry_paise), 0)    AS department,
+            COALESCE(sum(t.platform_paise), 0) AS service,
+            COALESCE(sum(t.gst_paise), 0)      AS gst
+       FROM tickets t LEFT JOIN vehicle_categories c ON c.id = t.vehicle_id
+      WHERE NOT t.is_test AND t.status IN ('paid','used')
+      GROUP BY 1, 2 ORDER BY sort_order NULLS LAST, passes DESC`);
+
+  const byPlace = await rowsOf(
+    `SELECT COALESCE(pl.name, 'Unknown') AS label,
+            count(*) AS passes,
+            COALESCE(sum(t.total_paise), 0)    AS gross,
+            COALESCE(sum(t.entry_paise), 0)    AS department,
+            COALESCE(sum(t.platform_paise), 0) AS service,
+            COALESCE(sum(t.gst_paise), 0)      AS gst
+       FROM tickets t LEFT JOIN places pl ON pl.id = t.place_id
+      WHERE NOT t.is_test AND t.status IN ('paid','used')
+      GROUP BY 1 ORDER BY gross DESC`);
+
+  /*
+   * How the pass came to exist. A pass bought on WhatsApp and one sold at the
+   * barrier are identical money to the Department and very different money to
+   * reconcile, because only one of them reaches a bank on its own.
+   *
+   * DISTINCT ON keeps one grant per pass: a pass can gather more than one
+   * grant row over its life, and joining them plainly would count its money
+   * once per row.
+   */
+  const byChannel = await rowsOf(
+    `WITH g AS (
+       SELECT DISTINCT ON (ticket_id) ticket_id, kind, payment_method
+         FROM ticket_grants ORDER BY ticket_id, created_at
+     )
+     SELECT CASE WHEN t.total_paise = 0 OR g.kind = 'free' THEN 'Free pass'
+                 WHEN g.kind = 'onspot' THEN 'Sold at the gate'
+                 ELSE 'WhatsApp' END AS label,
+            count(*) AS passes,
+            COALESCE(sum(t.total_paise), 0)    AS gross,
+            COALESCE(sum(t.platform_paise), 0) AS service
+       FROM tickets t LEFT JOIN g ON g.ticket_id = t.id
+      WHERE NOT t.is_test AND t.status IN ('paid','used')
+      GROUP BY 1 ORDER BY passes DESC`);
+
+  const byMethod = await rowsOf(
+    `WITH g AS (
+       SELECT DISTINCT ON (ticket_id) ticket_id, payment_method
+         FROM ticket_grants ORDER BY ticket_id, created_at
+     )
+     SELECT CASE WHEN p.gateway <> 'counter' THEN 'Online (gateway)'
+                 ELSE initcap(COALESCE(g.payment_method, 'counter')) END AS label,
+            count(*) AS payments,
+            COALESCE(sum(p.amount_paise), 0) AS gross
+       FROM payments p
+       LEFT JOIN tickets t ON t.payment_id = p.id
+       LEFT JOIN g ON g.ticket_id = t.id
+      WHERE p.status <> 'failed' AND p.paid_at IS NOT NULL AND NOT p.is_test
+      GROUP BY 1 ORDER BY gross DESC`);
+
+  /* ── the arithmetic, in paise, rounded once at the end ── */
+  const refundedFeeNet = n(ref.service) - n(ref.gst);
+  const invoiceGstNet = n(inv.gst) - n(ref.gst);
+  const itcClaimed = n(exp.itc) + (includeGatewayItc ? n(pay.gateway_tax) : 0);
+  const gstPayable = Math.max(0, invoiceGstNet - itcClaimed);
+
+  const collected = n(pay.gross) - n(ref.amount);
+  const department = n(pay.department) - n(ref.entry);
+  const governmentGst = n(pay.gst) - n(ref.gst);
+  const gatewayCharges = n(pay.gateway_fee);
+  /* What is left of the collection once the other three are out. */
+  const serverpeNet = n(pay.service) - n(pay.gst) - refundedFeeNet - gatewayCharges;
+  const takeHome = n(pay.service) - n(ref.service) - gatewayCharges - n(exp.amount) - gstPayable;
+
+  const pct = (part) => (collected > 0 ? Math.round((n(part) / collected) * 1000) / 10 : 0);
+  const days = pay.first_at
+    ? Math.floor((Date.parse(slotTime.nowIST().date) - Date.parse(asDate(pay.first_at))) / 86400000) + 1
+    : 0;
+
+  return {
+    span: {
+      firstAt: pay.first_at || null,
+      lastAt: pay.last_at || null,
+      firstTravel: cnt.first_travel ? asDate(cnt.first_travel) : null,
+      lastTravel: cnt.last_travel ? asDate(cnt.last_travel) : null,
+      days,
+      months: byMonth.length,
+      today: slotTime.nowIST().date,
+    },
+
+    /* The headline: every rupee ever taken, and whose it is. */
+    share: {
+      collected: rupees(collected),
+      parts: [
+        { key: 'department',
+          label: 'Tourism Department',
+          note: 'Entry fee, collected as a pure agent and passed on in full. Never Pravesha’s revenue, and it carries no GST.',
+          amount: rupees(department), percent: pct(department) },
+        { key: 'gst',
+          label: 'Government — GST',
+          note: `${gstPercent}% on the service fee only. Charged inside it and paid to the exchequer.`,
+          amount: rupees(governmentGst), percent: pct(governmentGst) },
+        { key: 'gateway',
+          label: 'Payment gateway',
+          note: 'Razorpay’s charge, taken on the whole amount collected — including the Department’s share.',
+          amount: rupees(gatewayCharges), percent: pct(gatewayCharges),
+          known: n(pay.with_fee) === n(pay.online_payments) },
+        { key: 'serverpe',
+          label: 'ServerPe — Pravesha',
+          note: 'The service fee after its GST, its refunds and the gateway’s charge. Everything the platform has earned.',
+          amount: rupees(serverpeNet), percent: pct(serverpeNet) },
+      ],
+    },
+
+    /* And what became of ServerPe's part. */
+    serverpe: {
+      serviceFee: rupees(pay.service),
+      lessGst: rupees(governmentGst),
+      lessRefundedFee: rupees(ref.service),
+      lessGateway: rupees(gatewayCharges),
+      netRevenue: rupees(serverpeNet),
+      lessExpenses: rupees(exp.amount),
+      expenseCount: n(exp.expenses),
+      lessGstPayable: rupees(gstPayable),
+      takeHome: rupees(takeHome),
+      perPass: n(cnt.passes) > 0 ? rupees(Math.round(serverpeNet / n(cnt.passes))) : 0,
+      perMonth: byMonth.length > 0 ? rupees(Math.round(serverpeNet / byMonth.length)) : 0,
+    },
+
+    money: {
+      basis: 'payment date',
+      payments: n(pay.payments),
+      gross: rupees(pay.gross),
+      online: { count: n(pay.online_payments), gross: rupees(pay.online_gross) },
+      counter: { count: n(pay.counter_payments), gross: rupees(pay.counter_gross) },
+      refunds: { count: n(ref.refunds), amount: rupees(ref.amount), service: rupees(ref.service), gst: rupees(ref.gst), entry: rupees(ref.entry) },
+      gatewayCharges: rupees(gatewayCharges),
+      gatewayChargesKnown: n(pay.with_fee) === n(pay.online_payments),
+    },
+
+    gst: {
+      basis: 'invoice date',
+      rate: gstPercent,
+      invoices: n(inv.invoices),
+      firstInvoice: inv.first_no || null,
+      lastInvoice: inv.last_no || null,
+      taxableValue: rupees(inv.taxable),
+      outputGst: rupees(inv.gst),
+      cgst: rupees(Math.floor(n(inv.gst) / 2)),
+      sgst: rupees(n(inv.gst) - Math.floor(n(inv.gst) / 2)),
+      refundedGst: rupees(ref.gst),
+      pureAgentEntry: rupees(inv.entry),
+      totalInvoiceValue: rupees(inv.total),
+      itcClaimed: rupees(itcClaimed),
+      itcBills: n(exp.itc_bills),
+      includeGatewayItc,
+      payable: rupees(gstPayable),
+      paidWithoutInvoice: n(miss.c),
+    },
+
+    counts: {
+      passes: n(cnt.passes),
+      used: n(cnt.used),
+      exited: n(cnt.exited),
+      postponed: n(cnt.postponed),
+      free: n(cnt.free),
+      customers: n(cnt.customers),
+      vehicles: n(cnt.vehicles),
+      persons: n(cnt.persons),
+    },
+
+    byMonth: byMonth.map((m) => ({
+      month: m.month,
+      payments: n(m.payments),
+      gross: rupees(m.gross),
+      department: rupees(m.department),
+      service: rupees(m.service),
+      gst: rupees(m.gst),
+      gateway: rupees(m.gateway),
+      serverpe: rupees(n(m.service) - n(m.gst) - n(m.gateway)),
+    })),
+    byVehicle: byVehicle.map((v) => ({
+      label: v.label, code: v.code, passes: n(v.passes),
+      gross: rupees(v.gross), department: rupees(v.department), service: rupees(v.service), gst: rupees(v.gst),
+    })),
+    byPlace: byPlace.map((p) => ({
+      label: p.label, passes: n(p.passes),
+      gross: rupees(p.gross), department: rupees(p.department), service: rupees(p.service), gst: rupees(p.gst),
+    })),
+    byChannel: byChannel.map((c) => ({ label: c.label, passes: n(c.passes), gross: rupees(c.gross), service: rupees(c.service) })),
+    byMethod: byMethod.map((m) => ({ label: m.label, payments: n(m.payments), gross: rupees(m.gross) })),
+  };
+}
+
 /* ─────────────────────────────────────────────────── 8.3 and 8.5 ── */
 
 const mask = (m) => (m ? `••••${String(m).slice(-4)}` : null);
@@ -399,4 +704,4 @@ async function setGatewayItc({ include, reason }) {
   return { reason: why, audit: { subject: 'settings:itc_include_gateway_gst', before: { includeGatewayGst: before }, after: { includeGatewayGst: include } } };
 }
 
-module.exports = { Refusal, PRESETS, FEE_REFUNDED, GST_REFUNDED, ENTRY_REFUNDED, IST_DAY, periodFor, summary, invoices, invoice, expenses, addExpense, removeExpense, setGatewayItc };
+module.exports = { Refusal, PRESETS, FEE_REFUNDED, GST_REFUNDED, ENTRY_REFUNDED, IST_DAY, periodFor, summary, lifetime, invoices, invoice, expenses, addExpense, removeExpense, setGatewayItc };
