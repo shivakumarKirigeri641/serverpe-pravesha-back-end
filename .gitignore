@@ -11,3 +11,6 @@ server.log
 server.err.log
 sandbox.log
 sandbox.err.log
+
+# A nested clone someone left here; never part of this repo.
+serverpe-pravesha-back-end/
