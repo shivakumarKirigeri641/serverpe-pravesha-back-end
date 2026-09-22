@@ -588,8 +588,9 @@
       + tr(t('vtype'), esc(TYPE[v.category.code] || v.category.label))
       + '</tbody></table></td></tr>'
       + '<tr><td><table class="inner pay"><caption>' + esc(t('paydetails')) + '</caption><tbody>'
-      + tr(t('entryFee'), '₹' + esc(v.price.entry))
-      + tr(t('platFee'), '₹' + esc(v.price.platform))
+      /* One line, the amount payable (user, 2026-09-20). The entry-fee and
+         platform-fee rows are gone: two numbers that add up to a third, read
+         a second before paying, only invite a recount. */
       + tr(t('total'), '₹' + esc(v.price.total), 'total')
       + '</tbody></table></td></tr>'
       + '</tbody></table>';

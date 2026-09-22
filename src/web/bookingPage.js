@@ -32,7 +32,10 @@ const COPY = {
     step2: 'Where, when and time slot', place: 'Destination',
     soon: 'Bookings for this destination are not open yet. Please choose Mullayanagiri.',
     comingSoon: 'coming soon', date: 'Date of visit', today: 'today', slot: 'Time slot',
-    fees: 'Entry fees', thVehicle: 'Vehicle', thFee: 'Entry fee', thTotal: 'Total',
+    /* Not "Entry fees" any more: the one figure shown is the whole amount
+       payable, and heading it with the department's term would label the
+       total as the entry fee (user, 2026-09-20). */
+    fees: 'Pass charges', thVehicle: 'Vehicle', thFee: 'Entry fee', thTotal: 'Amount payable',
     note: 'Please note',
     rules: [
       'The pass is valid only for the vehicle number entered. Changing the vehicle at the checkpost is not allowed.',
@@ -60,7 +63,7 @@ const COPY = {
     step2: 'ಸ್ಥಳ, ದಿನಾಂಕ ಮತ್ತು ಸಮಯ', place: 'ಪ್ರವಾಸಿ ತಾಣ',
     soon: 'ಈ ತಾಣಕ್ಕೆ ಬುಕಿಂಗ್ ಇನ್ನೂ ಆರಂಭವಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಮುಳ್ಳಯ್ಯನಗಿರಿ ಆಯ್ಕೆಮಾಡಿ.',
     comingSoon: 'ಶೀಘ್ರದಲ್ಲೇ', date: 'ಭೇಟಿಯ ದಿನಾಂಕ', today: 'ಇಂದು', slot: 'ಸಮಯದ ಸ್ಲಾಟ್',
-    fees: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thVehicle: 'ವಾಹನ', thFee: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thTotal: 'ಒಟ್ಟು',
+    fees: 'ಪಾಸ್ ಶುಲ್ಕ', thVehicle: 'ವಾಹನ', thFee: 'ಪ್ರವೇಶ ಶುಲ್ಕ', thTotal: 'ಪಾವತಿಸಬೇಕಾದ ಮೊತ್ತ',
     note: 'ದಯವಿಟ್ಟು ಗಮನಿಸಿ',
     rules: [
       'ನಮೂದಿಸಿದ ವಾಹನ ಸಂಖ್ಯೆಗೆ ಮಾತ್ರ ಪಾಸ್ ಮಾನ್ಯ. ಚೆಕ್‌ಪೋಸ್ಟ್‌ನಲ್ಲಿ ವಾಹನ ಬದಲಾಯಿಸಲು ಅವಕಾಶವಿಲ್ಲ.',
@@ -385,11 +388,16 @@ function render({ token, customer, places, dates, tariff, feePercent, scriptVers
      someone who calls it a Cruiser, while the silhouette does. */
   const ICON = { BIKE: '🏍️', CAR: '🚗', TOOFAN: '🚙', TT: '🚐' };
   const rs = (paise) => '&#8377;' + (Number(paise) / 100).toFixed(2).replace(/\.00$/, '');
-  /* The entry fee and the total, with no platform-fee line between them (user,
-     2026-09-15): the visitor sees what goes to the department and what they pay. */
+  /*
+   * ONE PRICE (user, 2026-09-20). The card showed the department's entry fee
+   * beside the total, which invited the subtraction — a visitor working out
+   * the difference and reading it as a surcharge, at the moment they are
+   * deciding whether to book. What they need here is the one number they will
+   * pay. The split is still on the tax invoice, where it belongs, and in the
+   * policies.
+   */
   const feeRows = tariff.map((t) => `<tr data-cat="${esc(t.categoryId)}">
         <td><span class="ico">${ICON[t.code] || '🚘'}</span>${esc(kn && t.labelKn ? t.labelKn : t.label)}</td>
-        <td class="calc">${rs(t.entryPaise)}</td>
         <td class="tot">${rs(t.totalPaise)}</td></tr>`).join('');
   const live = places.find((p) => p.is_active);
   const placeName = esc(live ? pn(live) : '');
@@ -430,7 +438,7 @@ const BODY = (v) => `
   <div class="card">
     <div class="step"><span class="num">&#8377;</span>${v.c.fees} &middot; ${v.placeName}</div>
     <table class="fees" id="fees">
-      <thead><tr><th>${v.c.thVehicle}</th><th>${v.c.thFee}</th><th>${v.c.thTotal}</th></tr></thead>
+      <thead><tr><th>${v.c.thVehicle}</th><th>${v.c.thTotal}</th></tr></thead>
       <tbody>${v.feeRows}</tbody>
     </table>
     <div class="rules">
